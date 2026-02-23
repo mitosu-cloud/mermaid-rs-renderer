@@ -559,7 +559,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "ttf-parser 0.20.0",
+ "ttf-parser 0.25.1",
  "usvg",
 ]
 
