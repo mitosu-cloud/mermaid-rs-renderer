@@ -2,7 +2,8 @@ use crate::config::LayoutConfig;
 use crate::text_metrics;
 use crate::theme::Theme;
 
-use super::TextBlock;
+use super::markdown::parse_markdown_spans;
+use super::{TextBlock, TextLine};
 
 pub(super) fn measure_label(text: &str, theme: &Theme, config: &LayoutConfig) -> TextBlock {
     // Mermaid's layout sizing appears to use a baseline font size (~16px)
@@ -58,7 +59,7 @@ pub(super) fn measure_label_with_font_size(
     let height = lines.len() as f32 * font_size * config.label_line_height;
 
     TextBlock {
-        lines,
+        lines: lines.into_iter().map(TextLine::plain).collect(),
         width,
         height,
     }
@@ -209,6 +210,53 @@ fn max_label_width_px(
     (max_chars.max(1) as f32) * avg_char
 }
 
+const BOLD_WIDTH_MULTIPLIER: f32 = 1.07;
+
+/// Measure a markdown-formatted label. Splits on literal `\n` only (no `<br/>` processing),
+/// parses each line via `parse_markdown_spans()`, measures span widths with a 1.07x
+/// multiplier for bold text, and returns a `TextBlock` with formatted `TextLine`s.
+pub(super) fn measure_markdown_label(
+    text: &str,
+    theme: &Theme,
+    config: &LayoutConfig,
+) -> TextBlock {
+    let font_size = theme.font_size.max(16.0);
+    let font_family = theme.font_family.as_str();
+    let fast_metrics = config.fast_text_metrics;
+
+    // Markdown strings split on literal newlines only (no <br/> processing).
+    let raw_lines: Vec<&str> = text.split('\n').collect();
+    let mut lines: Vec<TextLine> = Vec::new();
+    let mut max_width: f32 = 0.0;
+
+    for raw in &raw_lines {
+        let spans = parse_markdown_spans(raw);
+        let mut line_width: f32 = 0.0;
+        for span in &spans {
+            let w = text_width(&span.text, font_size, font_family, fast_metrics);
+            if span.style.bold {
+                line_width += w * BOLD_WIDTH_MULTIPLIER;
+            } else {
+                line_width += w;
+            }
+        }
+        max_width = max_width.max(line_width);
+        lines.push(TextLine { spans });
+    }
+
+    if lines.is_empty() {
+        lines.push(TextLine::plain(String::new()));
+    }
+
+    let height = lines.len() as f32 * font_size * config.label_line_height;
+
+    TextBlock {
+        lines,
+        width: max_width,
+        height,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -276,5 +324,36 @@ mod tests {
         let config = LayoutConfig::default();
         let block = measure_label("", &theme, &config);
         assert_eq!(block.lines.len(), 1);
+    }
+
+    #[test]
+    fn measure_markdown_label_bold_wider_than_plain() {
+        let theme = Theme::modern();
+        let config = LayoutConfig::default();
+        let plain = measure_markdown_label("hello", &theme, &config);
+        let bold = measure_markdown_label("**hello**", &theme, &config);
+        assert!(
+            bold.width > plain.width,
+            "bold markdown should be wider than plain markdown: {} vs {}",
+            bold.width,
+            plain.width
+        );
+    }
+
+    #[test]
+    fn measure_markdown_label_has_formatting() {
+        let theme = Theme::modern();
+        let config = LayoutConfig::default();
+        let block = measure_markdown_label("**bold** and *italic*", &theme, &config);
+        assert_eq!(block.lines.len(), 1);
+        assert!(block.lines[0].has_formatting());
+    }
+
+    #[test]
+    fn measure_markdown_label_multiline() {
+        let theme = Theme::modern();
+        let config = LayoutConfig::default();
+        let block = measure_markdown_label("line1\nline2", &theme, &config);
+        assert_eq!(block.lines.len(), 2);
     }
 }

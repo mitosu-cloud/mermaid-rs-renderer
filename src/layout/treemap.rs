@@ -160,7 +160,7 @@ fn layout_treemap_nodes(
                 label
             } else {
                 TextBlock {
-                    lines: vec![String::new()],
+                    lines: vec![TextLine::plain(String::new())],
                     width: 0.0,
                     height: 0.0,
                 }

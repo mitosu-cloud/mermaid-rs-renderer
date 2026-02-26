@@ -80,7 +80,7 @@ pub(super) fn compute_timeline_layout(
             width: (width - padding * 2.0).max(1.0),
             height: (height - padding * 2.0).max(1.0),
             label: TextBlock {
-                lines: vec![String::new()],
+                lines: vec![TextLine::plain(String::new())],
                 width: 0.0,
                 height: 0.0,
             },

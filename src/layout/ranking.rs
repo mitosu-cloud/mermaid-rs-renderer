@@ -352,6 +352,7 @@ mod tests {
             start_decoration: None,
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
+                markdown_label: false,
         }
     }
 

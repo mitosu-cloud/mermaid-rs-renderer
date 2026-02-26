@@ -128,7 +128,7 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
                 width: shape.width,
                 height: shape.height,
                 label: TextBlock {
-                    lines: shape.label.lines.clone(),
+                    lines: shape.label.lines.iter().map(|s| TextLine::plain(s.clone())).collect(),
                     width: shape.label.width,
                     height: shape.label.height,
                 },

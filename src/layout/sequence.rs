@@ -80,7 +80,7 @@ pub(super) fn compute_sequence_layout(
             .copied()
             .unwrap_or(min_actor_width);
         let label = label_blocks.get(id).cloned().unwrap_or_else(|| TextBlock {
-            lines: vec![id.clone()],
+            lines: vec![TextLine::plain(id.clone())],
             width: 0.0,
             height: 0.0,
         });
@@ -1393,7 +1393,7 @@ mod tests {
     fn sequence_center_label_prefers_touching_own_path() {
         let points = vec![(0.0, 0.0), (140.0, 0.0)];
         let label = TextBlock {
-            lines: vec!["msg".to_string()],
+            lines: vec![TextLine::plain("msg".to_string())],
             width: 36.0,
             height: 14.0,
         };
@@ -1419,7 +1419,7 @@ mod tests {
     fn sequence_center_label_moves_off_path_when_path_is_blocked() {
         let points = vec![(0.0, 0.0), (140.0, 0.0)];
         let label = TextBlock {
-            lines: vec!["msg".to_string()],
+            lines: vec![TextLine::plain("msg".to_string())],
             width: 36.0,
             height: 14.0,
         };

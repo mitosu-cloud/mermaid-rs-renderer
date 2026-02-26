@@ -235,7 +235,11 @@ pub(super) fn compute_mindmap_layout(
             .get(&node.id)
             .map(|n| n.label.clone())
             .unwrap_or_else(|| node.label.clone());
-        let mut label = measure_label(&label_text, theme, config);
+        let mut label = if node.markdown_label {
+            measure_markdown_label(&label_text, theme, config)
+        } else {
+            measure_label(&label_text, theme, config)
+        };
         label.width *= config.mindmap.text_width_scale;
         if config.mindmap.use_max_width {
             label.width = label.width.min(config.mindmap.max_node_width);

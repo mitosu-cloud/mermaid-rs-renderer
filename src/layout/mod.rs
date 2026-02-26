@@ -7,6 +7,7 @@ mod gitgraph;
 mod journey;
 mod kanban;
 pub(crate) mod label_placement;
+mod markdown;
 mod mindmap;
 mod pie;
 mod quadrant;
@@ -141,6 +142,18 @@ const MULTI_EDGE_OFFSET_RATIO: f32 = 0.35;
 
 // ── State subgraph rank spacing boost ────────────────────────────────
 const STATE_RANK_SPACING_BOOST: f32 = 25.0;
+
+fn measure_subgraph_label(
+    sub: &crate::ir::Subgraph,
+    theme: &Theme,
+    config: &LayoutConfig,
+) -> TextBlock {
+    if sub.markdown_label {
+        measure_markdown_label(&sub.label, theme, config)
+    } else {
+        measure_label(&sub.label, theme, config)
+    }
+}
 
 fn is_region_subgraph(sub: &crate::ir::Subgraph) -> bool {
     sub.label.trim().is_empty()
@@ -344,14 +357,18 @@ fn compute_flowchart_layout(
     let mut state_height_count = 0usize;
 
     for node in graph.nodes.values() {
-        let label = measure_label_with_font_size(
-            &node.label,
-            measure_font_size,
-            &label_config,
-            true,
-            theme.font_family.as_str(),
-        );
-        let label_empty = label.lines.len() == 1 && label.lines[0].trim().is_empty();
+        let label = if node.markdown_label {
+            measure_markdown_label(&node.label, theme, &label_config)
+        } else {
+            measure_label_with_font_size(
+                &node.label,
+                measure_font_size,
+                &label_config,
+                true,
+                theme.font_family.as_str(),
+            )
+        };
+        let label_empty = label.lines.len() == 1 && label.lines[0].text().trim().is_empty();
         let (mut width, mut height) =
             shape_size(node.shape, &label, &effective_config, theme, graph.kind);
         if graph.kind == crate::ir::DiagramKind::State
@@ -487,50 +504,52 @@ fn compute_flowchart_layout(
     }
 
     // Pre-measure all edge labels once (reused across layout, routing, and edge construction).
-    let measure_edge_field = |field: &Option<String>| -> Option<TextBlock> {
-        field.as_ref().map(|label| {
-            let label_text = if graph.kind == crate::ir::DiagramKind::Requirement {
-                requirement_edge_label_text(label, config)
-            } else {
-                label.clone()
-            };
-            if graph.kind == crate::ir::DiagramKind::Flowchart
-                && !label_text.contains('\n')
-                && !label_text.contains("<br")
-                && label_text.chars().count() >= FLOWCHART_EDGE_LABEL_WRAP_TRIGGER_CHARS
-            {
-                // Keep very long flowchart edge labels in a narrower block so
-                // routing + placement can avoid large cross-label collisions.
-                let mut wrap_cfg = config.clone();
-                wrap_cfg.max_label_width_chars = wrap_cfg
-                    .max_label_width_chars
-                    .min(FLOWCHART_EDGE_LABEL_WRAP_MAX_CHARS);
-                measure_label_with_font_size(
-                    &label_text,
-                    theme.font_size.max(16.0),
-                    &wrap_cfg,
-                    true,
-                    theme.font_family.as_str(),
-                )
-            } else {
-                measure_label(&label_text, theme, config)
-            }
-        })
-    };
+    let measure_edge_field =
+        |field: &Option<String>, markdown_label: bool| -> Option<TextBlock> {
+            field.as_ref().map(|label| {
+                if markdown_label {
+                    return measure_markdown_label(label, theme, config);
+                }
+                let label_text = if graph.kind == crate::ir::DiagramKind::Requirement {
+                    requirement_edge_label_text(label, config)
+                } else {
+                    label.clone()
+                };
+                if graph.kind == crate::ir::DiagramKind::Flowchart
+                    && !label_text.contains('\n')
+                    && !label_text.contains("<br")
+                    && label_text.chars().count() >= FLOWCHART_EDGE_LABEL_WRAP_TRIGGER_CHARS
+                {
+                    let mut wrap_cfg = config.clone();
+                    wrap_cfg.max_label_width_chars = wrap_cfg
+                        .max_label_width_chars
+                        .min(FLOWCHART_EDGE_LABEL_WRAP_MAX_CHARS);
+                    measure_label_with_font_size(
+                        &label_text,
+                        theme.font_size.max(16.0),
+                        &wrap_cfg,
+                        true,
+                        theme.font_family.as_str(),
+                    )
+                } else {
+                    measure_label(&label_text, theme, config)
+                }
+            })
+        };
     let edge_route_labels: Vec<Option<TextBlock>> = graph
         .edges
         .iter()
-        .map(|e| measure_edge_field(&e.label))
+        .map(|e| measure_edge_field(&e.label, e.markdown_label))
         .collect();
     let edge_start_labels: Vec<Option<TextBlock>> = graph
         .edges
         .iter()
-        .map(|e| measure_edge_field(&e.start_label))
+        .map(|e| measure_edge_field(&e.start_label, e.markdown_label))
         .collect();
     let edge_end_labels: Vec<Option<TextBlock>> = graph
         .edges
         .iter()
-        .map(|e| measure_edge_field(&e.end_label))
+        .map(|e| measure_edge_field(&e.end_label, e.markdown_label))
         .collect();
 
     let mut label_dummy_ids: Vec<Option<String>> = vec![None; graph.edges.len()];
@@ -1744,6 +1763,7 @@ fn assign_positions_manual(
                 start_decoration: None,
                 end_decoration: None,
                 style: crate::ir::EdgeStyle::Solid,
+                markdown_label: false,
             });
             prev = dummy_id;
         }
@@ -1761,6 +1781,7 @@ fn assign_positions_manual(
             start_decoration: None,
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
+            markdown_label: false,
         });
     }
 
@@ -2867,7 +2888,7 @@ fn estimate_subgraph_box_size(
         return None;
     }
     let label_empty = sub.label.trim().is_empty();
-    let mut label_block = measure_label(&sub.label, theme, config);
+    let mut label_block = measure_subgraph_label(sub, theme, config);
     if label_empty {
         label_block.width = 0.0;
         label_block.height = 0.0;
@@ -4039,7 +4060,11 @@ fn build_graph_node_layouts(
 ) -> BTreeMap<String, NodeLayout> {
     let mut nodes = BTreeMap::new();
     for node in graph.nodes.values() {
-        let label = measure_label(&node.label, theme, config);
+        let label = if node.markdown_label {
+            measure_markdown_label(&node.label, theme, config)
+        } else {
+            measure_label(&node.label, theme, config)
+        };
         let (width, height) = shape_size(node.shape, &label, config, theme, graph.kind);
         let style = resolve_node_style(node.id.as_str(), graph);
         nodes.insert(
@@ -4155,7 +4180,7 @@ fn enforce_top_level_subgraph_gap(
         }
 
         let label_empty = sub.label.trim().is_empty();
-        let mut label_block = measure_label(&sub.label, theme, config);
+        let mut label_block = measure_subgraph_label(sub, theme, config);
         if label_empty {
             label_block.width = 0.0;
             label_block.height = 0.0;
@@ -4287,7 +4312,7 @@ fn push_non_members_out_of_subgraphs(
             graph,
             sub,
             theme,
-            &measure_label(&sub.label, theme, config),
+            &measure_subgraph_label(sub, theme, config),
         );
         if min_x < f32::MAX {
             sub_bounds.push((min_x - pad_x, min_y - top_pad, max_x + pad_x, max_y + pad_y));
@@ -4387,7 +4412,7 @@ fn separate_sibling_subgraphs(
             }
             if min_x != f32::MAX {
                 // Include subgraph padding in bounds calculation
-                let label_block = measure_label(&sub.label, theme, config);
+                let label_block = measure_subgraph_label(sub, theme, config);
                 let (pad_x, pad_y, top_padding) =
                     subgraph_padding_from_label(graph, sub, theme, &label_block);
                 let padded_min_x = min_x - pad_x;
@@ -5307,7 +5332,7 @@ fn build_subgraph_layouts(
         }
 
         let style = resolve_subgraph_style(sub, graph);
-        let mut label_block = measure_label(&sub.label, theme, config);
+        let mut label_block = measure_subgraph_label(sub, theme, config);
         let label_empty = sub.label.trim().is_empty();
         if label_empty {
             label_block.width = 0.0;
@@ -5440,7 +5465,7 @@ fn shape_padding_factors(shape: crate::ir::NodeShape) -> (f32, f32) {
 }
 
 fn has_divider_line(label: &TextBlock) -> bool {
-    label.lines.iter().any(|line| line.trim() == "---")
+    label.lines.iter().any(|line| line.text().trim() == "---")
 }
 
 fn shape_size(
@@ -5476,7 +5501,7 @@ fn shape_size(
     let base_height = label.height + pad_y * 2.0;
     let mut width = base_width;
     let mut height = base_height;
-    let label_empty = label.lines.len() == 1 && label.lines[0].trim().is_empty();
+    let label_empty = label.lines.len() == 1 && label.lines[0].text().trim().is_empty();
 
     match shape {
         crate::ir::NodeShape::Diamond => {
@@ -5593,6 +5618,7 @@ mod tests {
             start_decoration: None,
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
+                markdown_label: false,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let a = layout.nodes.get("A").unwrap();
@@ -5619,6 +5645,7 @@ mod tests {
             start_decoration: None,
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
+                markdown_label: false,
         });
 
         graph.edge_style_default = Some(crate::ir::EdgeStyleOverride {
@@ -5679,7 +5706,7 @@ mod tests {
             width,
             height,
             label: TextBlock {
-                lines: vec![String::new()],
+                lines: vec![TextLine::plain(String::new())],
                 width: 0.0,
                 height: 0.0,
             },
@@ -5707,6 +5734,7 @@ mod tests {
             start_decoration: None,
             end_decoration: None,
             style,
+            markdown_label: false,
         }
     }
 

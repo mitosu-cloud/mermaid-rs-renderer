@@ -1303,7 +1303,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             }
             let center_x = node.x + node.width / 2.0;
             let center_y = node.y + node.height / 2.0;
-            let hide_label = node.label.lines.iter().all(|line| line.trim().is_empty())
+            let hide_label = node.label.lines.iter().all(|line| line.text().trim().is_empty())
                 || node.id.starts_with("__start_")
                 || node.id.starts_with("__end_");
             if !hide_label {
@@ -1321,7 +1321,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     )
                 } else if layout.kind == crate::ir::DiagramKind::Er {
                     render_er_node_label(node, theme, config).unwrap_or_else(|| {
-                        if node.label.lines.iter().any(|line| is_divider_line(line)) {
+                        if node.label.lines.iter().any(|line| is_divider_text_line(line)) {
                             text_block_svg_class(
                                 node,
                                 theme,
@@ -1340,7 +1340,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                             )
                         }
                     })
-                } else if node.label.lines.iter().any(|line| is_divider_line(line)) {
+                } else if node.label.lines.iter().any(|line| is_divider_text_line(line)) {
                     text_block_svg_class(node, theme, config, node.style.text_color.as_deref())
                 } else if layout.kind == crate::ir::DiagramKind::State {
                     text_block_svg_with_font_size(
@@ -1400,11 +1400,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 .label
                 .lines
                 .iter()
-                .all(|line| line.trim().is_empty())
+                .all(|line| line.text().trim().is_empty())
                 || footbox.id.starts_with("__start_")
                 || footbox.id.starts_with("__end_");
             if !hide_label {
-                let label_svg = if footbox.label.lines.iter().any(|line| is_divider_line(line)) {
+                let label_svg = if footbox.label.lines.iter().any(|line| is_divider_text_line(line)) {
                     text_block_svg_class(
                         footbox,
                         theme,
@@ -1453,7 +1453,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             ));
             let center_x = node.x + node.width / 2.0;
             let center_y = node.y + node.height / 2.0;
-            let hide_label = node.label.lines.iter().all(|line| line.trim().is_empty())
+            let hide_label = node.label.lines.iter().all(|line| line.text().trim().is_empty())
                 || node.id.starts_with("__start_")
                 || node.id.starts_with("__end_");
             if !hide_label {
@@ -1493,7 +1493,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 .label
                 .lines
                 .iter()
-                .all(|line| line.trim().is_empty())
+                .all(|line| line.text().trim().is_empty())
                 || footbox.id.starts_with("__start_")
                 || footbox.id.starts_with("__end_");
             if !hide_label {
@@ -2168,7 +2168,7 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
             svg.push_str(&render_line(
                 header_x,
                 header_y,
-                &lines[0],
+                &lines[0].text(),
                 label_color,
                 false,
             ));
@@ -2176,7 +2176,7 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
         if header_count >= 2 {
             let min_header_gap = theme.font_size * 1.25;
             let id_y = header_y + req.header_line_gap.max(min_header_gap);
-            svg.push_str(&render_line(header_x, id_y, &lines[1], label_color, true));
+            svg.push_str(&render_line(header_x, id_y, &lines[1].text(), label_color, true));
         }
 
         if !body_lines.is_empty() {
@@ -2192,7 +2192,7 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
             ));
             let mut body_y = divider_y + req.label_padding_y;
             for line in body_lines {
-                svg.push_str(&render_line(header_x, body_y, line, label_color, false));
+                svg.push_str(&render_line(header_x, body_y, &line.text(), label_color, false));
                 body_y += line_height;
             }
         }
@@ -2230,9 +2230,8 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
     }
 
     fn parse_series(node: &crate::layout::NodeLayout) -> Option<(String, Vec<(String, f32)>)> {
-        let mut lines = node
-            .label
-            .lines
+        let text_lines: Vec<String> = node.label.lines.iter().map(|l| l.text().into_owned()).collect();
+        let mut lines = text_lines
             .iter()
             .map(|line| line.trim())
             .filter(|line| !line.is_empty());
@@ -2584,8 +2583,8 @@ fn render_architecture(
             .label
             .lines
             .iter()
-            .find(|line| !line.trim().is_empty())
-            .cloned()
+            .find(|line| !line.text().trim().is_empty())
+            .map(|line| line.text().into_owned())
             .unwrap_or_else(|| node.id.clone());
         let label_y = node.height + theme.font_size + 8.0;
         svg.push_str(&format!(
@@ -2767,7 +2766,7 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
                 .unwrap_or(percent_text.chars().count() as f32 * font_size * 0.55);
         let outside = !suppress_outside_labels && (arc_len < percent_width * 1.35 || span < 0.4);
         let label_text = if outside {
-            slice.label.lines.join(" ")
+            slice.label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" ")
         } else {
             percent_text.clone()
         };
@@ -3103,7 +3102,7 @@ fn render_quadrant(
             axis_y,
             theme.font_family,
             theme.font_size,
-            y_bottom.lines.first().map(|s| s.as_str()).unwrap_or("")
+            y_bottom.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
         ));
     }
     if let Some(ref y_top) = layout.y_axis_top {
@@ -3115,7 +3114,7 @@ fn render_quadrant(
             axis_y,
             theme.font_family,
             theme.font_size,
-            y_top.lines.first().map(|s| s.as_str()).unwrap_or("")
+            y_top.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
         ));
     }
 
@@ -3310,13 +3309,14 @@ fn render_gantt(
                 task.color,
                 theme.primary_border_color
             ));
-            let label_text = task
+            let label_text_owned = task
                 .label
                 .lines
                 .iter()
-                .find(|line| !line.trim().is_empty())
-                .map(|s| s.as_str())
-                .unwrap_or("");
+                .find(|line| !line.text().trim().is_empty())
+                .map(|s| s.text().into_owned())
+                .unwrap_or_default();
+            let label_text = label_text_owned.as_str();
             if !label_text.is_empty() {
                 let font_size = task_font * 0.95;
                 let text_width = text_metrics::measure_text_width(
@@ -3427,7 +3427,7 @@ fn render_xychart(
             escape_xml(&theme.font_family), theme.font_size,
             theme.primary_text_color,
             layout.y_axis_label_x, layout.plot_y + layout.plot_height / 2.0,
-            escape_xml(&y_label.lines.join(" "))
+            escape_xml(&y_label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
         ));
     }
 
@@ -3536,7 +3536,7 @@ fn render_timeline(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
             center_x, event.y + 20.0,
             escape_xml(&theme.font_family), theme.font_size,
-            theme.primary_text_color, escape_xml(&event.time.lines.join(" "))
+            theme.primary_text_color, escape_xml(&event.time.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
         ));
 
         // Event descriptions
@@ -3546,7 +3546,7 @@ fn render_timeline(
                 "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
                 center_x, event.y + y_offset,
                 escape_xml(&theme.font_family), theme.font_size * 0.9,
-                theme.primary_text_color, escape_xml(&evt.lines.join(" "))
+                theme.primary_text_color, escape_xml(&evt.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
             ));
             y_offset += theme.font_size * 1.2;
         }
@@ -3604,7 +3604,7 @@ fn render_journey(layout: &JourneyLayout, theme: &Theme, config: &LayoutConfig) 
             theme.cluster_border
         ));
         if !section.label.lines.is_empty()
-            && !section.label.lines.iter().all(|l| l.trim().is_empty())
+            && !section.label.lines.iter().all(|l| l.text().trim().is_empty())
         {
             let label_x = section.x + section.width / 2.0;
             let label_y = section.y + section.height / 2.0;
@@ -4094,15 +4094,19 @@ fn text_block_svg_with_font_size(
     let line_height = font_size * config.label_line_height;
     for (idx, line) in label.lines.iter().enumerate() {
         let dy = if idx == 0 { 0.0 } else { line_height };
-        let rendered = if is_divider_line(line) {
-            String::new()
+        let line_text = line.text();
+        if is_divider_line(&line_text) {
+            text.push_str(&format!(
+                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\"></tspan>",
+            ));
+        } else if line.has_formatting() {
+            render_formatted_tspans(&mut text, x, dy, line, true);
         } else {
-            escape_xml(line)
-        };
-        text.push_str(&format!(
-            "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\">{}</tspan>",
-            rendered
-        ));
+            text.push_str(&format!(
+                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\">{}</tspan>",
+                escape_xml(&line_text)
+            ));
+        }
     }
 
     text.push_str("</text>");
@@ -4145,15 +4149,19 @@ fn text_block_svg_with_font_size_weight(
     let line_height = font_size * config.label_line_height;
     for (idx, line) in label.lines.iter().enumerate() {
         let dy = if idx == 0 { 0.0 } else { line_height };
-        let rendered = if is_divider_line(line) {
-            String::new()
+        let line_text = line.text();
+        if is_divider_line(&line_text) {
+            text.push_str(&format!(
+                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\"></tspan>",
+            ));
+        } else if line.has_formatting() {
+            render_formatted_tspans(&mut text, x, dy, line, true);
         } else {
-            escape_xml(line)
-        };
-        text.push_str(&format!(
-            "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\">{}</tspan>",
-            rendered
-        ));
+            text.push_str(&format!(
+                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\">{}</tspan>",
+                escape_xml(&line_text)
+            ));
+        }
     }
 
     text.push_str("</text>");
@@ -4186,6 +4194,37 @@ fn text_line_svg(x: f32, y: f32, text: &str, theme: &Theme, fill: &str, anchor: 
         fill,
         escape_xml(text)
     )
+}
+
+/// Emit `<tspan>` elements for a formatted `TextLine`. The first span gets
+/// `x` + `dy` positioning; subsequent spans flow inline (no `x` reset).
+fn render_formatted_tspans(
+    out: &mut String,
+    x: f32,
+    dy: f32,
+    line: &crate::layout::TextLine,
+    set_x: bool,
+) {
+    for (i, span) in line.spans.iter().enumerate() {
+        let mut attrs = String::new();
+        if i == 0 {
+            if set_x {
+                attrs.push_str(&format!(" x=\"{x:.2}\""));
+            }
+            attrs.push_str(&format!(" dy=\"{dy:.2}\""));
+        }
+        if span.style.bold {
+            attrs.push_str(" font-weight=\"bold\"");
+        }
+        if span.style.italic {
+            attrs.push_str(" font-style=\"italic\"");
+        }
+        out.push_str(&format!(
+            "<tspan{}>{}</tspan>",
+            attrs,
+            escape_xml(&span.text)
+        ));
+    }
 }
 
 const C4_PERSON_ICON: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
@@ -4740,15 +4779,12 @@ fn text_block_svg_class(
     let left_x = node.x + config.node_padding_x.max(10.0);
     let fill = override_color.unwrap_or(theme.primary_text_color.as_str());
 
-    let Some(divider_idx) = node
-        .label
-        .lines
+    let text_lines: Vec<String> = node.label.lines.iter().map(|l| l.text().into_owned()).collect();
+    let Some(divider_idx) = text_lines
         .iter()
         .position(|line| is_divider_line(line))
     else {
-        let lines: Vec<(usize, &str)> = node
-            .label
-            .lines
+        let lines: Vec<(usize, &str)> = text_lines
             .iter()
             .enumerate()
             .map(|(idx, line)| (idx, line.as_str()))
@@ -4766,13 +4802,13 @@ fn text_block_svg_class(
     };
 
     let mut title_lines: Vec<(usize, &str)> = Vec::new();
-    for (idx, line) in node.label.lines.iter().enumerate().take(divider_idx) {
+    for (idx, line) in text_lines.iter().enumerate().take(divider_idx) {
         if !line.trim().is_empty() {
             title_lines.push((idx, line.as_str()));
         }
     }
     let mut member_lines: Vec<(usize, &str)> = Vec::new();
-    for (idx, line) in node.label.lines.iter().enumerate().skip(divider_idx + 1) {
+    for (idx, line) in text_lines.iter().enumerate().skip(divider_idx + 1) {
         if !line.trim().is_empty() && !is_divider_line(line) {
             member_lines.push((idx, line.as_str()));
         }
@@ -4811,9 +4847,8 @@ fn render_er_node_label(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> Option<String> {
-    let divider_idx = node
-        .label
-        .lines
+    let text_lines: Vec<String> = node.label.lines.iter().map(|l| l.text().into_owned()).collect();
+    let divider_idx = text_lines
         .iter()
         .position(|line| is_divider_line(line))?;
     let line_height = theme.font_size * config.class_label_line_height();
@@ -4828,13 +4863,13 @@ fn render_er_node_label(
         .unwrap_or(theme.primary_text_color.as_str());
 
     let mut title_lines: Vec<(usize, &str)> = Vec::new();
-    for (idx, line) in node.label.lines.iter().enumerate().take(divider_idx) {
+    for (idx, line) in text_lines.iter().enumerate().take(divider_idx) {
         if !line.trim().is_empty() {
             title_lines.push((idx, line.as_str()));
         }
     }
     let mut attr_lines: Vec<(usize, &str)> = Vec::new();
-    for (idx, line) in node.label.lines.iter().enumerate().skip(divider_idx + 1) {
+    for (idx, line) in text_lines.iter().enumerate().skip(divider_idx + 1) {
         if !line.trim().is_empty() && !is_divider_line(line) {
             attr_lines.push((idx, line.as_str()));
         }
@@ -5019,8 +5054,12 @@ fn is_divider_line(line: &str) -> bool {
     line.trim() == "---"
 }
 
+fn is_divider_text_line(line: &crate::layout::TextLine) -> bool {
+    is_divider_line(&line.text())
+}
+
 fn divider_lines_svg(node: &crate::layout::NodeLayout, theme: &Theme, line_height: f32) -> String {
-    if !node.label.lines.iter().any(|line| is_divider_line(line)) {
+    if !node.label.lines.iter().any(|line| is_divider_text_line(line)) {
         return String::new();
     }
 
@@ -5036,7 +5075,7 @@ fn divider_lines_svg(node: &crate::layout::NodeLayout, theme: &Theme, line_heigh
 
     let mut svg = String::new();
     for (idx, line) in node.label.lines.iter().enumerate() {
-        if !is_divider_line(line) {
+        if !is_divider_text_line(line) {
             continue;
         }
         let baseline_y = start_y + idx as f32 * line_height;
@@ -5056,25 +5095,26 @@ struct ErAttribute {
     keys: Vec<String>,
 }
 
-fn parse_er_attributes(lines: &[String]) -> (String, Vec<ErAttribute>) {
+fn parse_er_attributes(lines: &[crate::layout::TextLine]) -> (String, Vec<ErAttribute>) {
     let mut title = lines
         .first()
-        .map(|s| s.trim().to_string())
+        .map(|s| s.text().trim().to_string())
         .unwrap_or_default();
     let mut attrs = Vec::new();
     let mut in_body = false;
     for line in lines.iter().skip(1) {
-        if is_divider_line(line) {
+        let line_str = line.text();
+        if is_divider_line(&line_str) {
             in_body = true;
             continue;
         }
         if !in_body {
-            if !line.trim().is_empty() {
-                title = line.trim().to_string();
+            if !line_str.trim().is_empty() {
+                title = line_str.trim().to_string();
             }
             continue;
         }
-        let trimmed = line.trim();
+        let trimmed = line_str.trim();
         if trimmed.is_empty() {
             continue;
         }
@@ -5212,7 +5252,7 @@ fn render_er_node(
     ));
 
     let header_label = TextBlock {
-        lines: vec![title.clone()],
+        lines: vec![crate::layout::TextLine::plain(title.clone())],
         width: 0.0,
         height: 0.0,
     };
@@ -5351,7 +5391,7 @@ fn render_er_node(
         }
 
         let name_label = TextBlock {
-            lines: vec![attr.name.clone()],
+            lines: vec![crate::layout::TextLine::plain(attr.name.clone())],
             width: 0.0,
             height: 0.0,
         };
@@ -5367,7 +5407,7 @@ fn render_er_node(
 
         if show_type_col && !attr.data_type.is_empty() {
             let type_label = TextBlock {
-                lines: vec![attr.data_type.clone()],
+                lines: vec![crate::layout::TextLine::plain(attr.data_type.clone())],
                 width: 0.0,
                 height: 0.0,
             };
@@ -5654,7 +5694,7 @@ fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutCon
             )
         }
         crate::ir::NodeShape::Circle | crate::ir::NodeShape::DoubleCircle => {
-            let label_empty = node.label.lines.iter().all(|line| line.trim().is_empty());
+            let label_empty = node.label.lines.iter().all(|line| line.text().trim().is_empty());
             let is_state_start = node.id.starts_with("__start_");
             let is_state_end = node.id.starts_with("__end_");
             let (circle_fill, circle_stroke) = if is_state_start {
@@ -5983,6 +6023,7 @@ mod tests {
             start_decoration: None,
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
+                markdown_label: false,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());

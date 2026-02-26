@@ -460,4 +460,14 @@ mod tests {
             "expected preferred ratio to move viewBox ratio toward target (base={base_ratio:.3}, tuned={tuned_ratio:.3})"
         );
     }
+
+    #[test]
+    fn test_markdown_string_renders_bold_tspan() {
+        let svg = render("flowchart LR\n    A[\"`**bold**`\"] --> B").unwrap();
+        assert!(
+            svg.contains("font-weight=\"bold\""),
+            "SVG should contain bold tspan: {}",
+            &svg[..svg.len().min(2000)]
+        );
+    }
 }
