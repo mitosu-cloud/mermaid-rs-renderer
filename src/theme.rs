@@ -78,6 +78,19 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// Select a theme by name. Returns `None` if the name is unrecognized.
+    pub fn by_name(name: &str) -> Option<Self> {
+        match name {
+            "default" | "mermaid" => Some(Self::mermaid_default()),
+            "modern" => Some(Self::modern()),
+            "dark" => Some(Self::dark()),
+            "neutral" => Some(Self::neutral()),
+            "forest" => Some(Self::forest()),
+            "base" => Some(Self::base()),
+            _ => None,
+        }
+    }
+
     pub fn mermaid_default() -> Self {
         let primary_color = "#ECECFF".to_string();
         let secondary_color = "#FFFFDE".to_string();
@@ -174,6 +187,231 @@ impl Theme {
             pie_outer_stroke_width: 1.6,
             pie_outer_stroke_color: "#CBD5E1".to_string(),
             pie_opacity: 0.85,
+        }
+    }
+    /// Official Mermaid "dark" theme — dark background with bright accents.
+    pub fn dark() -> Self {
+        let primary_color = "#1f2020".to_string();
+        let secondary_color = "#FFFFDE".to_string();
+        let tertiary_color = "#2B2F3A".to_string();
+        let pie_colors = default_pie_colors(&primary_color, &secondary_color, &tertiary_color);
+        Self {
+            font_family: "'trebuchet ms', verdana, arial, sans-serif".to_string(),
+            font_size: 16.0,
+            primary_color,
+            primary_text_color: "#E0E0E0".to_string(),
+            primary_border_color: "#81B1DB".to_string(),
+            line_color: "#A0AEC0".to_string(),
+            secondary_color,
+            tertiary_color,
+            edge_label_background: "rgba(30,35,45, 0.9)".to_string(),
+            cluster_background: "#2B2F3A".to_string(),
+            cluster_border: "#3E4452".to_string(),
+            background: "#1A1D23".to_string(),
+            sequence_actor_fill: "#2B2F3A".to_string(),
+            sequence_actor_border: "#81B1DB".to_string(),
+            sequence_actor_line: "#A0AEC0".to_string(),
+            sequence_note_fill: "#3E4452".to_string(),
+            sequence_note_border: "#81B1DB".to_string(),
+            sequence_activation_fill: "#2B2F3A".to_string(),
+            sequence_activation_border: "#81B1DB".to_string(),
+            text_color: "#CCCCCC".to_string(),
+            git_colors: MERMAID_GIT_COLORS.map(|value| value.to_string()),
+            git_inv_colors: MERMAID_GIT_INV_COLORS.map(|value| value.to_string()),
+            git_branch_label_colors: MERMAID_GIT_BRANCH_LABEL_COLORS
+                .map(|value| value.to_string()),
+            git_commit_label_color: "#E0E0E0".to_string(),
+            git_commit_label_background: "#2B2F3A".to_string(),
+            git_tag_label_color: "#E0E0E0".to_string(),
+            git_tag_label_background: "#3E4452".to_string(),
+            git_tag_label_border: "#81B1DB".to_string(),
+            pie_colors,
+            pie_title_text_size: 25.0,
+            pie_title_text_color: "#E0E0E0".to_string(),
+            pie_section_text_size: 17.0,
+            pie_section_text_color: "#E0E0E0".to_string(),
+            pie_legend_text_size: 17.0,
+            pie_legend_text_color: "#E0E0E0".to_string(),
+            pie_stroke_color: "#A0AEC0".to_string(),
+            pie_stroke_width: 2.0,
+            pie_outer_stroke_width: 2.0,
+            pie_outer_stroke_color: "#3E4452".to_string(),
+            pie_opacity: 0.85,
+        }
+    }
+
+    /// Official Mermaid "neutral" theme — black and white, no color.
+    pub fn neutral() -> Self {
+        let primary_color = "#EAEAEA".to_string();
+        let secondary_color = "#FFFFDE".to_string();
+        let tertiary_color = "#F5F5F5".to_string();
+        let pie_colors = default_pie_colors(&primary_color, &secondary_color, &tertiary_color);
+        Self {
+            font_family: "'trebuchet ms', verdana, arial, sans-serif".to_string(),
+            font_size: 16.0,
+            primary_color,
+            primary_text_color: "#333333".to_string(),
+            primary_border_color: "#999999".to_string(),
+            line_color: "#666666".to_string(),
+            secondary_color,
+            tertiary_color,
+            edge_label_background: "rgba(255,255,255, 0.9)".to_string(),
+            cluster_background: "#F5F5F5".to_string(),
+            cluster_border: "#999999".to_string(),
+            background: "#FFFFFF".to_string(),
+            sequence_actor_fill: "#EAEAEA".to_string(),
+            sequence_actor_border: "#666666".to_string(),
+            sequence_actor_line: "#999999".to_string(),
+            sequence_note_fill: "#FFF5AD".to_string(),
+            sequence_note_border: "#999999".to_string(),
+            sequence_activation_fill: "#F4F4F4".to_string(),
+            sequence_activation_border: "#666666".to_string(),
+            text_color: "#333333".to_string(),
+            git_colors: [
+                "#000000", "#666666", "#999999", "#333333", "#AAAAAA", "#CCCCCC", "#444444",
+                "#777777",
+            ]
+            .map(|v| v.to_string()),
+            git_inv_colors: [
+                "#FFFFFF", "#FFFFFF", "#FFFFFF", "#FFFFFF", "#000000", "#000000", "#FFFFFF",
+                "#FFFFFF",
+            ]
+            .map(|v| v.to_string()),
+            git_branch_label_colors: [
+                "#ffffff", "#ffffff", "#ffffff", "#ffffff", "black", "black", "#ffffff", "#ffffff",
+            ]
+            .map(|v| v.to_string()),
+            git_commit_label_color: "#333333".to_string(),
+            git_commit_label_background: "#EAEAEA".to_string(),
+            git_tag_label_color: "#333333".to_string(),
+            git_tag_label_background: "#EAEAEA".to_string(),
+            git_tag_label_border: "#999999".to_string(),
+            pie_colors,
+            pie_title_text_size: 25.0,
+            pie_title_text_color: "#333333".to_string(),
+            pie_section_text_size: 17.0,
+            pie_section_text_color: "#333333".to_string(),
+            pie_legend_text_size: 17.0,
+            pie_legend_text_color: "#333333".to_string(),
+            pie_stroke_color: "#666666".to_string(),
+            pie_stroke_width: 2.0,
+            pie_outer_stroke_width: 2.0,
+            pie_outer_stroke_color: "#999999".to_string(),
+            pie_opacity: 0.7,
+        }
+    }
+
+    /// Official Mermaid "forest" theme — green tones inspired by nature.
+    pub fn forest() -> Self {
+        let primary_color = "#cde498".to_string();
+        let secondary_color = "#cdffb2".to_string();
+        let tertiary_color = "#EEE8D5".to_string();
+        let pie_colors = default_pie_colors(&primary_color, &secondary_color, &tertiary_color);
+        Self {
+            font_family: "'trebuchet ms', verdana, arial, sans-serif".to_string(),
+            font_size: 16.0,
+            primary_color,
+            primary_text_color: "#333333".to_string(),
+            primary_border_color: "#6EAA49".to_string(),
+            line_color: "#2C5F2D".to_string(),
+            secondary_color,
+            tertiary_color,
+            edge_label_background: "rgba(255,255,255, 0.92)".to_string(),
+            cluster_background: "#EBF3E1".to_string(),
+            cluster_border: "#6EAA49".to_string(),
+            background: "#FFFFFF".to_string(),
+            sequence_actor_fill: "#C6E5B1".to_string(),
+            sequence_actor_border: "#2C5F2D".to_string(),
+            sequence_actor_line: "#6EAA49".to_string(),
+            sequence_note_fill: "#FFF5AD".to_string(),
+            sequence_note_border: "#AAAA33".to_string(),
+            sequence_activation_fill: "#E8F5E1".to_string(),
+            sequence_activation_border: "#6EAA49".to_string(),
+            text_color: "#333333".to_string(),
+            git_colors: [
+                "#2C5F2D", "#6EAA49", "#97D077", "#B5D99C", "#4A7C3F", "#357235", "#228B22",
+                "#8FBC8F",
+            ]
+            .map(|v| v.to_string()),
+            git_inv_colors: [
+                "#FFFFFF", "#000000", "#000000", "#000000", "#FFFFFF", "#FFFFFF", "#FFFFFF",
+                "#000000",
+            ]
+            .map(|v| v.to_string()),
+            git_branch_label_colors: [
+                "#ffffff", "black", "black", "black", "#ffffff", "#ffffff", "#ffffff", "black",
+            ]
+            .map(|v| v.to_string()),
+            git_commit_label_color: "#333333".to_string(),
+            git_commit_label_background: "#cde498".to_string(),
+            git_tag_label_color: "#333333".to_string(),
+            git_tag_label_background: "#cde498".to_string(),
+            git_tag_label_border: "#6EAA49".to_string(),
+            pie_colors,
+            pie_title_text_size: 25.0,
+            pie_title_text_color: "#333333".to_string(),
+            pie_section_text_size: 17.0,
+            pie_section_text_color: "#333333".to_string(),
+            pie_legend_text_size: 17.0,
+            pie_legend_text_color: "#333333".to_string(),
+            pie_stroke_color: "#2C5F2D".to_string(),
+            pie_stroke_width: 2.0,
+            pie_outer_stroke_width: 2.0,
+            pie_outer_stroke_color: "#6EAA49".to_string(),
+            pie_opacity: 0.7,
+        }
+    }
+
+    /// Official Mermaid "base" theme — a starting point for customization via
+    /// `themeVariables`. Colors can be overridden by the user; derived colors
+    /// are automatically computed from primary/secondary/tertiary.
+    pub fn base() -> Self {
+        let primary_color = "#ECECFF".to_string();
+        let secondary_color = "#FFFFDE".to_string();
+        let tertiary_color = "#ECECFF".to_string();
+        let pie_colors = default_pie_colors(&primary_color, &secondary_color, &tertiary_color);
+        Self {
+            font_family: "'trebuchet ms', verdana, arial, sans-serif".to_string(),
+            font_size: 16.0,
+            primary_color,
+            primary_text_color: "#333333".to_string(),
+            primary_border_color: "#9370DB".to_string(),
+            line_color: "#333333".to_string(),
+            secondary_color,
+            tertiary_color,
+            edge_label_background: "#e8e8e8".to_string(),
+            cluster_background: "#FFFFDE".to_string(),
+            cluster_border: "#AAAA33".to_string(),
+            background: "white".to_string(),
+            sequence_actor_fill: "#ECECFF".to_string(),
+            sequence_actor_border: "#9370DB".to_string(),
+            sequence_actor_line: "#333333".to_string(),
+            sequence_note_fill: "#fff5ad".to_string(),
+            sequence_note_border: "#AAAA33".to_string(),
+            sequence_activation_fill: "#f4f4f4".to_string(),
+            sequence_activation_border: "#666666".to_string(),
+            text_color: "#333".to_string(),
+            git_colors: MERMAID_GIT_COLORS.map(|value| value.to_string()),
+            git_inv_colors: MERMAID_GIT_INV_COLORS.map(|value| value.to_string()),
+            git_branch_label_colors: MERMAID_GIT_BRANCH_LABEL_COLORS
+                .map(|value| value.to_string()),
+            git_commit_label_color: MERMAID_GIT_COMMIT_LABEL_COLOR.to_string(),
+            git_commit_label_background: MERMAID_GIT_COMMIT_LABEL_BG.to_string(),
+            git_tag_label_color: MERMAID_GIT_TAG_LABEL_COLOR.to_string(),
+            git_tag_label_background: MERMAID_GIT_TAG_LABEL_BG.to_string(),
+            git_tag_label_border: MERMAID_GIT_TAG_LABEL_BORDER.to_string(),
+            pie_colors,
+            pie_title_text_size: 25.0,
+            pie_title_text_color: "#333".to_string(),
+            pie_section_text_size: 17.0,
+            pie_section_text_color: "#333".to_string(),
+            pie_legend_text_size: 17.0,
+            pie_legend_text_color: "#333".to_string(),
+            pie_stroke_color: "black".to_string(),
+            pie_stroke_width: 2.0,
+            pie_outer_stroke_width: 2.0,
+            pie_outer_stroke_color: "black".to_string(),
+            pie_opacity: 0.7,
         }
     }
 }

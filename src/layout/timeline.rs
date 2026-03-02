@@ -98,6 +98,8 @@ pub(super) fn compute_timeline_layout(
         nodes,
         edges: Vec::new(),
         subgraphs: Vec::new(),
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Timeline(TimelineLayout {
             title,
             title_y: padding + font_size,

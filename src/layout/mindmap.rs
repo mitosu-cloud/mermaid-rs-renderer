@@ -484,6 +484,8 @@ pub(super) fn compute_mindmap_layout(
         subgraphs: Vec::new(),
         width,
         height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Graph {
             state_notes: Vec::new(),
         },

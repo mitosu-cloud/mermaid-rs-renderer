@@ -230,6 +230,10 @@ pub fn compute_layout_with_metrics(
         }
     };
 
+    // Propagate accessibility metadata from the parsed graph.
+    layout.acc_title = graph.acc_title.clone();
+    layout.acc_descr = graph.acc_descr.clone();
+
     apply_preferred_aspect_ratio_layout(&mut layout, config);
 
     // Final pass: resolve all edge label positions using collision avoidance.
@@ -1421,6 +1425,8 @@ fn compute_flowchart_layout(
         subgraphs,
         width,
         height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Graph { state_notes },
     }
 }

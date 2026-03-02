@@ -496,6 +496,8 @@ pub(super) fn compute_gitgraph_layout(
         nodes,
         edges: Vec::new(),
         subgraphs: Vec::new(),
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::GitGraph(GitGraphLayout {
             branches: branch_layouts,
             commits: commit_layouts,

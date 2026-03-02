@@ -803,6 +803,8 @@ pub(super) fn compute_sequence_layout(
         subgraphs,
         width,
         height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Sequence(SequenceData {
             lifelines,
             footboxes: sequence_footboxes,

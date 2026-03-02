@@ -179,6 +179,8 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
         subgraphs: Vec::new(),
         width,
         height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::C4(C4Layout {
             shapes: shapes_out,
             boundaries: boundaries_out,

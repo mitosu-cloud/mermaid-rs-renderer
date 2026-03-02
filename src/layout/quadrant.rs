@@ -118,6 +118,8 @@ pub(super) fn compute_quadrant_layout(
         subgraphs: Vec::new(),
         width,
         height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Quadrant(QuadrantLayout {
             title,
             title_y: title_height / 2.0,

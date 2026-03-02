@@ -155,6 +155,8 @@ pub(super) fn compute_xychart_layout(
         nodes: BTreeMap::new(),
         edges: Vec::new(),
         subgraphs: Vec::new(),
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::XYChart(XYChartLayout {
             title,
             title_y: padding + font_size,

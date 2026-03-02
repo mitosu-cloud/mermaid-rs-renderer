@@ -339,6 +339,8 @@ pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &Layou
         subgraphs: Vec::new(),
         width: sankey_width,
         height: SANKEY_HEIGHT,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Sankey(SankeyLayout {
             width: sankey_width,
             height: SANKEY_HEIGHT,

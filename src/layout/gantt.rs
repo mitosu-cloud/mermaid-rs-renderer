@@ -350,6 +350,8 @@ pub(super) fn compute_gantt_layout(graph: &Graph, theme: &Theme, config: &Layout
         nodes: BTreeMap::new(),
         edges: Vec::new(),
         subgraphs: Vec::new(),
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Gantt(GanttLayout {
             title,
             sections,
@@ -369,6 +371,7 @@ pub(super) fn compute_gantt_layout(graph: &Graph, theme: &Theme, config: &Layout
             task_label_width,
             title_y: chart_y - row_height * 0.6,
             ticks,
+            today_x: None,
         }),
         width,
         height,

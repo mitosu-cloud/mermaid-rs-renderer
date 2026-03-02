@@ -517,6 +517,8 @@ pub struct Layout {
     pub width: f32,
     pub height: f32,
     pub diagram: DiagramData,
+    pub acc_title: Option<String>,
+    pub acc_descr: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -633,6 +635,8 @@ pub struct GanttLayout {
     pub task_label_width: f32,
     pub title_y: f32,
     pub ticks: Vec<GanttTick>,
+    /// X position for the "today" marker line, if applicable.
+    pub today_x: Option<f32>,
 }
 
 #[derive(Debug, Clone)]

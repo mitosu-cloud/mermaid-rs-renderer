@@ -217,6 +217,8 @@ pub(super) fn compute_architecture_layout(
         subgraphs,
         width,
         height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Graph {
             state_notes: Vec::new(),
         },

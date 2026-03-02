@@ -177,6 +177,8 @@ pub(super) fn compute_pie_layout(graph: &Graph, theme: &Theme, config: &LayoutCo
         subgraphs: Vec::new(),
         width: width.max(200.0),
         height: height.max(1.0),
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Pie(PieData {
             slices,
             legend,

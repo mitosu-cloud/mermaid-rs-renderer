@@ -298,6 +298,8 @@ pub(super) fn compute_journey_layout(
         nodes,
         edges: Vec::new(),
         subgraphs: Vec::new(),
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Journey(JourneyLayout {
             title: title_block,
             title_y,

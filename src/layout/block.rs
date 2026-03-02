@@ -21,6 +21,8 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             subgraphs,
             width: max_x + 6.0,
             height: max_y + 6.0,
+            acc_title: None,
+            acc_descr: None,
             diagram: DiagramData::Graph {
                 state_notes: Vec::new(),
             },
@@ -185,6 +187,8 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
         subgraphs,
         width,
         height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Graph {
             state_notes: Vec::new(),
         },

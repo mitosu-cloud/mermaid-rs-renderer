@@ -22,6 +22,8 @@ pub(super) fn compute_error_layout(graph: &Graph, config: &LayoutConfig) -> Layo
         subgraphs: Vec::new(),
         width: render_width,
         height: render_height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Error(ErrorLayout {
             viewbox_width,
             viewbox_height,
@@ -59,6 +61,8 @@ pub(super) fn compute_pie_error_layout(graph: &Graph, config: &LayoutConfig) -> 
         subgraphs: Vec::new(),
         width: render_width,
         height: render_height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Error(ErrorLayout {
             viewbox_width,
             viewbox_height,

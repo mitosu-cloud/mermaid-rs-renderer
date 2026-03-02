@@ -85,6 +85,8 @@ pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
 }
 
 fn detect_diagram_kind(input: &str) -> DiagramKind {
+    // Skip YAML frontmatter if present.
+    let input = extract_yaml_frontmatter(input).1;
     for raw_line in input.lines() {
         let trimmed_line = raw_line.trim();
         if trimmed_line.is_empty() {
@@ -174,8 +176,49 @@ fn detect_diagram_kind(input: &str) -> DiagramKind {
     DiagramKind::Flowchart
 }
 
+/// Try to extract YAML frontmatter delimited by `---` lines. Returns the
+/// parsed `serde_json::Value` (YAML is a superset of JSON, so we convert) and
+/// the remaining input without the frontmatter block.
+fn extract_yaml_frontmatter(input: &str) -> (Option<serde_json::Value>, &str) {
+    let trimmed = input.trim_start();
+    if !trimmed.starts_with("---") {
+        return (None, input);
+    }
+    // Find the opening `---` line.
+    let after_open = &trimmed[3..];
+    let after_open = after_open.strip_prefix('\n').unwrap_or(
+        after_open.strip_prefix("\r\n").unwrap_or(after_open),
+    );
+    // Find the closing `---`.
+    if let Some(close_pos) = after_open.find("\n---") {
+        let yaml_block = &after_open[..close_pos];
+        let rest_start = close_pos + 4; // skip "\n---"
+        let rest = if rest_start < after_open.len() {
+            &after_open[rest_start..]
+        } else {
+            ""
+        };
+        // Parse the YAML block. The frontmatter should be a mapping; the
+        // official Mermaid spec nests everything under a `config:` key.
+        if let Ok(yaml_val) = serde_yaml::from_str::<serde_json::Value>(yaml_block) {
+            // If the YAML has a top-level `config` key, unwrap it so it looks
+            // like an %%{init: ...}%% value (which has `theme`, `themeVariables`,
+            // diagram-specific keys at the top level).
+            let config_val = if let Some(inner) = yaml_val.get("config") {
+                inner.clone()
+            } else {
+                yaml_val
+            };
+            return (Some(config_val), rest);
+        }
+        return (None, rest);
+    }
+    (None, input)
+}
+
 fn preprocess_input(input: &str) -> Result<(Vec<String>, Option<serde_json::Value>)> {
-    let mut init_config: Option<serde_json::Value> = None;
+    let (yaml_config, input) = extract_yaml_frontmatter(input);
+    let mut init_config: Option<serde_json::Value> = yaml_config;
     let mut lines = Vec::new();
 
     for raw_line in input.lines() {
@@ -207,7 +250,8 @@ fn preprocess_input(input: &str) -> Result<(Vec<String>, Option<serde_json::Valu
 }
 
 fn preprocess_input_keep_indent(input: &str) -> Result<(Vec<String>, Option<serde_json::Value>)> {
-    let mut init_config: Option<serde_json::Value> = None;
+    let (yaml_config, input) = extract_yaml_frontmatter(input);
+    let mut init_config: Option<serde_json::Value> = yaml_config;
     let mut lines = Vec::new();
 
     for raw_line in input.lines() {
@@ -317,10 +361,21 @@ fn parse_flowchart(input: &str) -> Result<ParseOutput> {
                 continue;
             }
 
-            if line.starts_with("accTitle")
-                || line.starts_with("accDescr")
-                || line.starts_with("title ")
-            {
+            if let Some(rest) = line.strip_prefix("accTitle") {
+                let val = rest.trim_start_matches(':').trim();
+                if !val.is_empty() {
+                    graph.acc_title = Some(val.to_string());
+                }
+                continue;
+            }
+            if let Some(rest) = line.strip_prefix("accDescr") {
+                let val = rest.trim_start_matches(':').trim();
+                if !val.is_empty() {
+                    graph.acc_descr = Some(val.to_string());
+                }
+                continue;
+            }
+            if line.starts_with("title ") {
                 continue;
             }
 
@@ -934,11 +989,13 @@ fn parse_sequence_participant(
     let lowered = line.to_ascii_lowercase();
     let keywords = [
         ("participant ", crate::ir::NodeShape::ActorBox),
-        ("actor ", crate::ir::NodeShape::ActorBox),
-        ("boundary ", crate::ir::NodeShape::ActorBox),
-        ("control ", crate::ir::NodeShape::ActorBox),
-        ("entity ", crate::ir::NodeShape::ActorBox),
+        ("actor ", crate::ir::NodeShape::StickFigure),
+        ("boundary ", crate::ir::NodeShape::Boundary),
+        ("control ", crate::ir::NodeShape::Control),
+        ("entity ", crate::ir::NodeShape::Entity),
         ("database ", crate::ir::NodeShape::Cylinder),
+        ("collections ", crate::ir::NodeShape::Collections),
+        ("queue ", crate::ir::NodeShape::Queue),
     ];
     let mut rest = None;
     let mut shape = crate::ir::NodeShape::ActorBox;
@@ -1148,6 +1205,7 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
     let mut members: HashMap<String, Vec<String>> = HashMap::new();
     let mut labels: HashMap<String, String> = HashMap::new();
     let mut current_class: Option<String> = None;
+    let mut namespace_stack: Vec<usize> = Vec::new();
 
     for raw_line in lines {
         let line = raw_line.trim();
@@ -1155,6 +1213,30 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
         let lower = line.to_ascii_lowercase();
+
+        // Namespace support (v10.5+): `namespace Foo {`
+        if lower.starts_with("namespace ") {
+            let rest = line[10..].trim().trim_end_matches('{').trim();
+            if !rest.is_empty() {
+                graph.subgraphs.push(Subgraph {
+                    id: Some(rest.to_string()),
+                    label: rest.to_string(),
+                    nodes: Vec::new(),
+                    direction: None,
+                    icon: None,
+                    markdown_label: false,
+                });
+                namespace_stack.push(graph.subgraphs.len() - 1);
+            }
+            continue;
+        }
+
+        // End of namespace or class body
+        if line == "}" && current_class.is_none() {
+            namespace_stack.pop();
+            continue;
+        }
+
         if lower.starts_with("classdiagram") {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() > 1
@@ -1205,11 +1287,23 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
                 labels.get(&left_id).cloned(),
                 Some(crate::ir::NodeShape::Rectangle),
             );
+            if let Some(&ns_idx) = namespace_stack.last() {
+                let sg = &mut graph.subgraphs[ns_idx];
+                if !sg.nodes.contains(&left_id) {
+                    sg.nodes.push(left_id.clone());
+                }
+            }
             graph.ensure_node(
                 &right_id,
                 labels.get(&right_id).cloned(),
                 Some(crate::ir::NodeShape::Rectangle),
             );
+            if let Some(&ns_idx) = namespace_stack.last() {
+                let sg = &mut graph.subgraphs[ns_idx];
+                if !sg.nodes.contains(&right_id) {
+                    sg.nodes.push(right_id.clone());
+                }
+            }
             graph.edges.push(crate::ir::Edge {
                 from: left_id,
                 to: right_id,
@@ -1240,6 +1334,12 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
                     labels.get(&id).cloned(),
                     Some(crate::ir::NodeShape::Rectangle),
                 );
+                if let Some(&ns_idx) = namespace_stack.last() {
+                    let sg = &mut graph.subgraphs[ns_idx];
+                    if !sg.nodes.contains(&id) {
+                        sg.nodes.push(id.clone());
+                    }
+                }
                 if let Some(body) = body {
                     for entry in split_class_body(&body) {
                         if !entry.is_empty() {
@@ -1265,7 +1365,22 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
             .get(id)
             .cloned()
             .unwrap_or_else(|| node.label.clone());
+        // Convert generics: `List~int~` → `List<int>`
+        let class_name = convert_tilde_generics(&class_name);
         let mut lines = Vec::new();
+        // Extract annotations (<<Interface>>, <<Abstract>>, etc.) from members.
+        let mut annotation: Option<String> = None;
+        if let Some(items) = members.get(id) {
+            for entry in items {
+                let trimmed = entry.trim();
+                if trimmed.starts_with("<<") && trimmed.ends_with(">>") {
+                    annotation = Some(trimmed.to_string());
+                }
+            }
+        }
+        if let Some(ref ann) = annotation {
+            lines.push(ann.clone());
+        }
         lines.push(class_name.clone());
         if let Some(items) = members.get(id)
             && !items.is_empty()
@@ -1274,13 +1389,20 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
             let mut methods = Vec::new();
             for entry in items {
                 let trimmed = entry.trim();
-                if trimmed.contains('(') && trimmed.contains(')') {
-                    methods.push(normalize_class_method_signature(trimmed));
+                // Skip annotations (already handled above).
+                if trimmed.starts_with("<<") && trimmed.ends_with(">>") {
+                    continue;
+                }
+                let converted = convert_tilde_generics(trimmed);
+                if converted.contains('(') && converted.contains(')') {
+                    methods.push(normalize_class_method_signature(&converted));
                 } else {
-                    attrs.push(trimmed.to_string());
+                    attrs.push(converted);
                 }
             }
-            lines.push("---".to_string());
+            if !attrs.is_empty() || !methods.is_empty() {
+                lines.push("---".to_string());
+            }
             if !attrs.is_empty() {
                 lines.extend(attrs);
                 if !methods.is_empty() {
@@ -1295,6 +1417,29 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
     }
 
     Ok(ParseOutput { graph, init_config })
+}
+
+/// Convert Mermaid generic syntax `List~int~` to `List<int>`.
+fn convert_tilde_generics(input: &str) -> String {
+    if !input.contains('~') {
+        return input.to_string();
+    }
+    let mut result = String::with_capacity(input.len());
+    let mut in_generic = false;
+    for ch in input.chars() {
+        if ch == '~' {
+            if in_generic {
+                result.push('>');
+                in_generic = false;
+            } else {
+                result.push('<');
+                in_generic = true;
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 fn is_er_card_char(ch: char) -> bool {
@@ -5639,6 +5784,12 @@ fn parse_node_token(
 ) {
     let (base, classes) = split_inline_classes(token);
     let trimmed = base.trim();
+
+    // Try the v11.3+ `@{ shape: "...", label: "..." }` declarative syntax.
+    if let Some((id, label, shape)) = parse_at_shape_syntax(trimmed) {
+        return (id, Some(label), Some(shape), classes, false);
+    }
+
     if let Some((id, label, shape, md)) = split_asymmetric_label(trimmed) {
         return (id, Some(label), Some(shape), classes, md);
     }
@@ -5648,6 +5799,82 @@ fn parse_node_token(
 
     let id = trimmed.split_whitespace().next().unwrap_or("").to_string();
     (id, None, None, classes, false)
+}
+
+/// Parse the v11.3+ `@{ shape: "name", label: "text" }` syntax.
+/// The format is `NodeId@{ shape: name, label: "text" }`.
+fn parse_at_shape_syntax(
+    token: &str,
+) -> Option<(String, String, crate::ir::NodeShape)> {
+    let at_pos = token.find("@{")?;
+    if !token.trim_end().ends_with('}') {
+        return None;
+    }
+    let id = token[..at_pos].trim().to_string();
+    if id.is_empty() {
+        return None;
+    }
+    let block = &token[at_pos + 2..token.len() - 1].trim();
+    // Parse key:value pairs from the block (shape, label).
+    let mut shape_name: Option<String> = None;
+    let mut label: Option<String> = None;
+    for pair in block.split(',') {
+        let pair = pair.trim();
+        if let Some(colon) = pair.find(':') {
+            let key = pair[..colon].trim().trim_matches('"').trim_matches('\'');
+            let val = pair[colon + 1..]
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'');
+            match key {
+                "shape" => shape_name = Some(val.to_string()),
+                "label" => label = Some(val.to_string()),
+                _ => {}
+            }
+        }
+    }
+    let shape = resolve_shape_name(&shape_name?)?;
+    let label = label.unwrap_or_else(|| id.clone());
+    Some((id, label, shape))
+}
+
+fn resolve_shape_name(name: &str) -> Option<crate::ir::NodeShape> {
+    use crate::ir::NodeShape;
+    match name {
+        "rect" | "rectangle" => Some(NodeShape::Rectangle),
+        "round" | "rounded" => Some(NodeShape::RoundRect),
+        "stadium" => Some(NodeShape::Stadium),
+        "subroutine" | "fr-rect" => Some(NodeShape::Subroutine),
+        "cyl" | "cylinder" | "database" => Some(NodeShape::Cylinder),
+        "circle" => Some(NodeShape::Circle),
+        "dbl-circ" | "double-circle" => Some(NodeShape::DoubleCircle),
+        "diam" | "diamond" | "decision" => Some(NodeShape::Diamond),
+        "hex" | "hexagon" => Some(NodeShape::Hexagon),
+        "lean-r" | "lean-right" => Some(NodeShape::LeanRight),
+        "lean-l" | "lean-left" => Some(NodeShape::LeanLeft),
+        "trap-b" | "trapezoid" => Some(NodeShape::Trapezoid),
+        "trap-t" | "trapezoid-alt" => Some(NodeShape::TrapezoidAlt),
+        "para" | "parallelogram" => Some(NodeShape::Parallelogram),
+        "para-alt" | "parallelogram-alt" => Some(NodeShape::ParallelogramAlt),
+        "flag" => Some(NodeShape::Flag),
+        "notch-rect" | "card" => Some(NodeShape::NotchRect),
+        "tag-rect" | "tagged-rect" => Some(NodeShape::TagRect),
+        "doc" | "document" => Some(NodeShape::Document),
+        "lin-doc" | "lined-document" => Some(NodeShape::LinedDocument),
+        "tag-doc" | "tagged-document" => Some(NodeShape::TagDocument),
+        "docs" | "stacked-document" => Some(NodeShape::StackedDocument),
+        "win-pane" | "window-pane" => Some(NodeShape::WindowPane),
+        "hourglass" => Some(NodeShape::Hourglass),
+        "bolt" | "lightning-bolt" => Some(NodeShape::LightningBolt),
+        "brace-l" => Some(NodeShape::BraceLeft),
+        "brace-r" => Some(NodeShape::BraceRight),
+        "comment" | "braces" => Some(NodeShape::Comment),
+        "odd" => Some(NodeShape::OddShape),
+        "lin-cyl" | "lined-cylinder" => Some(NodeShape::LinedCylinder),
+        "curv-trap" | "curved-trapezoid" => Some(NodeShape::CurvedTrapezoid),
+        "text" => Some(NodeShape::Text),
+        _ => None,
+    }
 }
 
 fn split_asymmetric_label(token: &str) -> Option<(String, String, crate::ir::NodeShape, bool)> {
