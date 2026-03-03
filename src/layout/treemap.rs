@@ -56,6 +56,8 @@ pub(super) fn compute_treemap_layout(
         subgraphs,
         width,
         height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Graph {
             state_notes: Vec::new(),
         },
@@ -160,7 +162,7 @@ fn layout_treemap_nodes(
                 label
             } else {
                 TextBlock {
-                    lines: vec![String::new()],
+                    lines: vec![TextLine::plain(String::new())],
                     width: 0.0,
                     height: 0.0,
                 }

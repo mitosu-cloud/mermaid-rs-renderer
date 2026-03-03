@@ -329,6 +329,7 @@ pub struct Node {
     pub shape: NodeShape,
     pub value: Option<f32>,
     pub icon: Option<String>,
+    pub markdown_label: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -353,6 +354,7 @@ pub struct Edge {
     pub start_decoration: Option<EdgeDecoration>,
     pub end_decoration: Option<EdgeDecoration>,
     pub style: EdgeStyle,
+    pub markdown_label: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -388,6 +390,7 @@ pub struct Subgraph {
     pub nodes: Vec<String>,
     pub direction: Option<Direction>,
     pub icon: Option<String>,
+    pub markdown_label: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -422,6 +425,8 @@ pub struct Graph {
     pub node_links: HashMap<String, NodeLink>,
     pub edge_styles: HashMap<usize, EdgeStyleOverride>,
     pub edge_style_default: Option<EdgeStyleOverride>,
+    pub acc_title: Option<String>,
+    pub acc_descr: Option<String>,
     pub c4: C4Data,
     pub mindmap: MindmapData,
     pub xychart: XYChartData,
@@ -449,6 +454,32 @@ pub enum NodeShape {
     Asymmetric,
     MindmapDefault,
     Text,
+    // Sequence-diagram actor types
+    StickFigure,     // actor keyword — stick-figure person
+    Boundary,        // boundary keyword — line-bracket shape
+    Control,         // control keyword — circle with arrow
+    Entity,          // entity keyword — circle with underline
+    Collections,     // collections keyword — stacked rectangles
+    Queue,           // queue keyword — cylinder rotated 90 degrees
+    // v11.3+ @{shape: ...} shapes
+    NotchRect,       // notch-rect — rectangle with notched corner
+    TagRect,         // tag-rect — rectangle with tag/flag
+    Document,        // doc — document with curled bottom
+    LinedDocument,   // lin-doc — document with lines
+    TagDocument,     // tag-doc — document with tag
+    StackedDocument, // docs — multiple stacked documents
+    WindowPane,      // win-pane — grid/window layout
+    Hourglass,       // hourglass — hourglass/timer shape
+    LightningBolt,   // bolt — event trigger shape
+    BraceLeft,       // brace-l — left brace
+    BraceRight,      // brace-r — right brace
+    Comment,         // comment — callout comment
+    Flag,            // flag — flag shape
+    LeanRight,       // lean-r — lean right parallelogram
+    LeanLeft,        // lean-l — lean left parallelogram
+    OddShape,        // odd — irregular shape
+    LinedCylinder,   // lin-cyl — cylinder with lines
+    CurvedTrapezoid, // curv-trap — curved trapezoid
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -472,6 +503,7 @@ pub struct MindmapNode {
     pub icon: Option<String>,
     pub class: Option<String>,
     pub children: Vec<String>,
+    pub markdown_label: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -564,6 +596,8 @@ impl Graph {
             node_links: HashMap::new(),
             edge_styles: HashMap::new(),
             edge_style_default: None,
+            acc_title: None,
+            acc_descr: None,
             c4: C4Data::default(),
             mindmap: MindmapData::default(),
             xychart: XYChartData::default(),
@@ -573,6 +607,16 @@ impl Graph {
     }
 
     pub fn ensure_node(&mut self, id: &str, label: Option<String>, shape: Option<NodeShape>) {
+        self.ensure_node_md(id, label, shape, false);
+    }
+
+    pub fn ensure_node_md(
+        &mut self,
+        id: &str,
+        label: Option<String>,
+        shape: Option<NodeShape>,
+        markdown_label: bool,
+    ) {
         let is_new = !self.nodes.contains_key(id);
         let entry = self.nodes.entry(id.to_string()).or_insert(Node {
             id: id.to_string(),
@@ -580,6 +624,7 @@ impl Graph {
             shape: NodeShape::Rectangle,
             value: None,
             icon: None,
+            markdown_label: false,
         });
         if is_new {
             let order = self.node_order.len();
@@ -590,6 +635,9 @@ impl Graph {
         }
         if let Some(shape) = shape {
             entry.shape = shape;
+        }
+        if markdown_label {
+            entry.markdown_label = true;
         }
     }
 }

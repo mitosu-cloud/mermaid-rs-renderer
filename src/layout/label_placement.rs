@@ -3805,7 +3805,7 @@ mod tests {
             to: "B".into(),
             label: None,
             start_label: Some(crate::layout::TextBlock {
-                lines: vec!["1".into()],
+                lines: vec![crate::layout::TextLine::plain("1".into())],
                 width: 12.0,
                 height: 16.0,
             }),
@@ -3861,7 +3861,7 @@ mod tests {
             to: to.into(),
             points: vec![(0.0, 0.0), (100.0, 0.0)],
             label: Some(crate::layout::TextBlock {
-                lines: vec!["x".into()],
+                lines: vec![crate::layout::TextLine::plain("x".into())],
                 width: 8.0,
                 height: 8.0,
             }),

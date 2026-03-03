@@ -1467,10 +1467,8 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
     let parsed: ConfigFile = serde_json::from_str(&contents)?;
 
     if let Some(theme_name) = parsed.theme.as_deref() {
-        if theme_name == "modern" {
-            config.theme = Theme::modern();
-        } else if theme_name == "base" || theme_name == "default" || theme_name == "mermaid" {
-            config.theme = Theme::mermaid_default();
+        if let Some(theme) = Theme::by_name(theme_name) {
+            config.theme = theme;
         }
     }
 

@@ -2347,7 +2347,7 @@ pub(super) fn build_label_obstacles_for_routing(
         }
         if node.label.width <= 0.0
             || node.label.height <= 0.0
-            || node.label.lines.iter().all(|line| line.trim().is_empty())
+            || node.label.lines.iter().all(|line| line.text().trim().is_empty())
         {
             continue;
         }

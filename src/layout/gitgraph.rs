@@ -478,7 +478,7 @@ pub(super) fn compute_gitgraph_layout(
             width: (width - gg.diagram_padding * 2.0).max(1.0),
             height: (height - gg.diagram_padding * 2.0).max(1.0),
             label: TextBlock {
-                lines: vec![String::new()],
+                lines: vec![TextLine::plain(String::new())],
                 width: 0.0,
                 height: 0.0,
             },
@@ -496,6 +496,8 @@ pub(super) fn compute_gitgraph_layout(
         nodes,
         edges: Vec::new(),
         subgraphs: Vec::new(),
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::GitGraph(GitGraphLayout {
             branches: branch_layouts,
             commits: commit_layouts,

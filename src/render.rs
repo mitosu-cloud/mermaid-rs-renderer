@@ -190,8 +190,27 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     } else if !preferred_ratio_style.is_empty() {
         style_attr = format!(" style=\"{preferred_ratio_style}\"");
     }
+    // Build accessibility ARIA attributes.
+    let has_acc_title = layout.acc_title.is_some();
+    let has_acc_descr = layout.acc_descr.is_some();
+    let mut aria_attrs = String::new();
+    if has_acc_title || has_acc_descr {
+        aria_attrs.push_str(" role=\"img\"");
+        let mut labelledby = Vec::new();
+        if has_acc_title {
+            labelledby.push("chart-title");
+        }
+        if has_acc_descr {
+            labelledby.push("chart-desc");
+        }
+        aria_attrs.push_str(&format!(
+            " aria-labelledby=\"{}\"",
+            labelledby.join(" ")
+        ));
+    }
+
     svg.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\"{} width=\"{width_attr}\"{} viewBox=\"{viewbox_x} {viewbox_y} {viewbox_width} {viewbox_height}\"{style_attr}>",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"{} width=\"{width_attr}\"{} viewBox=\"{viewbox_x} {viewbox_y} {viewbox_width} {viewbox_height}\"{style_attr}{aria_attrs}>",
         if has_links {
             " xmlns:xlink=\"http://www.w3.org/1999/xlink\""
         } else {
@@ -203,6 +222,20 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             format!(" height=\"{height_attr}\"")
         }
     ));
+
+    // Emit accessibility <title> and <desc> elements.
+    if let Some(title) = &layout.acc_title {
+        svg.push_str(&format!(
+            "<title id=\"chart-title\">{}</title>",
+            escape_xml(title)
+        ));
+    }
+    if let Some(descr) = &layout.acc_descr {
+        svg.push_str(&format!(
+            "<desc id=\"chart-desc\">{}</desc>",
+            escape_xml(descr)
+        ));
+    }
 
     if matches!(layout.diagram, DiagramData::Error(_)) {
         svg.push_str(&error_style_block(theme));
@@ -1303,7 +1336,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             }
             let center_x = node.x + node.width / 2.0;
             let center_y = node.y + node.height / 2.0;
-            let hide_label = node.label.lines.iter().all(|line| line.trim().is_empty())
+            let hide_label = node.label.lines.iter().all(|line| line.text().trim().is_empty())
                 || node.id.starts_with("__start_")
                 || node.id.starts_with("__end_");
             if !hide_label {
@@ -1321,7 +1354,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     )
                 } else if layout.kind == crate::ir::DiagramKind::Er {
                     render_er_node_label(node, theme, config).unwrap_or_else(|| {
-                        if node.label.lines.iter().any(|line| is_divider_line(line)) {
+                        if node.label.lines.iter().any(|line| is_divider_text_line(line)) {
                             text_block_svg_class(
                                 node,
                                 theme,
@@ -1340,7 +1373,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                             )
                         }
                     })
-                } else if node.label.lines.iter().any(|line| is_divider_line(line)) {
+                } else if node.label.lines.iter().any(|line| is_divider_text_line(line)) {
                     text_block_svg_class(node, theme, config, node.style.text_color.as_deref())
                 } else if layout.kind == crate::ir::DiagramKind::State {
                     text_block_svg_with_font_size(
@@ -1400,11 +1433,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 .label
                 .lines
                 .iter()
-                .all(|line| line.trim().is_empty())
+                .all(|line| line.text().trim().is_empty())
                 || footbox.id.starts_with("__start_")
                 || footbox.id.starts_with("__end_");
             if !hide_label {
-                let label_svg = if footbox.label.lines.iter().any(|line| is_divider_line(line)) {
+                let label_svg = if footbox.label.lines.iter().any(|line| is_divider_text_line(line)) {
                     text_block_svg_class(
                         footbox,
                         theme,
@@ -1442,31 +1475,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
                 }
             }
-            svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
-                node.x,
-                node.y,
-                node.width,
-                node.height,
-                theme.sequence_actor_fill,
-                theme.sequence_actor_border
-            ));
-            let center_x = node.x + node.width / 2.0;
-            let center_y = node.y + node.height / 2.0;
-            let hide_label = node.label.lines.iter().all(|line| line.trim().is_empty())
-                || node.id.starts_with("__start_")
-                || node.id.starts_with("__end_");
-            if !hide_label {
-                svg.push_str(&text_block_svg(
-                    center_x,
-                    center_y,
-                    &node.label,
-                    theme,
-                    config,
-                    false,
-                    node.style.text_color.as_deref(),
-                ));
-            }
+            render_sequence_actor_shape(
+                &mut svg, node, theme, config, false,
+            );
             if node.link.is_some() {
                 svg.push_str("</a>");
             }
@@ -1478,35 +1489,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
                 }
             }
-            svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
-                footbox.x,
-                footbox.y,
-                footbox.width,
-                footbox.height,
-                theme.sequence_actor_fill,
-                theme.sequence_actor_border
-            ));
-            let center_x = footbox.x + footbox.width / 2.0;
-            let center_y = footbox.y + footbox.height / 2.0;
-            let hide_label = footbox
-                .label
-                .lines
-                .iter()
-                .all(|line| line.trim().is_empty())
-                || footbox.id.starts_with("__start_")
-                || footbox.id.starts_with("__end_");
-            if !hide_label {
-                svg.push_str(&text_block_svg(
-                    center_x,
-                    center_y,
-                    &footbox.label,
-                    theme,
-                    config,
-                    false,
-                    footbox.style.text_color.as_deref(),
-                ));
-            }
+            render_sequence_actor_shape(
+                &mut svg, footbox, theme, config, false,
+            );
             if footbox.link.is_some() {
                 svg.push_str("</a>");
             }
@@ -2168,7 +2153,7 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
             svg.push_str(&render_line(
                 header_x,
                 header_y,
-                &lines[0],
+                &lines[0].text(),
                 label_color,
                 false,
             ));
@@ -2176,7 +2161,7 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
         if header_count >= 2 {
             let min_header_gap = theme.font_size * 1.25;
             let id_y = header_y + req.header_line_gap.max(min_header_gap);
-            svg.push_str(&render_line(header_x, id_y, &lines[1], label_color, true));
+            svg.push_str(&render_line(header_x, id_y, &lines[1].text(), label_color, true));
         }
 
         if !body_lines.is_empty() {
@@ -2192,7 +2177,7 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
             ));
             let mut body_y = divider_y + req.label_padding_y;
             for line in body_lines {
-                svg.push_str(&render_line(header_x, body_y, line, label_color, false));
+                svg.push_str(&render_line(header_x, body_y, &line.text(), label_color, false));
                 body_y += line_height;
             }
         }
@@ -2230,9 +2215,8 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
     }
 
     fn parse_series(node: &crate::layout::NodeLayout) -> Option<(String, Vec<(String, f32)>)> {
-        let mut lines = node
-            .label
-            .lines
+        let text_lines: Vec<String> = node.label.lines.iter().map(|l| l.text().into_owned()).collect();
+        let mut lines = text_lines
             .iter()
             .map(|line| line.trim())
             .filter(|line| !line.is_empty());
@@ -2584,8 +2568,8 @@ fn render_architecture(
             .label
             .lines
             .iter()
-            .find(|line| !line.trim().is_empty())
-            .cloned()
+            .find(|line| !line.text().trim().is_empty())
+            .map(|line| line.text().into_owned())
             .unwrap_or_else(|| node.id.clone());
         let label_y = node.height + theme.font_size + 8.0;
         svg.push_str(&format!(
@@ -2767,7 +2751,7 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
                 .unwrap_or(percent_text.chars().count() as f32 * font_size * 0.55);
         let outside = !suppress_outside_labels && (arc_len < percent_width * 1.35 || span < 0.4);
         let label_text = if outside {
-            slice.label.lines.join(" ")
+            slice.label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" ")
         } else {
             percent_text.clone()
         };
@@ -3026,13 +3010,36 @@ fn render_quadrant(
         "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"none\" stroke=\"#c7c7f1\" stroke-width=\"2\"/>",
         grid_x, grid_y, w, h
     ));
-    // Center lines
+    // Grid lines: quarter, center, three-quarter (6 lines total).
+    let grid_color = "#c7c7f1";
+    let minor_color = "#ddddf5";
+    let quarter_w = w / 4.0;
+    let quarter_h = h / 4.0;
+    // Vertical minor lines (1/4 and 3/4)
     svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#c7c7f1\" stroke-width=\"1\"/>",
+        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
+        grid_x + quarter_w, grid_y, grid_x + quarter_w, grid_y + h
+    ));
+    svg.push_str(&format!(
+        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
+        grid_x + 3.0 * quarter_w, grid_y, grid_x + 3.0 * quarter_w, grid_y + h
+    ));
+    // Horizontal minor lines (1/4 and 3/4)
+    svg.push_str(&format!(
+        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
+        grid_x, grid_y + quarter_h, grid_x + w, grid_y + quarter_h
+    ));
+    svg.push_str(&format!(
+        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
+        grid_x, grid_y + 3.0 * quarter_h, grid_x + w, grid_y + 3.0 * quarter_h
+    ));
+    // Center lines (major)
+    svg.push_str(&format!(
+        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\"/>",
         grid_x + half_w, grid_y, grid_x + half_w, grid_y + h
     ));
     svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#c7c7f1\" stroke-width=\"1\"/>",
+        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\"/>",
         grid_x, grid_y + half_h, grid_x + w, grid_y + half_h
     ));
 
@@ -3103,7 +3110,7 @@ fn render_quadrant(
             axis_y,
             theme.font_family,
             theme.font_size,
-            y_bottom.lines.first().map(|s| s.as_str()).unwrap_or("")
+            y_bottom.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
         ));
     }
     if let Some(ref y_top) = layout.y_axis_top {
@@ -3115,7 +3122,7 @@ fn render_quadrant(
             axis_y,
             theme.font_family,
             theme.font_size,
-            y_top.lines.first().map(|s| s.as_str()).unwrap_or("")
+            y_top.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
         ));
     }
 
@@ -3310,13 +3317,14 @@ fn render_gantt(
                 task.color,
                 theme.primary_border_color
             ));
-            let label_text = task
+            let label_text_owned = task
                 .label
                 .lines
                 .iter()
-                .find(|line| !line.trim().is_empty())
-                .map(|s| s.as_str())
-                .unwrap_or("");
+                .find(|line| !line.text().trim().is_empty())
+                .map(|s| s.text().into_owned())
+                .unwrap_or_default();
+            let label_text = label_text_owned.as_str();
             if !label_text.is_empty() {
                 let font_size = task_font * 0.95;
                 let text_width = text_metrics::measure_text_width(
@@ -3354,6 +3362,16 @@ fn render_gantt(
                 "start",
                 Some(theme.primary_text_color.as_str()),
                 false,
+            ));
+        }
+    }
+
+    // Today marker: a vertical dashed red line at the current date position.
+    if let Some(today_x) = layout.today_x {
+        if today_x >= layout.chart_x && today_x <= layout.chart_x + layout.chart_width {
+            svg.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#d33\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/>",
+                today_x, layout.chart_y, today_x, layout.chart_y + layout.chart_height
             ));
         }
     }
@@ -3427,7 +3445,18 @@ fn render_xychart(
             escape_xml(&theme.font_family), theme.font_size,
             theme.primary_text_color,
             layout.y_axis_label_x, layout.plot_y + layout.plot_height / 2.0,
-            escape_xml(&y_label.lines.join(" "))
+            escape_xml(&y_label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
+        ));
+    }
+
+    // X-axis label
+    if let Some(ref x_label) = layout.x_axis_label {
+        svg.push_str(&format!(
+            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
+            layout.plot_x + layout.plot_width / 2.0, layout.x_axis_label_y,
+            escape_xml(&theme.font_family), theme.font_size,
+            theme.primary_text_color,
+            escape_xml(&x_label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
         ));
     }
 
@@ -3536,7 +3565,7 @@ fn render_timeline(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
             center_x, event.y + 20.0,
             escape_xml(&theme.font_family), theme.font_size,
-            theme.primary_text_color, escape_xml(&event.time.lines.join(" "))
+            theme.primary_text_color, escape_xml(&event.time.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
         ));
 
         // Event descriptions
@@ -3546,7 +3575,7 @@ fn render_timeline(
                 "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
                 center_x, event.y + y_offset,
                 escape_xml(&theme.font_family), theme.font_size * 0.9,
-                theme.primary_text_color, escape_xml(&evt.lines.join(" "))
+                theme.primary_text_color, escape_xml(&evt.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
             ));
             y_offset += theme.font_size * 1.2;
         }
@@ -3604,7 +3633,7 @@ fn render_journey(layout: &JourneyLayout, theme: &Theme, config: &LayoutConfig) 
             theme.cluster_border
         ));
         if !section.label.lines.is_empty()
-            && !section.label.lines.iter().all(|l| l.trim().is_empty())
+            && !section.label.lines.iter().all(|l| l.text().trim().is_empty())
         {
             let label_x = section.x + section.width / 2.0;
             let label_y = section.y + section.height / 2.0;
@@ -4094,15 +4123,19 @@ fn text_block_svg_with_font_size(
     let line_height = font_size * config.label_line_height;
     for (idx, line) in label.lines.iter().enumerate() {
         let dy = if idx == 0 { 0.0 } else { line_height };
-        let rendered = if is_divider_line(line) {
-            String::new()
+        let line_text = line.text();
+        if is_divider_line(&line_text) {
+            text.push_str(&format!(
+                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\"></tspan>",
+            ));
+        } else if line.has_formatting() {
+            render_formatted_tspans(&mut text, x, dy, line, true);
         } else {
-            escape_xml(line)
-        };
-        text.push_str(&format!(
-            "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\">{}</tspan>",
-            rendered
-        ));
+            text.push_str(&format!(
+                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\">{}</tspan>",
+                escape_xml(&line_text)
+            ));
+        }
     }
 
     text.push_str("</text>");
@@ -4145,15 +4178,19 @@ fn text_block_svg_with_font_size_weight(
     let line_height = font_size * config.label_line_height;
     for (idx, line) in label.lines.iter().enumerate() {
         let dy = if idx == 0 { 0.0 } else { line_height };
-        let rendered = if is_divider_line(line) {
-            String::new()
+        let line_text = line.text();
+        if is_divider_line(&line_text) {
+            text.push_str(&format!(
+                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\"></tspan>",
+            ));
+        } else if line.has_formatting() {
+            render_formatted_tspans(&mut text, x, dy, line, true);
         } else {
-            escape_xml(line)
-        };
-        text.push_str(&format!(
-            "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\">{}</tspan>",
-            rendered
-        ));
+            text.push_str(&format!(
+                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\">{}</tspan>",
+                escape_xml(&line_text)
+            ));
+        }
     }
 
     text.push_str("</text>");
@@ -4186,6 +4223,37 @@ fn text_line_svg(x: f32, y: f32, text: &str, theme: &Theme, fill: &str, anchor: 
         fill,
         escape_xml(text)
     )
+}
+
+/// Emit `<tspan>` elements for a formatted `TextLine`. The first span gets
+/// `x` + `dy` positioning; subsequent spans flow inline (no `x` reset).
+fn render_formatted_tspans(
+    out: &mut String,
+    x: f32,
+    dy: f32,
+    line: &crate::layout::TextLine,
+    set_x: bool,
+) {
+    for (i, span) in line.spans.iter().enumerate() {
+        let mut attrs = String::new();
+        if i == 0 {
+            if set_x {
+                attrs.push_str(&format!(" x=\"{x:.2}\""));
+            }
+            attrs.push_str(&format!(" dy=\"{dy:.2}\""));
+        }
+        if span.style.bold {
+            attrs.push_str(" font-weight=\"bold\"");
+        }
+        if span.style.italic {
+            attrs.push_str(" font-style=\"italic\"");
+        }
+        out.push_str(&format!(
+            "<tspan{}>{}</tspan>",
+            attrs,
+            escape_xml(&span.text)
+        ));
+    }
 }
 
 const C4_PERSON_ICON: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
@@ -4740,15 +4808,12 @@ fn text_block_svg_class(
     let left_x = node.x + config.node_padding_x.max(10.0);
     let fill = override_color.unwrap_or(theme.primary_text_color.as_str());
 
-    let Some(divider_idx) = node
-        .label
-        .lines
+    let text_lines: Vec<String> = node.label.lines.iter().map(|l| l.text().into_owned()).collect();
+    let Some(divider_idx) = text_lines
         .iter()
         .position(|line| is_divider_line(line))
     else {
-        let lines: Vec<(usize, &str)> = node
-            .label
-            .lines
+        let lines: Vec<(usize, &str)> = text_lines
             .iter()
             .enumerate()
             .map(|(idx, line)| (idx, line.as_str()))
@@ -4766,13 +4831,13 @@ fn text_block_svg_class(
     };
 
     let mut title_lines: Vec<(usize, &str)> = Vec::new();
-    for (idx, line) in node.label.lines.iter().enumerate().take(divider_idx) {
+    for (idx, line) in text_lines.iter().enumerate().take(divider_idx) {
         if !line.trim().is_empty() {
             title_lines.push((idx, line.as_str()));
         }
     }
     let mut member_lines: Vec<(usize, &str)> = Vec::new();
-    for (idx, line) in node.label.lines.iter().enumerate().skip(divider_idx + 1) {
+    for (idx, line) in text_lines.iter().enumerate().skip(divider_idx + 1) {
         if !line.trim().is_empty() && !is_divider_line(line) {
             member_lines.push((idx, line.as_str()));
         }
@@ -4811,9 +4876,8 @@ fn render_er_node_label(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> Option<String> {
-    let divider_idx = node
-        .label
-        .lines
+    let text_lines: Vec<String> = node.label.lines.iter().map(|l| l.text().into_owned()).collect();
+    let divider_idx = text_lines
         .iter()
         .position(|line| is_divider_line(line))?;
     let line_height = theme.font_size * config.class_label_line_height();
@@ -4828,13 +4892,13 @@ fn render_er_node_label(
         .unwrap_or(theme.primary_text_color.as_str());
 
     let mut title_lines: Vec<(usize, &str)> = Vec::new();
-    for (idx, line) in node.label.lines.iter().enumerate().take(divider_idx) {
+    for (idx, line) in text_lines.iter().enumerate().take(divider_idx) {
         if !line.trim().is_empty() {
             title_lines.push((idx, line.as_str()));
         }
     }
     let mut attr_lines: Vec<(usize, &str)> = Vec::new();
-    for (idx, line) in node.label.lines.iter().enumerate().skip(divider_idx + 1) {
+    for (idx, line) in text_lines.iter().enumerate().skip(divider_idx + 1) {
         if !line.trim().is_empty() && !is_divider_line(line) {
             attr_lines.push((idx, line.as_str()));
         }
@@ -5019,8 +5083,12 @@ fn is_divider_line(line: &str) -> bool {
     line.trim() == "---"
 }
 
+fn is_divider_text_line(line: &crate::layout::TextLine) -> bool {
+    is_divider_line(&line.text())
+}
+
 fn divider_lines_svg(node: &crate::layout::NodeLayout, theme: &Theme, line_height: f32) -> String {
-    if !node.label.lines.iter().any(|line| is_divider_line(line)) {
+    if !node.label.lines.iter().any(|line| is_divider_text_line(line)) {
         return String::new();
     }
 
@@ -5036,7 +5104,7 @@ fn divider_lines_svg(node: &crate::layout::NodeLayout, theme: &Theme, line_heigh
 
     let mut svg = String::new();
     for (idx, line) in node.label.lines.iter().enumerate() {
-        if !is_divider_line(line) {
+        if !is_divider_text_line(line) {
             continue;
         }
         let baseline_y = start_y + idx as f32 * line_height;
@@ -5056,25 +5124,26 @@ struct ErAttribute {
     keys: Vec<String>,
 }
 
-fn parse_er_attributes(lines: &[String]) -> (String, Vec<ErAttribute>) {
+fn parse_er_attributes(lines: &[crate::layout::TextLine]) -> (String, Vec<ErAttribute>) {
     let mut title = lines
         .first()
-        .map(|s| s.trim().to_string())
+        .map(|s| s.text().trim().to_string())
         .unwrap_or_default();
     let mut attrs = Vec::new();
     let mut in_body = false;
     for line in lines.iter().skip(1) {
-        if is_divider_line(line) {
+        let line_str = line.text();
+        if is_divider_line(&line_str) {
             in_body = true;
             continue;
         }
         if !in_body {
-            if !line.trim().is_empty() {
-                title = line.trim().to_string();
+            if !line_str.trim().is_empty() {
+                title = line_str.trim().to_string();
             }
             continue;
         }
-        let trimmed = line.trim();
+        let trimmed = line_str.trim();
         if trimmed.is_empty() {
             continue;
         }
@@ -5212,7 +5281,7 @@ fn render_er_node(
     ));
 
     let header_label = TextBlock {
-        lines: vec![title.clone()],
+        lines: vec![crate::layout::TextLine::plain(title.clone())],
         width: 0.0,
         height: 0.0,
     };
@@ -5351,7 +5420,7 @@ fn render_er_node(
         }
 
         let name_label = TextBlock {
-            lines: vec![attr.name.clone()],
+            lines: vec![crate::layout::TextLine::plain(attr.name.clone())],
             width: 0.0,
             height: 0.0,
         };
@@ -5367,7 +5436,7 @@ fn render_er_node(
 
         if show_type_col && !attr.data_type.is_empty() {
             let type_label = TextBlock {
-                lines: vec![attr.data_type.clone()],
+                lines: vec![crate::layout::TextLine::plain(attr.data_type.clone())],
                 width: 0.0,
                 height: 0.0,
             };
@@ -5430,6 +5499,223 @@ pub fn write_output_png(
     );
     pixmap.save_png(output)?;
     Ok(())
+}
+
+/// Render a sequence diagram actor/participant with the appropriate shape.
+fn render_sequence_actor_shape(
+    svg: &mut String,
+    node: &crate::layout::NodeLayout,
+    theme: &Theme,
+    config: &LayoutConfig,
+    _is_footbox: bool,
+) {
+    use crate::ir::NodeShape;
+
+    let hide_label = node.label.lines.iter().all(|line| line.text().trim().is_empty())
+        || node.id.starts_with("__start_")
+        || node.id.starts_with("__end_");
+
+    match node.shape {
+        NodeShape::StickFigure => {
+            // Draw a stick figure above the label.
+            let cx = node.x + node.width / 2.0;
+            let top = node.y;
+            let head_r = 10.0;
+            let head_cy = top + head_r + 2.0;
+            let body_top = head_cy + head_r;
+            let body_bot = body_top + 16.0;
+            let leg_bot = body_bot + 16.0;
+            let arm_y = body_top + 6.0;
+            let arm_half = 14.0;
+            // Head
+            svg.push_str(&format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{head_cy:.2}\" r=\"{head_r:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"1.5\"/>",
+                stroke = theme.sequence_actor_border
+            ));
+            // Body
+            svg.push_str(&format!(
+                "<line x1=\"{cx:.2}\" y1=\"{body_top:.2}\" x2=\"{cx:.2}\" y2=\"{body_bot:.2}\" stroke=\"{stroke}\" stroke-width=\"1.5\"/>",
+                stroke = theme.sequence_actor_border
+            ));
+            // Arms
+            svg.push_str(&format!(
+                "<line x1=\"{x1:.2}\" y1=\"{arm_y:.2}\" x2=\"{x2:.2}\" y2=\"{arm_y:.2}\" stroke=\"{stroke}\" stroke-width=\"1.5\"/>",
+                x1 = cx - arm_half, x2 = cx + arm_half, stroke = theme.sequence_actor_border
+            ));
+            // Legs
+            svg.push_str(&format!(
+                "<line x1=\"{cx:.2}\" y1=\"{body_bot:.2}\" x2=\"{x1:.2}\" y2=\"{leg_bot:.2}\" stroke=\"{stroke}\" stroke-width=\"1.5\"/>",
+                x1 = cx - 12.0, stroke = theme.sequence_actor_border
+            ));
+            svg.push_str(&format!(
+                "<line x1=\"{cx:.2}\" y1=\"{body_bot:.2}\" x2=\"{x2:.2}\" y2=\"{leg_bot:.2}\" stroke=\"{stroke}\" stroke-width=\"1.5\"/>",
+                x2 = cx + 12.0, stroke = theme.sequence_actor_border
+            ));
+            // Label below the figure
+            if !hide_label {
+                let label_y = leg_bot + 8.0;
+                svg.push_str(&text_block_svg(
+                    cx, label_y, &node.label, theme, config, false,
+                    node.style.text_color.as_deref(),
+                ));
+            }
+        }
+        NodeShape::Boundary => {
+            // Boundary: a rectangle with a horizontal line separating the label from a top bar.
+            let x = node.x;
+            let y = node.y;
+            let w = node.width;
+            let h = node.height;
+            let bar_h = 4.0;
+            svg.push_str(&format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{bar_h:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+            ));
+            svg.push_str(&format!(
+                "<rect x=\"{x:.2}\" y=\"{y2:.2}\" width=\"{w:.2}\" height=\"{h2:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                y2 = y + bar_h + 2.0, h2 = h - bar_h - 2.0,
+                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+            ));
+            if !hide_label {
+                let cx = x + w / 2.0;
+                let cy = y + (h + bar_h + 2.0) / 2.0;
+                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
+            }
+        }
+        NodeShape::Control => {
+            // Control: a circle with an arrow/chevron on top.
+            let cx = node.x + node.width / 2.0;
+            let cy = node.y + 16.0;
+            let r = 12.0;
+            svg.push_str(&format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+            ));
+            // Small chevron on top
+            svg.push_str(&format!(
+                "<path d=\"M {x1:.2} {y1:.2} L {cx:.2} {y0:.2} L {x2:.2} {y1:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"1.5\"/>",
+                x1 = cx - 6.0, y1 = cy - r + 3.0, y0 = cy - r - 3.0, x2 = cx + 6.0,
+                stroke = theme.sequence_actor_border
+            ));
+            if !hide_label {
+                let label_y = cy + r + 14.0;
+                svg.push_str(&text_block_svg(cx, label_y, &node.label, theme, config, false, node.style.text_color.as_deref()));
+            }
+        }
+        NodeShape::Entity => {
+            // Entity: a circle with a horizontal line underneath.
+            let cx = node.x + node.width / 2.0;
+            let cy = node.y + 16.0;
+            let r = 12.0;
+            svg.push_str(&format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+            ));
+            // Underline
+            svg.push_str(&format!(
+                "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"1.5\"/>",
+                x1 = cx - r, x2 = cx + r, y = cy + r + 2.0,
+                stroke = theme.sequence_actor_border
+            ));
+            if !hide_label {
+                let label_y = cy + r + 16.0;
+                svg.push_str(&text_block_svg(cx, label_y, &node.label, theme, config, false, node.style.text_color.as_deref()));
+            }
+        }
+        NodeShape::Collections => {
+            // Collections: two stacked rectangles.
+            let x = node.x;
+            let y = node.y;
+            let w = node.width;
+            let h = node.height;
+            let off = 4.0;
+            // Back rectangle (offset)
+            svg.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                x + off, y, w - off, h - off,
+                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+            ));
+            // Front rectangle
+            svg.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                x, y + off, w - off, h - off,
+                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+            ));
+            if !hide_label {
+                let cx = x + (w - off) / 2.0;
+                let cy = y + off + (h - off) / 2.0;
+                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
+            }
+        }
+        NodeShape::Queue => {
+            // Queue: a cylinder rotated 90 degrees (horizontal pill with right elliptical cap).
+            let x = node.x;
+            let y = node.y;
+            let w = node.width;
+            let h = node.height;
+            let cap_w = 8.0;
+            // Main rectangle body
+            svg.push_str(&format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{bw:.2}\" height=\"{h:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                bw = w - cap_w, fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+            ));
+            // Right elliptical cap
+            let rx = cap_w;
+            let ry = h / 2.0;
+            let cap_cx = x + w - cap_w;
+            let cap_cy = y + h / 2.0;
+            svg.push_str(&format!(
+                "<ellipse cx=\"{cap_cx:.2}\" cy=\"{cap_cy:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+            ));
+            if !hide_label {
+                let cx = x + (w - cap_w) / 2.0;
+                let cy = y + h / 2.0;
+                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
+            }
+        }
+        // Default (ActorBox, Rectangle, Cylinder, etc.)
+        _ => {
+            if node.shape == NodeShape::Cylinder {
+                // Database shape: cylinder
+                let x = node.x;
+                let y = node.y;
+                let w = node.width;
+                let h = node.height;
+                let ry = 6.0;
+                // Main body
+                svg.push_str(&format!(
+                    "<rect x=\"{x:.2}\" y=\"{y1:.2}\" width=\"{w:.2}\" height=\"{h1:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                    y1 = y + ry, h1 = h - ry * 2.0,
+                    fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+                ));
+                // Top ellipse
+                svg.push_str(&format!(
+                    "<ellipse cx=\"{cx:.2}\" cy=\"{cy:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                    cx = x + w / 2.0, cy = y + ry, rx = w / 2.0,
+                    fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+                ));
+                // Bottom half-ellipse
+                svg.push_str(&format!(
+                    "<path d=\"M {x:.2} {y1:.2} A {rx:.2} {ry:.2} 0 0 0 {x2:.2} {y1:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                    y1 = y + h - ry, rx = w / 2.0, x2 = x + w,
+                    fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+                ));
+            } else {
+                // Rectangle (participant, ActorBox)
+                svg.push_str(&format!(
+                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
+                    node.x, node.y, node.width, node.height,
+                    theme.sequence_actor_fill, theme.sequence_actor_border
+                ));
+            }
+            if !hide_label {
+                let cx = node.x + node.width / 2.0;
+                let cy = node.y + node.height / 2.0;
+                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
+            }
+        }
+    }
 }
 
 fn escape_xml(input: &str) -> String {
@@ -5654,7 +5940,7 @@ fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutCon
             )
         }
         crate::ir::NodeShape::Circle | crate::ir::NodeShape::DoubleCircle => {
-            let label_empty = node.label.lines.iter().all(|line| line.trim().is_empty());
+            let label_empty = node.label.lines.iter().all(|line| line.text().trim().is_empty());
             let is_state_start = node.id.starts_with("__start_");
             let is_state_end = node.id.starts_with("__end_");
             let (circle_fill, circle_stroke) = if is_state_start {
@@ -5935,6 +6221,205 @@ fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutCon
             ));
             svg
         }
+        crate::ir::NodeShape::Document => {
+            // Document shape: rectangle with wavy bottom edge.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let wave = h * 0.12;
+            format!(
+                "<path d=\"M {x:.2} {y:.2} h {w:.2} v {bh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                bh = h - wave,
+                q1x = w * 0.25, q1y = wave * 2.0, qmx = w * -0.5,
+                q2x = w * -0.25, q2y = wave * -2.0,
+            )
+        }
+        crate::ir::NodeShape::StackedDocument => {
+            // Two offset document shapes.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let off = 4.0;
+            let wave = (h - off) * 0.12;
+            let bw = w - off;
+            let bh = h - off;
+            let back = format!(
+                "<path d=\"M {x1:.2} {y:.2} h {bw:.2} v {vh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x1 = x + off, vh = bh - wave,
+                q1x = bw * 0.25, q1y = wave * 2.0, qmx = bw * -0.5,
+                q2x = bw * -0.25, q2y = wave * -2.0,
+            );
+            let front = format!(
+                "<path d=\"M {x:.2} {y1:.2} h {bw:.2} v {vh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                y1 = y + off, vh = bh - wave,
+                q1x = bw * 0.25, q1y = wave * 2.0, qmx = bw * -0.5,
+                q2x = bw * -0.25, q2y = wave * -2.0,
+            );
+            format!("{back}{front}")
+        }
+        crate::ir::NodeShape::NotchRect => {
+            // Rectangle with a notched (cut) top-left corner.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let notch = (w.min(h) * 0.15).min(12.0);
+            format!(
+                "<path d=\"M {x1:.2} {y:.2} h {w1:.2} v {h:.2} h {nw:.2} v {nh:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x1 = x + notch, w1 = w - notch, nw = -(w), nh = -(h - notch),
+            )
+        }
+        crate::ir::NodeShape::TagRect => {
+            // Rectangle with a small triangular tag/flag on the right.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let tag = 8.0;
+            format!(
+                "<path d=\"M {x:.2} {y:.2} h {tw:.2} l {tag:.2} {th:.2} l {ntag:.2} {th:.2} h {ntw:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                tw = w - tag, th = h / 2.0, ntag = -tag, ntw = -(w - tag),
+            )
+        }
+        crate::ir::NodeShape::Flag => {
+            // Flag shape: rectangle with a notched right side (pennant).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let indent = w * 0.18;
+            format!(
+                "<path d=\"M {x:.2} {y:.2} h {w:.2} l {ni:.2} {hh:.2} l {ind:.2} {hh:.2} h {nw:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                ni = -indent, hh = h / 2.0, ind = indent, nw = -w,
+            )
+        }
+        crate::ir::NodeShape::Hourglass => {
+            // Hourglass: two triangles meeting at the center.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            format!(
+                "<polygon points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x, y, x + w, y, x, y + h, x + w, y + h,
+            )
+        }
+        crate::ir::NodeShape::LightningBolt => {
+            // Lightning bolt / event trigger.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            format!(
+                "<polygon points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x + w * 0.35, y,
+                x + w, y,
+                x + w * 0.45, y + h * 0.45,
+                x + w * 0.7, y + h * 0.45,
+                x, y + h,
+                x + w * 0.55, y + h * 0.55,
+            )
+        }
+        crate::ir::NodeShape::WindowPane => {
+            // Grid/window layout: rectangle divided into 4 quadrants.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let mx = x + w / 2.0;
+            let my = y + h / 2.0;
+            let rect = format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            );
+            let vert = format!(
+                "<line x1=\"{mx:.2}\" y1=\"{y:.2}\" x2=\"{mx:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                y2 = y + h,
+            );
+            let horiz = format!(
+                "<line x1=\"{x:.2}\" y1=\"{my:.2}\" x2=\"{x2:.2}\" y2=\"{my:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x2 = x + w,
+            );
+            format!("{rect}{vert}{horiz}")
+        }
+        crate::ir::NodeShape::LeanRight => {
+            // Lean right: parallelogram leaning right.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let offset = w * 0.15;
+            let points = format!(
+                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
+                x + offset, y, x + w, y, x + w - offset, y + h, x, y + h
+            );
+            format!(
+                "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
+        crate::ir::NodeShape::LeanLeft => {
+            // Lean left: parallelogram leaning left.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let offset = w * 0.15;
+            let points = format!(
+                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
+                x, y, x + w - offset, y, x + w, y + h, x + offset, y + h
+            );
+            format!(
+                "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
+        crate::ir::NodeShape::LinedCylinder => {
+            // Cylinder with horizontal lines on the body.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let ry = (h * 0.1).max(6.0);
+            let rx = w / 2.0;
+            let body_h = h - 2.0 * ry;
+            let cx = x + rx;
+            let mut s = format!(
+                "<ellipse cx=\"{cx:.2}\" cy=\"{:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                y + ry,
+            );
+            s.push_str(&format!(
+                "<rect x=\"{x:.2}\" y=\"{:.2}\" width=\"{w:.2}\" height=\"{body_h:.2}\" fill=\"{fill}\" stroke=\"none\"/>",
+                y + ry,
+            ));
+            // Side lines
+            s.push_str(&format!(
+                "<line x1=\"{x:.2}\" y1=\"{:.2}\" x2=\"{x:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                y + ry, y + ry + body_h,
+            ));
+            s.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x + w, y + ry, x + w, y + ry + body_h,
+            ));
+            // Bottom ellipse
+            s.push_str(&format!(
+                "<ellipse cx=\"{cx:.2}\" cy=\"{:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                y + h - ry,
+            ));
+            // Horizontal divider line (the "lined" part)
+            let line_y = y + ry + ry * 0.7;
+            s.push_str(&format!(
+                "<ellipse cx=\"{cx:.2}\" cy=\"{line_y:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+            ));
+            s
+        }
+        crate::ir::NodeShape::Comment => {
+            // Callout comment: rectangle with a folded corner.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let fold = (w.min(h) * 0.15).min(12.0);
+            format!(
+                "<path d=\"M {x:.2} {y:.2} h {w1:.2} v {fold:.2} h {nfold:.2} v {h1:.2} h {nw:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                w1 = w - fold, nfold = -fold, h1 = h - fold, nw = -(w - fold) - fold,
+            )
+        }
+        crate::ir::NodeShape::OddShape => {
+            // Odd / irregular: an octagon-like shape.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let cut = (w.min(h) * 0.15).min(10.0);
+            let points = format!(
+                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
+                x + cut, y,
+                x + w - cut, y,
+                x + w, y + h / 2.0,
+                x + w - cut, y + h,
+                x + cut, y + h,
+                x, y + h / 2.0,
+            );
+            format!(
+                "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
+        crate::ir::NodeShape::BraceLeft => {
+            // Left brace shape: a curly brace on the left side.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let r = (h * 0.15).max(6.0);
+            format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"{r:.2}\" ry=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
+        crate::ir::NodeShape::BraceRight => {
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let r = (h * 0.15).max(6.0);
+            format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"{r:.2}\" ry=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
         _ => format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"6\" ry=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
@@ -5983,6 +6468,7 @@ mod tests {
             start_decoration: None,
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
+                markdown_label: false,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());

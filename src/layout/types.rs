@@ -1,10 +1,58 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use crate::ir::Direction;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SpanStyle {
+    pub bold: bool,
+    pub italic: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextSpan {
+    pub text: String,
+    pub style: SpanStyle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextLine {
+    pub spans: Vec<TextSpan>,
+}
+
+impl TextLine {
+    /// Create a plain (unformatted) line from a string.
+    pub fn plain(s: String) -> Self {
+        Self {
+            spans: vec![TextSpan {
+                text: s,
+                style: SpanStyle::default(),
+            }],
+        }
+    }
+
+    /// Get the plain text content of this line, zero-alloc for plain lines.
+    pub fn text(&self) -> Cow<'_, str> {
+        if self.spans.len() == 1 {
+            Cow::Borrowed(&self.spans[0].text)
+        } else {
+            let mut s = String::new();
+            for span in &self.spans {
+                s.push_str(&span.text);
+            }
+            Cow::Owned(s)
+        }
+    }
+
+    /// Check if any span has bold or italic formatting.
+    pub fn has_formatting(&self) -> bool {
+        self.spans.iter().any(|s| s.style.bold || s.style.italic)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TextBlock {
-    pub lines: Vec<String>,
+    pub lines: Vec<TextLine>,
     pub width: f32,
     pub height: f32,
 }
@@ -469,6 +517,8 @@ pub struct Layout {
     pub width: f32,
     pub height: f32,
     pub diagram: DiagramData,
+    pub acc_title: Option<String>,
+    pub acc_descr: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -585,6 +635,8 @@ pub struct GanttLayout {
     pub task_label_width: f32,
     pub title_y: f32,
     pub ticks: Vec<GanttTick>,
+    /// X position for the "today" marker line, if applicable.
+    pub today_x: Option<f32>,
 }
 
 #[derive(Debug, Clone)]

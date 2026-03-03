@@ -280,7 +280,7 @@ pub(super) fn compute_journey_layout(
             width: (width - margin_x * 2.0).max(1.0),
             height: (height - margin_y * 2.0).max(1.0),
             label: TextBlock {
-                lines: vec![String::new()],
+                lines: vec![TextLine::plain(String::new())],
                 width: 0.0,
                 height: 0.0,
             },
@@ -298,6 +298,8 @@ pub(super) fn compute_journey_layout(
         nodes,
         edges: Vec::new(),
         subgraphs: Vec::new(),
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::Journey(JourneyLayout {
             title: title_block,
             title_y,

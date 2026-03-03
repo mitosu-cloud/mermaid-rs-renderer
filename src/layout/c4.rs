@@ -128,7 +128,7 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
                 width: shape.width,
                 height: shape.height,
                 label: TextBlock {
-                    lines: shape.label.lines.clone(),
+                    lines: shape.label.lines.iter().map(|s| TextLine::plain(s.clone())).collect(),
                     width: shape.label.width,
                     height: shape.label.height,
                 },
@@ -179,6 +179,8 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
         subgraphs: Vec::new(),
         width,
         height,
+        acc_title: None,
+        acc_descr: None,
         diagram: DiagramData::C4(C4Layout {
             shapes: shapes_out,
             boundaries: boundaries_out,
