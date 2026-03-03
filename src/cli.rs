@@ -25,9 +25,9 @@ pub struct Args {
     #[arg(short = 'o', long = "output")]
     pub output: Option<PathBuf>,
 
-    /// Output format
-    #[arg(short = 'e', long = "outputFormat", value_enum, default_value = "svg")]
-    pub output_format: OutputFormat,
+    /// Output format (inferred from output file extension if omitted)
+    #[arg(short = 'e', long = "outputFormat", value_enum)]
+    pub output_format: Option<OutputFormat>,
 
     /// Config JSON file (Mermaid-like themeVariables)
     #[arg(short = 'c', long = "configFile")]
@@ -70,6 +70,21 @@ pub struct Args {
 pub enum OutputFormat {
     Svg,
     Png,
+}
+
+/// Infer output format from the file extension when `-e` is not provided.
+fn infer_output_format(output: Option<&Path>, explicit: Option<OutputFormat>) -> OutputFormat {
+    if let Some(fmt) = explicit {
+        return fmt;
+    }
+    if let Some(path) = output {
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if ext.eq_ignore_ascii_case("png") {
+                return OutputFormat::Png;
+            }
+        }
+    }
+    OutputFormat::Svg
 }
 
 fn parse_aspect_ratio_value(raw: &str) -> Result<f32, String> {
@@ -132,6 +147,7 @@ fn parse_aspect_ratio_json(value: &serde_json::Value) -> Option<f32> {
 
 pub fn run() -> Result<()> {
     let args = Args::parse();
+    let output_format = infer_output_format(args.output.as_deref(), args.output_format);
     let mut base_config = load_config(args.config.as_deref())?;
     base_config.render.width = args.width;
     base_config.render.height = args.height;
@@ -193,7 +209,7 @@ pub fn run() -> Result<()> {
         let svg = render_svg(&layout, &config.theme, &config.layout);
         let render_us = t_render_start.elapsed().as_micros();
 
-        match args.output_format {
+        match output_format {
             OutputFormat::Svg => {
                 write_output_svg(&svg, args.output.as_deref())?;
             }
@@ -231,7 +247,7 @@ pub fn run() -> Result<()> {
 
     // Multiple diagrams (Markdown input)
     let outputs =
-        resolve_multi_outputs(args.output.as_deref(), args.output_format, diagrams.len())?;
+        resolve_multi_outputs(args.output.as_deref(), output_format, diagrams.len())?;
     for (idx, diagram) in diagrams.iter().enumerate() {
         let parsed = parse_mermaid(diagram)?;
         let mut config = base_config.clone();
@@ -246,7 +262,7 @@ pub fn run() -> Result<()> {
             write_layout_dump(path, &layout, &parsed.graph)?;
         }
         let svg = render_svg(&layout, &config.theme, &config.layout);
-        match args.output_format {
+        match output_format {
             OutputFormat::Svg => {
                 write_output_svg(&svg, Some(&outputs[idx]))?;
             }
