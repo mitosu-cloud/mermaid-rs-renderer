@@ -138,6 +138,9 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
                 anchor_subgraph: None,
                 hidden: false,
                 icon: None,
+                img: None,
+                img_w: None,
+                img_h: None,
             },
         );
     }
@@ -162,6 +165,7 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
             override_style: crate::ir::EdgeStyleOverride::default(),
+            curve: None,
         });
     }
 

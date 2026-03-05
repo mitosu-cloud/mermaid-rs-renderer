@@ -261,6 +261,9 @@ pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &Layou
                 anchor_subgraph: None,
                 hidden: false,
                 icon: None,
+                img: None,
+                img_w: None,
+                img_h: None,
             },
         );
         sankey_nodes.push(SankeyNodeLayout {
@@ -318,6 +321,7 @@ pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &Layou
                 dasharray: None,
                 label_color: None,
             },
+            curve: None,
         });
         sankey_links.push(SankeyLinkLayout {
             source: from_id,

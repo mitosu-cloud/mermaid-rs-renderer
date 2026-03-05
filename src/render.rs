@@ -6,7 +6,7 @@ use crate::layout::label_placement::{
 };
 use crate::layout::{
     C4BoundaryLayout, C4Layout, C4RelLayout, C4ShapeLayout, DiagramData, ErrorLayout,
-    GitGraphLayout, JourneyLayout, Layout, PieData, SankeyLayout, TextBlock,
+    GitGraphLayout, JourneyLayout, Layout, PieData, SankeyLayout, TextBlock, VennLayout,
 };
 use crate::text_metrics;
 use crate::theme::{Theme, adjust_color, parse_color_to_hsl};
@@ -384,6 +384,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
 
     if let DiagramData::GitGraph(ref gitgraph) = layout.diagram {
         svg.push_str(&render_gitgraph(gitgraph, theme, config));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    if let DiagramData::Venn(ref venn) = layout.diagram {
+        svg.push_str(&render_venn(venn, theme, config));
         svg.push_str("</svg>");
         return svg;
     }
@@ -964,7 +970,21 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             _ => 2.0,
         };
         for (edge_idx, edge) in layout.edges.iter().enumerate() {
-            let d = points_to_path(&edge.points);
+            let edge_curve = edge.curve.unwrap_or(config.flowchart.curve);
+            let d = {
+                let raw = points_to_curved_path(&edge.points, edge_curve);
+                if config.look == crate::ir::DiagramLook::HandDrawn {
+                    let seed = hand_drawn_seed(
+                        edge.points.first().map(|p| p.0).unwrap_or(0.0),
+                        edge.points.first().map(|p| p.1).unwrap_or(0.0),
+                        edge.points.last().map(|p| p.0).unwrap_or(0.0),
+                        edge.points.last().map(|p| p.1).unwrap_or(0.0),
+                    );
+                    hand_drawn_path_jitter(&raw, 1.0, seed)
+                } else {
+                    raw
+                }
+            };
             let mut stroke = theme.line_color.clone();
             let edge_id = edge_dom_id(edge_idx);
             let (mut dash, mut stroke_width) = match edge.style {
@@ -1503,6 +1523,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
 }
 
 fn points_to_path(points: &[(f32, f32)]) -> String {
+    points_to_curved_path(points, crate::ir::CurveType::Linear)
+}
+
+fn points_to_curved_path(points: &[(f32, f32)], curve: crate::ir::CurveType) -> String {
     if points.is_empty() {
         return String::new();
     }
@@ -1510,11 +1534,357 @@ fn points_to_path(points: &[(f32, f32)]) -> String {
     if deduped.len() == 1 {
         return format!("M {:.3},{:.3}", deduped[0].0, deduped[0].1);
     }
-    let mut d = format!("M {:.3},{:.3}", deduped[0].0, deduped[0].1);
-    for (x, y) in deduped.iter().skip(1) {
-        d.push_str(&format!(" L {:.3},{:.3}", x, y));
+    let pts = &deduped;
+    match curve {
+        crate::ir::CurveType::Linear => {
+            let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+            for (x, y) in pts.iter().skip(1) {
+                d.push_str(&format!(" L {:.3},{:.3}", x, y));
+            }
+            d
+        }
+        crate::ir::CurveType::Basis => {
+            curve_basis(pts)
+        }
+        crate::ir::CurveType::Step => {
+            curve_step(pts, 0.5)
+        }
+        crate::ir::CurveType::StepBefore => {
+            curve_step(pts, 0.0)
+        }
+        crate::ir::CurveType::StepAfter => {
+            curve_step(pts, 1.0)
+        }
+        crate::ir::CurveType::Natural => {
+            curve_natural(pts)
+        }
+        crate::ir::CurveType::MonotoneX | crate::ir::CurveType::BumpX => {
+            curve_monotone_x(pts)
+        }
+        crate::ir::CurveType::MonotoneY | crate::ir::CurveType::BumpY => {
+            curve_monotone_y(pts)
+        }
+        crate::ir::CurveType::Cardinal | crate::ir::CurveType::CatmullRom => {
+            curve_cardinal(pts, 0.5)
+        }
+    }
+}
+
+/// B-spline (basis) curve through points.
+fn curve_basis(pts: &[(f32, f32)]) -> String {
+    if pts.len() < 3 {
+        let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+        for p in pts.iter().skip(1) {
+            d.push_str(&format!(" L {:.3},{:.3}", p.0, p.1));
+        }
+        return d;
+    }
+    let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+    // First segment: quadratic from first point
+    let x1 = (2.0 * pts[0].0 + pts[1].0) / 3.0;
+    let y1 = (2.0 * pts[0].1 + pts[1].1) / 3.0;
+    let x2 = (pts[0].0 + 2.0 * pts[1].0) / 3.0;
+    let y2 = (pts[0].1 + 2.0 * pts[1].1) / 3.0;
+    let mx = (x2 + (pts[1].0 + 2.0 * pts[2].0) / 3.0) / 2.0;
+    let my = (y2 + (pts[1].1 + 2.0 * pts[2].1) / 3.0) / 2.0;
+    d.push_str(&format!(" C {x1:.3},{y1:.3} {x2:.3},{y2:.3} {mx:.3},{my:.3}"));
+    for i in 2..pts.len() - 1 {
+        let p0 = pts[i - 1];
+        let p1 = pts[i];
+        let p2 = pts[i + 1];
+        let cx1 = (2.0 * p0.0 + p1.0) / 3.0;
+        let cy1 = (2.0 * p0.1 + p1.1) / 3.0;
+        let cx2 = (p0.0 + 2.0 * p1.0) / 3.0;
+        let cy2 = (p0.1 + 2.0 * p1.1) / 3.0;
+        let _ = (cx1, cy1); // previous control handled by symmetry
+        let nx1 = (p1.0 + 2.0 * p2.0) / 3.0;
+        let ny1 = (p1.1 + 2.0 * p2.1) / 3.0;
+        let ex = (cx2 + nx1) / 2.0;
+        let ey = (cy2 + ny1) / 2.0;
+        d.push_str(&format!(" S {cx2:.3},{cy2:.3} {ex:.3},{ey:.3}"));
+    }
+    let last = pts[pts.len() - 1];
+    d.push_str(&format!(" L {:.3},{:.3}", last.0, last.1));
+    d
+}
+
+/// Step curve: horizontal-then-vertical (or vice versa) with a configurable t.
+fn curve_step(pts: &[(f32, f32)], t: f32) -> String {
+    let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+    for i in 1..pts.len() {
+        let (x0, y0) = pts[i - 1];
+        let (x1, y1) = pts[i];
+        let mx = x0 + (x1 - x0) * t;
+        let my = y0 + (y1 - y0) * t;
+        if (t - 0.0).abs() < 0.01 {
+            // stepBefore: vertical first, then horizontal
+            d.push_str(&format!(" V {y1:.3} H {x1:.3}"));
+        } else if (t - 1.0).abs() < 0.01 {
+            // stepAfter: horizontal first, then vertical
+            d.push_str(&format!(" H {x1:.3} V {y1:.3}"));
+        } else {
+            // step: midpoint split
+            d.push_str(&format!(" H {mx:.3} V {my:.3} H {x1:.3} V {y1:.3}"));
+        }
     }
     d
+}
+
+/// Natural cubic spline through points.
+fn curve_natural(pts: &[(f32, f32)]) -> String {
+    if pts.len() < 3 {
+        let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+        for p in pts.iter().skip(1) {
+            d.push_str(&format!(" L {:.3},{:.3}", p.0, p.1));
+        }
+        return d;
+    }
+    let n = pts.len() - 1;
+    // Solve for cubic spline coefficients
+    let xs: Vec<f32> = pts.iter().map(|p| p.0).collect();
+    let ys: Vec<f32> = pts.iter().map(|p| p.1).collect();
+    let (cx1x, cx2x) = natural_spline_control_points(&xs);
+    let (cx1y, cx2y) = natural_spline_control_points(&ys);
+    let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+    for i in 0..n {
+        d.push_str(&format!(
+            " C {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
+            cx1x[i], cx1y[i], cx2x[i], cx2y[i], pts[i + 1].0, pts[i + 1].1
+        ));
+    }
+    d
+}
+
+/// Compute natural cubic spline control points for one dimension.
+fn natural_spline_control_points(k: &[f32]) -> (Vec<f32>, Vec<f32>) {
+    let n = k.len() - 1;
+    if n == 0 {
+        return (vec![], vec![]);
+    }
+    let mut a = vec![0.0f32; n];
+    let mut b = vec![0.0f32; n];
+    let mut c = vec![0.0f32; n];
+    let mut r = vec![0.0f32; n];
+    a[0] = 0.0;
+    b[0] = 2.0;
+    c[0] = 1.0;
+    r[0] = k[0] + 2.0 * k[1];
+    for i in 1..n - 1 {
+        a[i] = 1.0;
+        b[i] = 4.0;
+        c[i] = 1.0;
+        r[i] = 4.0 * k[i] + 2.0 * k[i + 1];
+    }
+    if n > 1 {
+        a[n - 1] = 2.0;
+        b[n - 1] = 7.0;
+        c[n - 1] = 0.0;
+        r[n - 1] = 8.0 * k[n - 1] + k[n];
+    }
+    // Forward sweep
+    for i in 1..n {
+        let m = a[i] / b[i - 1];
+        b[i] -= m * c[i - 1];
+        r[i] -= m * r[i - 1];
+    }
+    // Back substitution
+    let mut p1 = vec![0.0f32; n];
+    p1[n - 1] = r[n - 1] / b[n - 1];
+    for i in (0..n - 1).rev() {
+        p1[i] = (r[i] - c[i] * p1[i + 1]) / b[i];
+    }
+    let mut p2 = vec![0.0f32; n];
+    for i in 0..n - 1 {
+        p2[i] = 2.0 * k[i + 1] - p1[i + 1];
+    }
+    p2[n - 1] = (k[n] + p1[n - 1]) / 2.0;
+    (p1, p2)
+}
+
+/// Monotone X cubic interpolation (Fritsch-Carlson).
+fn curve_monotone_x(pts: &[(f32, f32)]) -> String {
+    if pts.len() < 3 {
+        let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+        for p in pts.iter().skip(1) {
+            d.push_str(&format!(" L {:.3},{:.3}", p.0, p.1));
+        }
+        return d;
+    }
+    let n = pts.len();
+    let mut tangents = vec![0.0f32; n];
+    let mut deltas = Vec::with_capacity(n - 1);
+    for i in 0..n - 1 {
+        let dx = pts[i + 1].0 - pts[i].0;
+        let dy = pts[i + 1].1 - pts[i].1;
+        deltas.push(if dx.abs() < 1e-6 { 0.0 } else { dy / dx });
+    }
+    tangents[0] = deltas[0];
+    for i in 1..n - 1 {
+        if deltas[i - 1].signum() != deltas[i].signum() || deltas[i].abs() < 1e-6 {
+            tangents[i] = 0.0;
+        } else {
+            tangents[i] = (deltas[i - 1] + deltas[i]) / 2.0;
+        }
+    }
+    tangents[n - 1] = deltas[n - 2];
+    let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+    for i in 0..n - 1 {
+        let dx = pts[i + 1].0 - pts[i].0;
+        let cx1 = pts[i].0 + dx / 3.0;
+        let cy1 = pts[i].1 + tangents[i] * dx / 3.0;
+        let cx2 = pts[i + 1].0 - dx / 3.0;
+        let cy2 = pts[i + 1].1 - tangents[i + 1] * dx / 3.0;
+        d.push_str(&format!(
+            " C {cx1:.3},{cy1:.3} {cx2:.3},{cy2:.3} {:.3},{:.3}",
+            pts[i + 1].0, pts[i + 1].1,
+        ));
+    }
+    d
+}
+
+/// Monotone Y cubic interpolation (transpose of monotone X).
+fn curve_monotone_y(pts: &[(f32, f32)]) -> String {
+    // Swap x/y, run monotone_x, swap back in the path
+    if pts.len() < 3 {
+        let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+        for p in pts.iter().skip(1) {
+            d.push_str(&format!(" L {:.3},{:.3}", p.0, p.1));
+        }
+        return d;
+    }
+    let swapped: Vec<(f32, f32)> = pts.iter().map(|&(x, y)| (y, x)).collect();
+    let n = swapped.len();
+    let mut tangents = vec![0.0f32; n];
+    let mut deltas = Vec::with_capacity(n - 1);
+    for i in 0..n - 1 {
+        let dx = swapped[i + 1].0 - swapped[i].0;
+        let dy = swapped[i + 1].1 - swapped[i].1;
+        deltas.push(if dx.abs() < 1e-6 { 0.0 } else { dy / dx });
+    }
+    tangents[0] = deltas[0];
+    for i in 1..n - 1 {
+        if deltas[i - 1].signum() != deltas[i].signum() || deltas[i].abs() < 1e-6 {
+            tangents[i] = 0.0;
+        } else {
+            tangents[i] = (deltas[i - 1] + deltas[i]) / 2.0;
+        }
+    }
+    tangents[n - 1] = deltas[n - 2];
+    let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+    for i in 0..n - 1 {
+        let dy = pts[i + 1].1 - pts[i].1;
+        let cx1 = pts[i].0 + tangents[i] * dy / 3.0;
+        let cy1 = pts[i].1 + dy / 3.0;
+        let cx2 = pts[i + 1].0 - tangents[i + 1] * dy / 3.0;
+        let cy2 = pts[i + 1].1 - dy / 3.0;
+        d.push_str(&format!(
+            " C {cx1:.3},{cy1:.3} {cx2:.3},{cy2:.3} {:.3},{:.3}",
+            pts[i + 1].0, pts[i + 1].1,
+        ));
+    }
+    d
+}
+
+/// Cardinal spline (Catmull-Rom variant) with tension parameter.
+fn curve_cardinal(pts: &[(f32, f32)], tension: f32) -> String {
+    if pts.len() < 3 {
+        let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+        for p in pts.iter().skip(1) {
+            d.push_str(&format!(" L {:.3},{:.3}", p.0, p.1));
+        }
+        return d;
+    }
+    let s = (1.0 - tension) / 2.0;
+    let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+    for i in 0..pts.len() - 1 {
+        let p0 = if i == 0 { pts[0] } else { pts[i - 1] };
+        let p1 = pts[i];
+        let p2 = pts[i + 1];
+        let p3 = if i + 2 < pts.len() { pts[i + 2] } else { pts[i + 1] };
+        let cx1 = p1.0 + s * (p2.0 - p0.0) / 3.0;
+        let cy1 = p1.1 + s * (p2.1 - p0.1) / 3.0;
+        let cx2 = p2.0 - s * (p3.0 - p1.0) / 3.0;
+        let cy2 = p2.1 - s * (p3.1 - p1.1) / 3.0;
+        d.push_str(&format!(
+            " C {cx1:.3},{cy1:.3} {cx2:.3},{cy2:.3} {:.3},{:.3}",
+            p2.0, p2.1,
+        ));
+    }
+    d
+}
+
+/// Simple seeded PRNG for deterministic hand-drawn perturbations.
+/// Uses a basic xorshift32 algorithm.
+struct HandDrawnRng {
+    state: u32,
+}
+
+impl HandDrawnRng {
+    fn new(seed: u32) -> Self {
+        Self {
+            state: if seed == 0 { 1 } else { seed },
+        }
+    }
+
+    fn next_u32(&mut self) -> u32 {
+        let mut x = self.state;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.state = x;
+        x
+    }
+
+    /// Returns a random f32 in [-1.0, 1.0].
+    fn next_f32(&mut self) -> f32 {
+        (self.next_u32() as f32 / u32::MAX as f32) * 2.0 - 1.0
+    }
+}
+
+/// Generate a seed from node position/dimensions for deterministic output.
+fn hand_drawn_seed(x: f32, y: f32, w: f32, h: f32) -> u32 {
+    let mut s = 2166136261u32;
+    for v in [x, y, w, h] {
+        s ^= v.to_bits();
+        s = s.wrapping_mul(16777619);
+    }
+    if s == 0 { 1 } else { s }
+}
+
+/// Add slight jitter to an SVG path string for hand-drawn look.
+/// Only perturbs coordinate values, preserving SVG path commands.
+fn hand_drawn_path_jitter(path_d: &str, amplitude: f32, seed: u32) -> String {
+    let mut rng = HandDrawnRng::new(seed);
+    let mut result = String::with_capacity(path_d.len());
+    let mut chars = path_d.chars().peekable();
+    while let Some(&ch) = chars.peek() {
+        if ch == '-' || ch == '.' || ch.is_ascii_digit() {
+            // Parse a number
+            let mut num_str = String::new();
+            if ch == '-' {
+                num_str.push(ch);
+                chars.next();
+            }
+            while let Some(&c) = chars.peek() {
+                if c.is_ascii_digit() || c == '.' {
+                    num_str.push(c);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            if let Ok(val) = num_str.parse::<f32>() {
+                let jittered = val + rng.next_f32() * amplitude;
+                result.push_str(&format!("{:.3}", jittered));
+            } else {
+                result.push_str(&num_str);
+            }
+        } else {
+            result.push(ch);
+            chars.next();
+        }
+    }
+    result
 }
 
 fn dedupe_points(points: &[(f32, f32)]) -> Vec<(f32, f32)> {
@@ -2655,6 +3025,100 @@ fn render_architecture(
         ));
     }
     svg.push_str("</g>");
+
+    svg
+}
+
+fn render_venn(venn: &VennLayout, _theme: &Theme, _config: &LayoutConfig) -> String {
+    let mut svg = String::new();
+
+    // Background
+    svg.push_str(&format!(
+        "<rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"white\" rx=\"4\"/>",
+        venn.width, venn.height
+    ));
+
+    // Title
+    if let Some(ref title) = venn.title {
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"28\" text-anchor=\"middle\" font-family=\"sans-serif\" \
+             font-size=\"18\" font-weight=\"bold\" fill=\"#333\">{}</text>",
+            venn.width / 2.0,
+            escape_xml(title)
+        ));
+    }
+
+    // Render circles with semi-transparent fills
+    // Use mix-blend-mode for natural intersection coloring
+    svg.push_str("<g style=\"isolation: isolate;\">");
+    for circle in &venn.circles {
+        svg.push_str(&format!(
+            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\" fill-opacity=\"{}\" \
+             stroke=\"{}\" stroke-width=\"{}\" style=\"mix-blend-mode: multiply;\"/>",
+            circle.cx,
+            circle.cy,
+            circle.radius,
+            escape_xml(&circle.color),
+            circle.fill_opacity,
+            escape_xml(&circle.stroke),
+            circle.stroke_width,
+        ));
+    }
+    svg.push_str("</g>");
+
+    // Render set labels
+    for circle in &venn.circles {
+        // Position label at center of non-overlapping area (push away from other circles)
+        let mut lx = circle.cx;
+        let mut ly = circle.cy;
+
+        // Find direction to push label (away from centroid of all other circles)
+        if venn.circles.len() > 1 {
+            let mut other_cx = 0.0f32;
+            let mut other_cy = 0.0f32;
+            let mut count = 0;
+            for other in &venn.circles {
+                if other.id != circle.id {
+                    other_cx += other.cx;
+                    other_cy += other.cy;
+                    count += 1;
+                }
+            }
+            if count > 0 {
+                other_cx /= count as f32;
+                other_cy /= count as f32;
+                let dx = circle.cx - other_cx;
+                let dy = circle.cy - other_cy;
+                let dist = (dx * dx + dy * dy).sqrt().max(1.0);
+                let push = circle.radius * 0.35;
+                lx += dx / dist * push;
+                ly += dy / dist * push;
+            }
+        }
+
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" dominant-baseline=\"central\" \
+             font-family=\"sans-serif\" font-size=\"14\" font-weight=\"bold\" fill=\"{}\">{}</text>",
+            lx,
+            ly,
+            escape_xml(&circle.text_color),
+            escape_xml(&circle.label)
+        ));
+    }
+
+    // Render intersection labels
+    for intersection in &venn.intersections {
+        if let Some(ref label) = intersection.label {
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" dominant-baseline=\"central\" \
+                 font-family=\"sans-serif\" font-size=\"12\" fill=\"{}\">{}</text>",
+                intersection.cx,
+                intersection.cy,
+                escape_xml(&intersection.text_color),
+                escape_xml(label)
+            ));
+        }
+    }
 
     svg
 }
@@ -5869,6 +6333,38 @@ fn primary_font(fonts: &str) -> String {
 }
 
 fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutConfig) -> String {
+    let mut raw = shape_svg_inner(node, theme, config);
+    // If the node has an icon, render it inside the shape
+    if let Some(icon_name) = &node.icon {
+        let icon_size = node.height.min(node.width) * 0.5;
+        let ix = node.x + (node.width - icon_size) / 2.0;
+        let iy = node.y + (node.height - icon_size) / 2.0;
+        let fill = node
+            .style
+            .stroke
+            .as_ref()
+            .unwrap_or(&theme.primary_border_color);
+        raw.push_str(&crate::icons::render_icon_svg(icon_name, ix, iy, icon_size, fill));
+    }
+    // If the node has an image, render it inside the shape
+    if let Some(img_url) = &node.img {
+        let iw = node.img_w.unwrap_or(60.0);
+        let ih = node.img_h.unwrap_or(60.0);
+        let ix = node.x + (node.width - iw) / 2.0;
+        let iy = node.y + (node.height - ih) / 2.0;
+        raw.push_str(&format!(
+            "<image x=\"{ix:.2}\" y=\"{iy:.2}\" width=\"{iw:.2}\" height=\"{ih:.2}\" href=\"{img_url}\" preserveAspectRatio=\"xMidYMid meet\"/>",
+        ));
+    }
+    if config.look == crate::ir::DiagramLook::HandDrawn {
+        let seed = hand_drawn_seed(node.x, node.y, node.width, node.height);
+        hand_drawn_path_jitter(&raw, 1.5, seed)
+    } else {
+        raw
+    }
+}
+
+fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutConfig) -> String {
     let stroke = node
         .style
         .stroke
@@ -6420,6 +6916,301 @@ fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutCon
                 "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"{r:.2}\" ry=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             )
         }
+        crate::ir::NodeShape::LinedDocument => {
+            // Document shape with horizontal lines inside.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let wave = h * 0.12;
+            let doc = format!(
+                "<path d=\"M {x:.2} {y:.2} h {w:.2} v {bh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                bh = h - wave,
+                q1x = w * 0.25, q1y = wave * 2.0, qmx = w * -0.5,
+                q2x = w * -0.25, q2y = wave * -2.0,
+            );
+            // Add 2-3 horizontal lines inside the document
+            let line_spacing = (h - wave) / 4.0;
+            let mut lines = doc;
+            for i in 1..=3 {
+                let ly = y + line_spacing * i as f32;
+                if ly < y + h - wave - 2.0 {
+                    lines.push_str(&format!(
+                        "<line x1=\"{x:.2}\" y1=\"{ly:.2}\" x2=\"{x2:.2}\" y2=\"{ly:.2}\" stroke=\"{stroke}\" stroke-width=\"{lw:.2}\"/>",
+                        x2 = x + w, lw = sw * 0.5,
+                    ));
+                }
+            }
+            lines
+        }
+        crate::ir::NodeShape::TagDocument => {
+            // Document shape with a triangular tag/tab in the top-right corner.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let wave = h * 0.12;
+            let tag = (w.min(h) * 0.15).min(14.0);
+            let doc = format!(
+                "<path d=\"M {x:.2} {y:.2} h {w1:.2} v {tag:.2} h {tag:.2} v {bh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                w1 = w - tag,
+                bh = h - wave - tag,
+                q1x = w * 0.25, q1y = wave * 2.0, qmx = w * -0.5,
+                q2x = w * -0.25, q2y = wave * -2.0,
+            );
+            // Fold line for the tag
+            let fold = format!(
+                "<path d=\"M {fx:.2} {y:.2} v {tag:.2} h {tag:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                fx = x + w - tag,
+            );
+            format!("{doc}{fold}")
+        }
+        crate::ir::NodeShape::CurvedTrapezoid => {
+            // Trapezoid with bezier-curved left and right edges.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let inset = w * 0.15;
+            let cp = h * 0.3; // control point offset for curves
+            format!(
+                "<path d=\"M {x1:.2} {y:.2} h {tw:.2} C {cx1:.2} {cy1:.2} {cx2:.2} {cy2:.2} {x4:.2} {y4:.2} h {bw:.2} C {cx3:.2} {cy3:.2} {cx4:.2} {cy4:.2} {x1:.2} {y:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x1 = x + inset,
+                tw = w - 2.0 * inset,
+                cx1 = x + w - inset + cp * 0.3, cy1 = y + cp,
+                cx2 = x + w + cp * 0.1, cy2 = y + h - cp,
+                x4 = x + w, y4 = y + h,
+                bw = -w,
+                cx3 = x - cp * 0.1, cy3 = y + h - cp,
+                cx4 = x + inset - cp * 0.3, cy4 = y + cp,
+            )
+        }
+        crate::ir::NodeShape::Cloud => {
+            // Cloud shape using overlapping elliptical arcs.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let cx = x + w / 2.0;
+            let cy = y + h / 2.0;
+            let rx = w / 2.0;
+            let ry = h / 2.0;
+            // Build cloud from overlapping arcs
+            format!(
+                "<path d=\"M {x1:.2} {cy:.2} \
+                a {a1rx:.2} {a1ry:.2} 0 0 1 {a1dx:.2} {a1dy:.2} \
+                a {a2rx:.2} {a2ry:.2} 0 0 1 {a2dx:.2} {a2dy:.2} \
+                a {a3rx:.2} {a3ry:.2} 0 0 1 {a3dx:.2} {a3dy:.2} \
+                a {a4rx:.2} {a4ry:.2} 0 0 1 {a4dx:.2} {a4dy:.2} \
+                a {a5rx:.2} {a5ry:.2} 0 0 1 {a5dx:.2} {a5dy:.2} \
+                Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x1 = x,
+                a1rx = rx * 0.45, a1ry = ry * 0.65, a1dx = rx * 0.35, a1dy = -ry * 0.75,
+                a2rx = rx * 0.50, a2ry = ry * 0.55, a2dx = rx * 0.65, a2dy = -ry * 0.15,
+                a3rx = rx * 0.50, a3ry = ry * 0.60, a3dx = rx * 0.35, a3dy = ry * 0.70,
+                a4rx = rx * 0.55, a4ry = ry * 0.55, a4dx = -rx * 0.50, a4dy = ry * 0.45,
+                a5rx = rx * 0.50, a5ry = ry * 0.60, a5dx = -rx * 0.85, a5dy = -ry * 0.25,
+            )
+        }
+        crate::ir::NodeShape::Triangle => {
+            // Triangle pointing up.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let points = format!(
+                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
+                x + w / 2.0, y,
+                x + w, y + h,
+                x, y + h,
+            );
+            format!(
+                "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
+        crate::ir::NodeShape::FlippedTriangle => {
+            // Triangle pointing down.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let points = format!(
+                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
+                x, y,
+                x + w, y,
+                x + w / 2.0, y + h,
+            );
+            format!(
+                "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
+        crate::ir::NodeShape::SmallCircle => {
+            // Circle with smaller default radius.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let r = w.min(h) / 2.0;
+            let cx = x + w / 2.0;
+            let cy = y + h / 2.0;
+            format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
+        crate::ir::NodeShape::FilledCircle => {
+            // Solid-fill circle, no label.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let r = w.min(h) / 2.0;
+            let cx = x + w / 2.0;
+            let cy = y + h / 2.0;
+            format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{stroke}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
+        crate::ir::NodeShape::HalfRoundedRect => {
+            // Rectangle with rounded right side (delay shape).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let r = h / 2.0;
+            format!(
+                "<path d=\"M {x:.2} {y:.2} h {w1:.2} a {r:.2} {r:.2} 0 0 1 0 {h:.2} h {nw1:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                w1 = w - r, nw1 = -(w - r),
+            )
+        }
+        crate::ir::NodeShape::SlopedRect => {
+            // Rectangle with sloped top edge (manual input).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let slope = h * 0.2;
+            format!(
+                "<path d=\"M {x:.2} {y1:.2} L {x2:.2} {y:.2} v {h:.2} h {nw:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                y1 = y + slope, x2 = x + w, nw = -w,
+            )
+        }
+        crate::ir::NodeShape::NotchedPentagon => {
+            // Pentagon with flat top and notched bottom (loop limit).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let notch = h * 0.25;
+            let inset = w * 0.15;
+            let points = format!(
+                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
+                x, y,
+                x + w, y,
+                x + w, y + h - notch,
+                x + w - inset, y + h,
+                x + inset, y + h,
+            );
+            // Close with line back to start through the left notch point
+            format!(
+                "<polygon points=\"{points} {:.2},{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x, y + h - notch,
+            )
+        }
+        crate::ir::NodeShape::StackedRect => {
+            // Rectangle with offset rectangles behind it (stacked processes).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let off = 4.0;
+            let bw = w - off;
+            let bh = h - off;
+            let back2 = format!(
+                "<rect x=\"{:.2}\" y=\"{y:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x + 2.0 * off,
+            );
+            let back1 = format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x + off, y + off,
+            );
+            let front = format!(
+                "<rect x=\"{x:.2}\" y=\"{:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                y + 2.0 * off,
+            );
+            format!("{back2}{back1}{front}")
+        }
+        crate::ir::NodeShape::BowTieRect => {
+            // Rectangle with curved (concave) left side (stored data).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let curve = w * 0.1;
+            format!(
+                "<path d=\"M {x1:.2} {y:.2} h {w1:.2} v {h:.2} h {nw1:.2} q {qx:.2} {qy:.2} 0 {nqh:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x1 = x + curve, w1 = w - curve, nw1 = -(w - curve),
+                qx = curve, qy = h / 2.0, nqh = -h,
+            )
+        }
+        crate::ir::NodeShape::FramedCircle => {
+            // Circle inside a circle (framed/stop).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let r = w.min(h) / 2.0;
+            let cx = x + w / 2.0;
+            let cy = y + h / 2.0;
+            let outer = format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            );
+            let inner_r = r * 0.7;
+            let inner = format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{inner_r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>"
+            );
+            format!("{outer}{inner}")
+        }
+        crate::ir::NodeShape::CrossedCircle => {
+            // Circle with an X through it (summary).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let r = w.min(h) / 2.0;
+            let cx = x + w / 2.0;
+            let cy = y + h / 2.0;
+            let circ = format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            );
+            let d = r * 0.707; // cos(45°)
+            let line1 = format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                cx - d, cy - d, cx + d, cy + d,
+            );
+            let line2 = format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                cx + d, cy - d, cx - d, cy + d,
+            );
+            format!("{circ}{line1}{line2}")
+        }
+        crate::ir::NodeShape::HorizontalCylinder => {
+            // Cylinder rotated 90 degrees (horizontal).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let rx = (w * 0.1).max(6.0);
+            let ry = h / 2.0;
+            let body_w = w - 2.0 * rx;
+            let cy = y + ry;
+            // Left ellipse cap
+            let mut s = format!(
+                "<ellipse cx=\"{:.2}\" cy=\"{cy:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x + rx,
+            );
+            // Body rect
+            s.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{y:.2}\" width=\"{body_w:.2}\" height=\"{h:.2}\" fill=\"{fill}\" stroke=\"none\"/>",
+                x + rx,
+            ));
+            // Top/bottom lines
+            s.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{y:.2}\" x2=\"{:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x + rx, x + rx + body_w,
+            ));
+            s.push_str(&format!(
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x + rx, y + h, x + rx + body_w, y + h,
+            ));
+            // Right ellipse cap
+            s.push_str(&format!(
+                "<ellipse cx=\"{:.2}\" cy=\"{cy:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x + w - rx,
+            ));
+            s
+        }
+        crate::ir::NodeShape::DividedRect => {
+            // Rectangle with a horizontal divider line.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let rect = format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            );
+            let mid_y = y + h / 2.0;
+            let line = format!(
+                "<line x1=\"{x:.2}\" y1=\"{mid_y:.2}\" x2=\"{:.2}\" y2=\"{mid_y:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x + w,
+            );
+            format!("{rect}{line}")
+        }
+        crate::ir::NodeShape::LinedRect => {
+            // Rectangle with vertical lines (lined process).
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let inset = w.min(h) * 0.12;
+            let rect = format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            );
+            let line1 = format!(
+                "<line x1=\"{:.2}\" y1=\"{y:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x + inset, x + inset, y + h,
+            );
+            let line2 = format!(
+                "<line x1=\"{:.2}\" y1=\"{y:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x + w - inset, x + w - inset, y + h,
+            );
+            format!("{rect}{line1}{line2}")
+        }
         _ => format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"6\" ry=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
@@ -6469,6 +7260,8 @@ mod tests {
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());

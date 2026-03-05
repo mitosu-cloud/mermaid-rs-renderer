@@ -753,6 +753,7 @@ pub struct LayoutConfig {
     pub pie: PieConfig,
     pub treemap: TreemapConfig,
     pub flowchart: FlowchartLayoutConfig,
+    pub look: crate::ir::DiagramLook,
 }
 
 impl Default for LayoutConfig {
@@ -773,6 +774,7 @@ impl Default for LayoutConfig {
             pie: PieConfig::default(),
             treemap: TreemapConfig::default(),
             flowchart: FlowchartLayoutConfig::default(),
+            look: crate::ir::DiagramLook::default(),
         }
     }
 }
@@ -790,6 +792,7 @@ pub struct FlowchartLayoutConfig {
     pub port_pad_min: f32,
     pub port_pad_max: f32,
     pub port_side_bias: f32,
+    pub curve: crate::ir::CurveType,
     pub auto_spacing: FlowchartAutoSpacingConfig,
     pub routing: FlowchartRoutingConfig,
     pub objective: FlowchartObjectiveConfig,
@@ -803,6 +806,7 @@ impl Default for FlowchartLayoutConfig {
             port_pad_min: 4.0,
             port_pad_max: 30.0,
             port_side_bias: 0.0,
+            curve: crate::ir::CurveType::default(),
             auto_spacing: FlowchartAutoSpacingConfig::default(),
             routing: FlowchartRoutingConfig::default(),
             objective: FlowchartObjectiveConfig::default(),
@@ -1065,6 +1069,7 @@ struct FlowchartConfig {
     port_pad_min: Option<f32>,
     port_pad_max: Option<f32>,
     port_side_bias: Option<f32>,
+    curve: Option<String>,
     auto_spacing: Option<FlowchartAutoSpacingConfigFile>,
     routing: Option<FlowchartRoutingConfigFile>,
     objective: Option<FlowchartObjectiveConfigFile>,
@@ -1481,6 +1486,8 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
         if let Some(v) = vars.font_size {
             config.theme.font_size = v;
         }
+        let has_secondary = vars.secondary_color.is_some();
+        let has_tertiary = vars.tertiary_color.is_some();
         if let Some(v) = vars.primary_color {
             config.theme.primary_color = v;
         }
@@ -1498,6 +1505,11 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
         }
         if let Some(v) = vars.tertiary_color {
             config.theme.tertiary_color = v;
+        }
+        // If theme is "base" and secondary/tertiary weren't explicitly set,
+        // derive them from primaryColor following official Mermaid rules.
+        if parsed.theme.as_deref() == Some("base") && !has_secondary && !has_tertiary {
+            config.theme.derive_base_colors();
         }
         if let Some(v) = vars.text_color {
             config.theme.text_color = v;
@@ -1738,6 +1750,11 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
         }
         if let Some(v) = flow.port_side_bias {
             config.layout.flowchart.port_side_bias = v;
+        }
+        if let Some(v) = &flow.curve {
+            if let Some(ct) = crate::ir::CurveType::from_name(v) {
+                config.layout.flowchart.curve = ct;
+            }
         }
         if let Some(auto) = flow.auto_spacing {
             if let Some(v) = auto.enabled {

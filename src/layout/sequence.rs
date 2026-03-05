@@ -99,6 +99,9 @@ pub(super) fn compute_sequence_layout(
                 anchor_subgraph: None,
                 hidden: false,
                 icon: None,
+                img: None,
+                img_w: None,
+                img_h: None,
             },
         );
         cursor_x += actor_width + actor_gap;
@@ -254,6 +257,7 @@ pub(super) fn compute_sequence_layout(
             end_decoration: edge.end_decoration,
             style: edge.style,
             override_style,
+            curve: None,
         });
     }
 

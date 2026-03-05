@@ -20,6 +20,7 @@ mod text;
 mod timeline;
 mod treemap;
 pub(crate) mod types;
+mod venn;
 mod xychart;
 use architecture::*;
 use block::*;
@@ -41,6 +42,7 @@ use text::*;
 use timeline::*;
 use treemap::*;
 pub use types::*;
+use venn::*;
 use xychart::*;
 
 use crate::config::{LayoutConfig, PieRenderMode, TreemapRenderMode};
@@ -220,6 +222,7 @@ pub fn compute_layout_with_metrics(
         crate::ir::DiagramKind::XYChart => compute_xychart_layout(graph, theme, config),
         crate::ir::DiagramKind::Timeline => compute_timeline_layout(graph, theme, config),
         crate::ir::DiagramKind::Journey => compute_journey_layout(graph, theme, config),
+        crate::ir::DiagramKind::Venn => compute_venn_layout(graph, theme, config),
         crate::ir::DiagramKind::Class
         | crate::ir::DiagramKind::State
         | crate::ir::DiagramKind::Er
@@ -1374,6 +1377,7 @@ fn compute_flowchart_layout(
             label_anchor: label_anchors[idx],
             start_label_anchor: None,
             end_label_anchor: None,
+            curve: edge.curve,
         });
     }
 
@@ -1659,6 +1663,9 @@ fn assign_positions_manual(
                     anchor_subgraph: None,
                     hidden: true,
                     icon: None,
+                    img: None,
+                    img_w: None,
+                    img_h: None,
                 },
             );
 
@@ -1770,6 +1777,8 @@ fn assign_positions_manual(
                 end_decoration: None,
                 style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
             });
             prev = dummy_id;
         }
@@ -1788,6 +1797,8 @@ fn assign_positions_manual(
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
             markdown_label: false,
+            id: None,
+            curve: None,
         });
     }
 
@@ -4051,7 +4062,10 @@ fn build_node_layout(
         link: graph.node_links.get(&node.id).cloned(),
         anchor_subgraph: None,
         hidden: false,
-        icon: None,
+        icon: node.icon.clone(),
+        img: node.img.clone(),
+        img_w: node.img_w,
+        img_h: node.img_h,
     }
 }
 
@@ -4071,7 +4085,16 @@ fn build_graph_node_layouts(
         } else {
             measure_label(&node.label, theme, config)
         };
-        let (width, height) = shape_size(node.shape, &label, config, theme, graph.kind);
+        let (mut width, mut height) = shape_size(node.shape, &label, config, theme, graph.kind);
+        // If the node has image dimensions, size from those instead
+        if node.img.is_some() {
+            if let Some(iw) = node.img_w {
+                width = iw + config.node_padding_x * 2.0;
+            }
+            if let Some(ih) = node.img_h {
+                height = ih + config.node_padding_y * 2.0;
+            }
+        }
         let style = resolve_node_style(node.id.as_str(), graph);
         nodes.insert(
             node.id.clone(),
@@ -5550,6 +5573,47 @@ fn shape_size(
             width *= TRAPEZOID_WIDTH_SCALE;
         }
         crate::ir::NodeShape::Subroutine => {}
+        crate::ir::NodeShape::SmallCircle | crate::ir::NodeShape::FilledCircle => {
+            let size = if label_empty {
+                (config.node_padding_y * 1.5).max(14.0)
+            } else {
+                width.max(height) * 0.75
+            };
+            width = size;
+            height = size;
+        }
+        crate::ir::NodeShape::FramedCircle | crate::ir::NodeShape::CrossedCircle => {
+            let size = if label_empty {
+                (config.node_padding_y * CIRCLE_EMPTY_HEIGHT_SCALE).max(CIRCLE_EMPTY_MIN_SIZE)
+            } else {
+                width.max(height)
+            };
+            width = size;
+            height = size;
+        }
+        crate::ir::NodeShape::Triangle | crate::ir::NodeShape::FlippedTriangle => {
+            width *= 1.3;
+            height *= 1.2;
+        }
+        crate::ir::NodeShape::Cloud => {
+            width *= 1.3;
+            height *= 1.2;
+        }
+        crate::ir::NodeShape::HorizontalCylinder => {
+            width *= CYLINDER_SCALE;
+            height *= CYLINDER_SCALE;
+        }
+        crate::ir::NodeShape::StackedRect => {
+            // Account for offset behind
+            width += 8.0;
+            height += 8.0;
+        }
+        crate::ir::NodeShape::SlopedRect => {
+            height *= 1.15;
+        }
+        crate::ir::NodeShape::LinedRect => {
+            width *= 1.15;
+        }
         _ => {}
     }
 
@@ -5625,6 +5689,8 @@ mod tests {
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let a = layout.nodes.get("A").unwrap();
@@ -5652,6 +5718,8 @@ mod tests {
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
         });
 
         graph.edge_style_default = Some(crate::ir::EdgeStyleOverride {
@@ -5722,6 +5790,9 @@ mod tests {
             anchor_subgraph: None,
             hidden: false,
             icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
         }
     }
 
@@ -5741,6 +5812,8 @@ mod tests {
             end_decoration: None,
             style,
             markdown_label: false,
+            id: None,
+            curve: None,
         }
     }
 

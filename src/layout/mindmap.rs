@@ -293,6 +293,9 @@ pub(super) fn compute_mindmap_layout(
                 anchor_subgraph: None,
                 hidden: false,
                 icon: None,
+                img: None,
+                img_w: None,
+                img_h: None,
             },
         );
 
@@ -428,6 +431,7 @@ pub(super) fn compute_mindmap_layout(
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
             override_style,
+            curve: None,
         });
     }
 

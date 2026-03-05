@@ -71,6 +71,9 @@ pub struct NodeLayout {
     pub anchor_subgraph: Option<usize>,
     pub hidden: bool,
     pub icon: Option<String>,
+    pub img: Option<String>,
+    pub img_w: Option<f32>,
+    pub img_h: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +96,7 @@ pub struct EdgeLayout {
     pub end_decoration: Option<crate::ir::EdgeDecoration>,
     pub style: crate::ir::EdgeStyle,
     pub override_style: crate::ir::EdgeStyleOverride,
+    pub curve: Option<crate::ir::CurveType>,
 }
 
 #[derive(Debug, Clone)]
@@ -493,6 +497,38 @@ pub struct PieData {
 }
 
 #[derive(Debug, Clone)]
+pub struct VennCircleLayout {
+    pub id: String,
+    pub label: String,
+    pub cx: f32,
+    pub cy: f32,
+    pub radius: f32,
+    pub color: String,
+    pub fill_opacity: f32,
+    pub stroke: String,
+    pub stroke_width: f32,
+    pub text_color: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct VennIntersectionLayout {
+    pub set_ids: Vec<String>,
+    pub label: Option<String>,
+    pub cx: f32,
+    pub cy: f32,
+    pub text_color: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct VennLayout {
+    pub width: f32,
+    pub height: f32,
+    pub title: Option<String>,
+    pub circles: Vec<VennCircleLayout>,
+    pub intersections: Vec<VennIntersectionLayout>,
+}
+
+#[derive(Debug, Clone)]
 pub enum DiagramData {
     Graph { state_notes: Vec<StateNoteLayout> },
     Sequence(SequenceData),
@@ -505,6 +541,7 @@ pub enum DiagramData {
     XYChart(XYChartLayout),
     Timeline(TimelineLayout),
     Journey(JourneyLayout),
+    Venn(VennLayout),
     Error(ErrorLayout),
 }
 

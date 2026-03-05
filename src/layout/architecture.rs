@@ -203,6 +203,7 @@ pub(super) fn compute_architecture_layout(
             end_decoration: None,
             style: edge.style,
             override_style,
+            curve: None,
         });
     }
 

@@ -1,5 +1,14 @@
 use std::collections::{BTreeMap, HashMap};
 
+/// Visual look of the diagram (classic vs hand-drawn/sketch).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DiagramLook {
+    #[default]
+    Classic,
+    HandDrawn,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     TopDown,
@@ -33,6 +42,7 @@ pub enum DiagramKind {
     Radar,
     Treemap,
     XYChart,
+    Venn,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,6 +340,11 @@ pub struct Node {
     pub value: Option<f32>,
     pub icon: Option<String>,
     pub markdown_label: bool,
+    pub img: Option<String>,
+    pub img_w: Option<f32>,
+    pub img_h: Option<f32>,
+    pub img_pos: Option<String>,
+    pub constraint: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -355,6 +370,8 @@ pub struct Edge {
     pub end_decoration: Option<EdgeDecoration>,
     pub style: EdgeStyle,
     pub markdown_label: bool,
+    pub id: Option<String>,
+    pub curve: Option<CurveType>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -381,6 +398,50 @@ pub enum EdgeDecoration {
 pub enum EdgeArrowhead {
     OpenTriangle,
     ClassDependency,
+}
+
+/// Curve interpolation types for edge paths, matching official Mermaid v11.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CurveType {
+    Basis,
+    Linear,
+    Step,
+    StepAfter,
+    StepBefore,
+    MonotoneX,
+    MonotoneY,
+    Natural,
+    Cardinal,
+    BumpX,
+    BumpY,
+    CatmullRom,
+}
+
+impl Default for CurveType {
+    fn default() -> Self {
+        CurveType::Basis
+    }
+}
+
+impl CurveType {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "basis" => Some(CurveType::Basis),
+            "linear" => Some(CurveType::Linear),
+            "step" => Some(CurveType::Step),
+            "stepAfter" => Some(CurveType::StepAfter),
+            "stepBefore" => Some(CurveType::StepBefore),
+            "monotoneX" => Some(CurveType::MonotoneX),
+            "monotoneY" => Some(CurveType::MonotoneY),
+            "natural" => Some(CurveType::Natural),
+            "cardinal" => Some(CurveType::Cardinal),
+            "bumpX" => Some(CurveType::BumpX),
+            "bumpY" => Some(CurveType::BumpY),
+            "catmullRom" => Some(CurveType::CatmullRom),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -432,6 +493,8 @@ pub struct Graph {
     pub xychart: XYChartData,
     pub timeline: TimelineData,
     pub block: Option<BlockDiagram>,
+    pub venn: VennData,
+    pub look: DiagramLook,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -480,6 +543,22 @@ pub enum NodeShape {
     OddShape,        // odd — irregular shape
     LinedCylinder,   // lin-cyl — cylinder with lines
     CurvedTrapezoid, // curv-trap — curved trapezoid
+    // v11.3+ additional shapes
+    Cloud,            // cloud — overlapping elliptical arcs
+    Triangle,         // tri / extract — pointing up
+    FlippedTriangle,  // flip-tri / manual-file — pointing down
+    SmallCircle,      // sm-circ / start — smaller default radius
+    FilledCircle,     // f-circ / junction — solid fill, no label
+    HalfRoundedRect,  // delay — rectangle with rounded right side
+    SlopedRect,       // sl-rect / manual-input — rectangle with sloped top
+    NotchedPentagon,  // notch-pent / loop-limit — pentagon with notched bottom
+    StackedRect,      // st-rect / procs — rectangle with offset rects behind
+    BowTieRect,       // bow-rect / stored-data — rectangle with curved left side
+    FramedCircle,     // fr-circ / stop — circle inside circle
+    CrossedCircle,    // cross-circ / summary — circle with X
+    HorizontalCylinder, // h-cyl / das — cylinder rotated 90 degrees
+    DividedRect,      // div-rect / div-proc — rectangle with horizontal divider
+    LinedRect,        // lin-rect / lin-proc — rectangle with vertical lines
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -550,6 +629,37 @@ pub struct TimelineData {
     pub sections: Vec<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct VennSet {
+    pub id: String,
+    pub label: String,
+    pub size: f32,
+    pub style: Option<VennStyle>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VennUnion {
+    pub set_ids: Vec<String>,
+    pub label: Option<String>,
+    pub style: Option<VennStyle>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct VennStyle {
+    pub fill: Option<String>,
+    pub stroke: Option<String>,
+    pub stroke_width: Option<f32>,
+    pub fill_opacity: Option<f32>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct VennData {
+    pub title: Option<String>,
+    pub sets: Vec<VennSet>,
+    pub unions: Vec<VennUnion>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct BlockDiagram {
     pub columns: Option<usize>,
@@ -603,6 +713,8 @@ impl Graph {
             xychart: XYChartData::default(),
             timeline: TimelineData::default(),
             block: None,
+            venn: VennData::default(),
+            look: DiagramLook::default(),
         }
     }
 
@@ -625,6 +737,11 @@ impl Graph {
             value: None,
             icon: None,
             markdown_label: false,
+            img: None,
+            img_w: None,
+            img_h: None,
+            img_pos: None,
+            constraint: None,
         });
         if is_new {
             let order = self.node_order.len();

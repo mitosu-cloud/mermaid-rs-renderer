@@ -416,6 +416,33 @@ impl Theme {
     }
 }
 
+impl Theme {
+    /// Derive secondary/tertiary colors from primaryColor, following the
+    /// official Mermaid `theme-base.js` derivation rules.
+    /// Call this after setting `primary_color` when secondary/tertiary haven't
+    /// been explicitly overridden.
+    pub fn derive_base_colors(&mut self) {
+        let pc = &self.primary_color;
+        // secondaryColor = adjust(primaryColor, h: -120)
+        self.secondary_color = adjust_color(pc, -120.0, 0.0, 0.0);
+        // tertiaryColor = adjust(primaryColor, h: 180, s: -15, l: 5)
+        self.tertiary_color = adjust_color(pc, 180.0, -15.0, 5.0);
+        // primaryBorderColor = darken primaryColor by 20%
+        self.primary_border_color = adjust_color(pc, 0.0, 0.0, -20.0);
+        // lineColor derived from primaryTextColor
+        // clusterBkg = secondaryColor
+        self.cluster_background = self.secondary_color.clone();
+        // clusterBorder = adjust(secondaryColor, l: -10)
+        self.cluster_border = adjust_color(&self.secondary_color, 0.0, 0.0, -10.0);
+        // Update pie colors from derived colors
+        self.pie_colors = default_pie_colors(
+            &self.primary_color,
+            &self.secondary_color,
+            &self.tertiary_color,
+        );
+    }
+}
+
 fn default_pie_colors(primary: &str, secondary: &str, tertiary: &str) -> [String; 12] {
     [
         primary.to_string(),

@@ -183,6 +183,9 @@ fn layout_treemap_nodes(
                     anchor_subgraph: None,
                     hidden: false,
                     icon: None,
+                    img: None,
+                    img_w: None,
+                    img_h: None,
                 },
             );
         }

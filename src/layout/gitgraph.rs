@@ -488,6 +488,9 @@ pub(super) fn compute_gitgraph_layout(
             anchor_subgraph: None,
             hidden: false,
             icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
         },
     );
 

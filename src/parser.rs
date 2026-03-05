@@ -80,6 +80,7 @@ pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
         DiagramKind::Radar => parse_radar_diagram(input),
         DiagramKind::Treemap => parse_treemap_diagram(input),
         DiagramKind::XYChart => parse_xy_chart_diagram(input),
+        DiagramKind::Venn => parse_venn_diagram(input),
         DiagramKind::Flowchart => parse_flowchart(input),
     }
 }
@@ -168,6 +169,9 @@ fn detect_diagram_kind(input: &str) -> DiagramKind {
         }
         if lower.starts_with("xychart") {
             return DiagramKind::XYChart;
+        }
+        if lower.starts_with("venn") {
+            return DiagramKind::Venn;
         }
         if lower.starts_with("flowchart") || lower.starts_with("graph") {
             return DiagramKind::Flowchart;
@@ -379,6 +383,19 @@ fn parse_flowchart(input: &str) -> Result<ParseOutput> {
                 continue;
             }
 
+            // Edge metadata: e1@{ curve: "linear" }
+            if let Some((edge_id, curve)) = parse_edge_metadata_line(&line) {
+                for edge in graph.edges.iter_mut().rev() {
+                    if edge.id.as_deref() == Some(&edge_id) {
+                        if let Some(c) = curve {
+                            edge.curve = Some(c);
+                        }
+                        break;
+                    }
+                }
+                continue;
+            }
+
             if let Some(chain_lines) = split_edge_chain(&line) {
                 let mut added = false;
                 for edge_line in chain_lines {
@@ -396,6 +413,7 @@ fn parse_flowchart(input: &str) -> Result<ParseOutput> {
             if let Some((node_id, node_label, node_shape, node_classes, node_md)) = parse_node_only(&line) {
                 graph.ensure_node_md(&node_id, node_label, node_shape, node_md);
                 apply_node_classes(&mut graph, &node_id, &node_classes);
+                apply_at_node_metadata(&mut graph, &line);
                 add_node_to_subgraphs(&mut graph, &subgraph_stack, &node_id);
             }
         }
@@ -404,8 +422,90 @@ fn parse_flowchart(input: &str) -> Result<ParseOutput> {
     Ok(ParseOutput { graph, init_config })
 }
 
+/// Parse a standalone edge metadata line like `e1@{ curve: "linear" }`.
+fn parse_edge_metadata_line(line: &str) -> Option<(String, Option<crate::ir::CurveType>)> {
+    let trimmed = line.trim();
+    let at_pos = trimmed.find("@{")?;
+    if !trimmed.ends_with('}') {
+        return None;
+    }
+    let edge_id = trimmed[..at_pos].trim().to_string();
+    if edge_id.is_empty() {
+        return None;
+    }
+    let block = &trimmed[at_pos + 2..trimmed.len() - 1].trim();
+    let mut curve: Option<crate::ir::CurveType> = None;
+    for pair in block.split(',') {
+        let pair = pair.trim();
+        if let Some(colon) = pair.find(':') {
+            let key = pair[..colon].trim().trim_matches('"').trim_matches('\'');
+            let val = pair[colon + 1..]
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'');
+            if key == "curve" {
+                curve = crate::ir::CurveType::from_name(val);
+            }
+            // "animate" is skipped (not applicable to static output)
+        }
+    }
+    Some((edge_id, curve))
+}
+
+/// Apply @{...} metadata (img, icon, etc.) to a node in the graph.
+fn apply_at_node_metadata(graph: &mut Graph, token: &str) {
+    let (base, _classes) = split_inline_classes(token);
+    let trimmed = base.trim();
+    if let Some(meta) = parse_at_shape_syntax(trimmed) {
+        if let Some(node) = graph.nodes.get_mut(&meta.id) {
+            if meta.img.is_some() {
+                node.img = meta.img;
+            }
+            if meta.img_w.is_some() {
+                node.img_w = meta.img_w;
+            }
+            if meta.img_h.is_some() {
+                node.img_h = meta.img_h;
+            }
+            if meta.img_pos.is_some() {
+                node.img_pos = meta.img_pos;
+            }
+            if meta.constraint.is_some() {
+                node.constraint = meta.constraint;
+            }
+            if meta.icon.is_some() {
+                node.icon = meta.icon;
+            }
+        }
+    }
+}
+
+/// Extract edge ID prefix from an edge line (e.g., "A e1@--> B" → edge_id="e1").
+fn extract_edge_id_prefix(line: &str) -> (Option<String>, String) {
+    // Look for pattern: `<id>@` immediately before an arrow token
+    // The edge ID appears as a word followed by @ before arrows like -->, -.->
+    static EDGE_ID_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"\b(\w+)@(--|-\.|-=|==|~~)").unwrap()
+    });
+    if let Some(caps) = EDGE_ID_RE.captures(line) {
+        let edge_id = caps.get(1).unwrap().as_str().to_string();
+        let full_match = caps.get(0).unwrap();
+        // Remove the edge ID prefix, keeping the arrow
+        let cleaned = format!(
+            "{}{}{}",
+            &line[..full_match.start()],
+            caps.get(2).unwrap().as_str(),
+            &line[full_match.end()..]
+        );
+        (Some(edge_id), cleaned)
+    } else {
+        (None, line.to_string())
+    }
+}
+
 fn add_flowchart_edge(line: &str, graph: &mut Graph, subgraph_stack: &[usize]) -> bool {
-    let Some((left, label_raw, right, edge_meta)) = parse_edge_line(line) else {
+    let (edge_id, cleaned_line) = extract_edge_id_prefix(line);
+    let Some((left, label_raw, right, edge_meta)) = parse_edge_line(&cleaned_line) else {
         return false;
     };
     let (label, edge_md) = match label_raw {
@@ -432,6 +532,7 @@ fn add_flowchart_edge(line: &str, graph: &mut Graph, subgraph_stack: &[usize]) -
         let (left_id, left_label, left_shape, left_classes, left_md) = parse_node_token(source);
         graph.ensure_node_md(&left_id, left_label, left_shape, left_md);
         apply_node_classes(graph, &left_id, &left_classes);
+        apply_at_node_metadata(graph, source);
         add_node_to_subgraphs(graph, subgraph_stack, &left_id);
         source_ids.push(left_id);
     }
@@ -441,6 +542,7 @@ fn add_flowchart_edge(line: &str, graph: &mut Graph, subgraph_stack: &[usize]) -
         let (right_id, right_label, right_shape, right_classes, right_md) = parse_node_token(target);
         graph.ensure_node_md(&right_id, right_label, right_shape, right_md);
         apply_node_classes(graph, &right_id, &right_classes);
+        apply_at_node_metadata(graph, target);
         add_node_to_subgraphs(graph, subgraph_stack, &right_id);
         target_ids.push(right_id);
     }
@@ -462,6 +564,8 @@ fn add_flowchart_edge(line: &str, graph: &mut Graph, subgraph_stack: &[usize]) -
                 end_decoration: edge_meta.end_decoration,
                 style: edge_meta.style,
                 markdown_label: edge_md,
+                id: edge_id.clone(),
+                curve: None,
             });
         }
     }
@@ -1319,6 +1423,8 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
                 end_decoration: meta.end_decoration,
                 style: meta.style,
                 markdown_label: false,
+                id: None,
+                curve: None,
             });
             continue;
         }
@@ -1652,6 +1758,8 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
                 end_decoration: right_decoration,
                 style,
                 markdown_label: false,
+                id: None,
+                curve: None,
             });
             continue;
         }
@@ -1755,6 +1863,232 @@ fn parse_pie_slice_line(line: &str) -> Option<(String, f32)> {
     }
     let value = value_str.parse::<f32>().ok()?;
     Some((label, value))
+}
+
+fn parse_venn_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::Venn;
+    let (lines, init_config) = preprocess_input(input)?;
+
+    let mut last_target: Option<VennTarget> = None;
+
+    enum VennTarget {
+        Set(usize),
+        Union(usize),
+    }
+
+    for raw_line in lines {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+
+        // Skip header line
+        if lower.starts_with("venn") {
+            continue;
+        }
+
+        // Title
+        if lower.starts_with("title") {
+            let title = line.get(5..).unwrap_or("").trim();
+            if !title.is_empty() {
+                graph.venn.title = Some(title.to_string());
+            }
+            continue;
+        }
+
+        // accTitle / accDescr
+        if lower.starts_with("acctitle") {
+            if let Some(rest) = line.get(8..) {
+                let rest = rest.trim().trim_start_matches(':').trim();
+                if !rest.is_empty() {
+                    graph.acc_title = Some(rest.to_string());
+                }
+            }
+            continue;
+        }
+        if lower.starts_with("accdescr") {
+            if let Some(rest) = line.get(8..) {
+                let rest = rest.trim().trim_start_matches(':').trim();
+                if !rest.is_empty() {
+                    graph.acc_descr = Some(rest.to_string());
+                }
+            }
+            continue;
+        }
+
+        // Style line: style SetID fill:#fff, stroke:#333, ...
+        if lower.starts_with("style ") {
+            let rest = line.get(6..).unwrap_or("").trim();
+            if let Some((target_id, props_str)) = rest.split_once(' ') {
+                let target_id = target_id.trim();
+                let style = parse_venn_style(props_str);
+
+                // Apply style to matching set or union
+                for set in &mut graph.venn.sets {
+                    if set.id == target_id {
+                        set.style = Some(style.clone());
+                    }
+                }
+                // For unions, match by joined ID (e.g., "A∩B" or check set membership)
+                for union in &mut graph.venn.unions {
+                    let union_id = union.set_ids.join(",");
+                    if union_id == target_id || union.set_ids.contains(&target_id.to_string()) {
+                        union.style = Some(style.clone());
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Set line: set A["Label"] :100
+        if lower.starts_with("set ") {
+            let rest = line.get(4..).unwrap_or("").trim();
+            let (id, label, size) = parse_venn_set_line(rest);
+            let idx = graph.venn.sets.len();
+            graph.venn.sets.push(crate::ir::VennSet {
+                id,
+                label,
+                size,
+                style: None,
+            });
+            last_target = Some(VennTarget::Set(idx));
+            continue;
+        }
+
+        // Union line: union A, B
+        if lower.starts_with("union ") {
+            let rest = line.get(6..).unwrap_or("").trim();
+            let (set_ids, size) = parse_venn_union_line(rest);
+            let idx = graph.venn.unions.len();
+            graph.venn.unions.push(crate::ir::VennUnion {
+                set_ids,
+                label: None,
+                style: None,
+            });
+            // Apply size to the union if specified
+            if size > 0.0 {
+                // Store size as metadata on the union - we'll use it in layout
+                // For now unions don't have a size field, we handle it in layout
+            }
+            last_target = Some(VennTarget::Union(idx));
+            continue;
+        }
+
+        // Text line: text "Some text" or text ["Some text"]
+        if lower.starts_with("text ") {
+            let rest = line.get(5..).unwrap_or("").trim();
+            let text = parse_venn_text_value(rest);
+            if !text.is_empty() {
+                match &last_target {
+                    Some(VennTarget::Set(idx)) => {
+                        if let Some(set) = graph.venn.sets.get_mut(*idx) {
+                            set.label = text;
+                        }
+                    }
+                    Some(VennTarget::Union(idx)) => {
+                        if let Some(union) = graph.venn.unions.get_mut(*idx) {
+                            union.label = Some(text);
+                        }
+                    }
+                    None => {}
+                }
+            }
+            continue;
+        }
+    }
+
+    Ok(ParseOutput { graph, init_config })
+}
+
+fn parse_venn_set_line(input: &str) -> (String, String, f32) {
+    let mut rest = input;
+
+    // Extract size suffix :N
+    let mut size = 100.0;
+    if let Some(colon_pos) = rest.rfind(':') {
+        let after_colon = rest[colon_pos + 1..].trim();
+        if let Ok(val) = after_colon.parse::<f32>() {
+            size = val.max(1.0);
+            rest = rest[..colon_pos].trim();
+        }
+    }
+
+    // Extract ID and optional ["label"]
+    if let Some(bracket_start) = rest.find('[') {
+        let id = rest[..bracket_start].trim().to_string();
+        let label_part = &rest[bracket_start + 1..];
+        let label = if label_part.ends_with(']') {
+            strip_quotes(label_part[..label_part.len() - 1].trim())
+        } else {
+            strip_quotes(label_part.trim())
+        };
+        (id.clone(), if label.is_empty() { id } else { label }, size)
+    } else {
+        let id = rest.to_string();
+        (id.clone(), id, size)
+    }
+}
+
+fn parse_venn_union_line(input: &str) -> (Vec<String>, f32) {
+    let mut rest = input;
+
+    // Extract size suffix :N
+    let mut size = 0.0;
+    if let Some(colon_pos) = rest.rfind(':') {
+        let after_colon = rest[colon_pos + 1..].trim();
+        if let Ok(val) = after_colon.parse::<f32>() {
+            size = val;
+            rest = rest[..colon_pos].trim();
+        }
+    }
+
+    let ids: Vec<String> = rest
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    (ids, size)
+}
+
+fn parse_venn_text_value(input: &str) -> String {
+    let s = input.trim();
+    // Handle ["text"] or "text" or bare text
+    if s.starts_with('[') && s.ends_with(']') {
+        strip_quotes(s[1..s.len() - 1].trim())
+    } else {
+        strip_quotes(s)
+    }
+}
+
+fn parse_venn_style(input: &str) -> crate::ir::VennStyle {
+    let mut style = crate::ir::VennStyle::default();
+    for part in input.split(',') {
+        let part = part.trim();
+        if let Some((key, value)) = part.split_once(':') {
+            let key = key.trim();
+            let value = value.trim();
+            match key {
+                "fill" => style.fill = Some(value.to_string()),
+                "stroke" => style.stroke = Some(value.to_string()),
+                "stroke-width" => {
+                    if let Ok(w) = value.trim_end_matches("px").parse::<f32>() {
+                        style.stroke_width = Some(w);
+                    }
+                }
+                "fill-opacity" => {
+                    if let Ok(o) = value.parse::<f32>() {
+                        style.fill_opacity = Some(o);
+                    }
+                }
+                "color" => style.color = Some(value.to_string()),
+                _ => {}
+            }
+        }
+    }
+    style
 }
 
 fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
@@ -1879,6 +2213,8 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
                 end_decoration: None,
                 style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
             });
         } else {
             stack.clear();
@@ -2043,6 +2379,8 @@ fn parse_journey_diagram(input: &str) -> Result<ParseOutput> {
                     end_decoration: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
                 });
             }
             last_task = Some(node_id);
@@ -2273,6 +2611,8 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                     end_decoration: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
                 });
             } else if let Some(prev) = last_task.take() {
                 graph.edges.push(crate::ir::Edge {
@@ -2290,6 +2630,8 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                     end_decoration: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
                 });
             }
 
@@ -2488,6 +2830,8 @@ fn parse_requirement_diagram(input: &str) -> Result<ParseOutput> {
                 end_decoration: None,
                 style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
             });
             continue;
         }
@@ -3465,6 +3809,8 @@ fn parse_sankey_diagram(input: &str) -> Result<ParseOutput> {
             end_decoration: None,
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
         });
     }
 
@@ -3600,6 +3946,8 @@ fn parse_zenuml_diagram(input: &str) -> Result<ParseOutput> {
                 end_decoration: None,
                 style,
                 markdown_label: false,
+                id: None,
+                curve: None,
             });
         }
     }
@@ -3725,6 +4073,8 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
                         end_decoration: edge_meta.end_decoration,
                         style: edge_meta.style,
                 markdown_label: false,
+                id: None,
+                curve: None,
                     });
                 }
             }
@@ -3829,6 +4179,8 @@ fn parse_packet_diagram(input: &str) -> Result<ParseOutput> {
                     end_decoration: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
                 });
             }
             last_node = Some(node_id);
@@ -3962,6 +4314,8 @@ fn parse_architecture_diagram(input: &str) -> Result<ParseOutput> {
                 end_decoration: None,
                 style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
             });
         }
     }
@@ -4174,6 +4528,8 @@ fn parse_treemap_diagram(input: &str) -> Result<ParseOutput> {
                     end_decoration: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
+                id: None,
+                curve: None,
                 });
             }
         } else {
@@ -4625,6 +4981,8 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     end_decoration: meta.end_decoration,
                     style: meta.style,
                 markdown_label: false,
+                id: None,
+                curve: None,
                 });
                 continue;
             }
@@ -4955,6 +5313,8 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 end_decoration: None,
                 style,
                 markdown_label: false,
+                id: None,
+                curve: None,
             });
             if let Some(kind) = activation
                 && let Some(last) = graph.edges.len().checked_sub(1)
@@ -5786,8 +6146,8 @@ fn parse_node_token(
     let trimmed = base.trim();
 
     // Try the v11.3+ `@{ shape: "...", label: "..." }` declarative syntax.
-    if let Some((id, label, shape)) = parse_at_shape_syntax(trimmed) {
-        return (id, Some(label), Some(shape), classes, false);
+    if let Some(meta) = parse_at_shape_syntax(trimmed) {
+        return (meta.id, Some(meta.label), Some(meta.shape), classes, false);
     }
 
     if let Some((id, label, shape, md)) = split_asymmetric_label(trimmed) {
@@ -5803,9 +6163,20 @@ fn parse_node_token(
 
 /// Parse the v11.3+ `@{ shape: "name", label: "text" }` syntax.
 /// The format is `NodeId@{ shape: name, label: "text" }`.
-fn parse_at_shape_syntax(
-    token: &str,
-) -> Option<(String, String, crate::ir::NodeShape)> {
+/// Metadata parsed from `@{ ... }` node syntax.
+struct AtNodeMeta {
+    id: String,
+    label: String,
+    shape: crate::ir::NodeShape,
+    img: Option<String>,
+    img_w: Option<f32>,
+    img_h: Option<f32>,
+    img_pos: Option<String>,
+    constraint: Option<String>,
+    icon: Option<String>,
+}
+
+fn parse_at_shape_syntax(token: &str) -> Option<AtNodeMeta> {
     let at_pos = token.find("@{")?;
     if !token.trim_end().ends_with('}') {
         return None;
@@ -5818,6 +6189,12 @@ fn parse_at_shape_syntax(
     // Parse key:value pairs from the block (shape, label).
     let mut shape_name: Option<String> = None;
     let mut label: Option<String> = None;
+    let mut img: Option<String> = None;
+    let mut img_w: Option<f32> = None;
+    let mut img_h: Option<f32> = None;
+    let mut img_pos: Option<String> = None;
+    let mut constraint: Option<String> = None;
+    let mut icon: Option<String> = None;
     for pair in block.split(',') {
         let pair = pair.trim();
         if let Some(colon) = pair.find(':') {
@@ -5829,13 +6206,29 @@ fn parse_at_shape_syntax(
             match key {
                 "shape" => shape_name = Some(val.to_string()),
                 "label" => label = Some(val.to_string()),
+                "img" => img = Some(val.to_string()),
+                "w" => img_w = val.parse().ok(),
+                "h" => img_h = val.parse().ok(),
+                "pos" => img_pos = Some(val.to_string()),
+                "constraint" => constraint = Some(val.to_string()),
+                "icon" => icon = Some(val.to_string()),
                 _ => {}
             }
         }
     }
     let shape = resolve_shape_name(&shape_name?)?;
     let label = label.unwrap_or_else(|| id.clone());
-    Some((id, label, shape))
+    Some(AtNodeMeta {
+        id,
+        label,
+        shape,
+        img,
+        img_w,
+        img_h,
+        img_pos,
+        constraint,
+        icon,
+    })
 }
 
 fn resolve_shape_name(name: &str) -> Option<crate::ir::NodeShape> {
@@ -5873,6 +6266,21 @@ fn resolve_shape_name(name: &str) -> Option<crate::ir::NodeShape> {
         "lin-cyl" | "lined-cylinder" => Some(NodeShape::LinedCylinder),
         "curv-trap" | "curved-trapezoid" => Some(NodeShape::CurvedTrapezoid),
         "text" => Some(NodeShape::Text),
+        "cloud" => Some(NodeShape::Cloud),
+        "tri" | "triangle" | "extract" => Some(NodeShape::Triangle),
+        "flip-tri" | "flipped-triangle" | "manual-file" => Some(NodeShape::FlippedTriangle),
+        "sm-circ" | "small-circle" | "start" => Some(NodeShape::SmallCircle),
+        "f-circ" | "filled-circle" | "junction" => Some(NodeShape::FilledCircle),
+        "delay" | "half-rounded-rect" => Some(NodeShape::HalfRoundedRect),
+        "sl-rect" | "sloped-rect" | "manual-input" => Some(NodeShape::SlopedRect),
+        "notch-pent" | "notched-pentagon" | "loop-limit" => Some(NodeShape::NotchedPentagon),
+        "st-rect" | "stacked-rect" | "procs" => Some(NodeShape::StackedRect),
+        "bow-rect" | "bow-tie-rect" | "stored-data" => Some(NodeShape::BowTieRect),
+        "fr-circ" | "framed-circle" | "stop" => Some(NodeShape::FramedCircle),
+        "cross-circ" | "crossed-circle" | "summary" => Some(NodeShape::CrossedCircle),
+        "h-cyl" | "horizontal-cylinder" | "das" => Some(NodeShape::HorizontalCylinder),
+        "div-rect" | "divided-rect" | "div-proc" => Some(NodeShape::DividedRect),
+        "lin-rect" | "lined-rect" | "lin-proc" => Some(NodeShape::LinedRect),
         _ => None,
     }
 }

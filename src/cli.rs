@@ -511,6 +511,13 @@ sequenceDiagram
 }
 
 fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
+    if let Some(look_str) = init.get("look").and_then(|v| v.as_str()) {
+        match look_str {
+            "handDrawn" => config.layout.look = crate::ir::DiagramLook::HandDrawn,
+            "classic" => config.layout.look = crate::ir::DiagramLook::Classic,
+            _ => {}
+        }
+    }
     if let Some(theme_name) = init.get("theme").and_then(|v| v.as_str()) {
         if let Some(theme) = crate::theme::Theme::by_name(theme_name) {
             config.theme = theme;
@@ -525,6 +532,8 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
             .get("primaryBorderColor")
             .and_then(|v| v.as_str())
             .map(|v| v.to_string());
+        let has_secondary = theme_vars.get("secondaryColor").is_some();
+        let has_tertiary = theme_vars.get("tertiaryColor").is_some();
         if let Some(val) = theme_vars.get("primaryColor").and_then(|v| v.as_str()) {
             config.theme.primary_color = val.to_string();
         }
@@ -693,6 +702,16 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
         if let Some(val) = theme_vars.get("fontSize").and_then(|v| v.as_f64()) {
             config.theme.font_size = val as f32;
         }
+        // If theme is "base" and secondary/tertiary weren't explicitly set,
+        // derive them from primaryColor following official Mermaid rules.
+        let is_base = init
+            .get("theme")
+            .and_then(|v| v.as_str())
+            .map(|s| s == "base")
+            .unwrap_or(false);
+        if is_base && !has_secondary && !has_tertiary {
+            config.theme.derive_base_colors();
+        }
     }
     if let Some(ratio) = init
         .get("preferredAspectRatio")
@@ -721,6 +740,11 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
         }
         if let Some(val) = flowchart.get("portSideBias").and_then(|v| v.as_f64()) {
             config.layout.flowchart.port_side_bias = val as f32;
+        }
+        if let Some(val) = flowchart.get("curve").and_then(|v| v.as_str()) {
+            if let Some(ct) = crate::ir::CurveType::from_name(val) {
+                config.layout.flowchart.curve = ct;
+            }
         }
     }
     if let Some(gitgraph) = init.get("gitGraph") {
