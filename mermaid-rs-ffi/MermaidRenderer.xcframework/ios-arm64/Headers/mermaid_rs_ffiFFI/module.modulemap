@@ -1,0 +1,4 @@
+module mermaid_rs_ffiFFI {
+    header "mermaid_rs_ffiFFI.h"
+    export *
+}

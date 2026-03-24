@@ -1,0 +1,22 @@
+[package]
+name = "mermaid-rs-ffi"
+version = "0.1.0"
+edition = "2021"
+description = "UniFFI bindings for mermaid-rs-renderer — Swift access to Mermaid diagram rendering"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+name = "mermaid_rs_ffi"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/uniffi-bindgen.rs"
+
+[dependencies]
+mermaid-rs-renderer = { path = "..", default-features = false, features = ["png"] }
+uniffi = { version = "0.28", features = ["cli"] }
+thiserror = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"

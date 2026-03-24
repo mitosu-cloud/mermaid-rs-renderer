@@ -3196,7 +3196,7 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
     }
 
     let mut labels: Vec<PieLabel> = Vec::new();
-    let suppress_outside_labels = pie.legend.len() >= 4;
+    let suppress_outside_labels = !pie.legend.is_empty();
     for slice in &pie.slices {
         let span = (slice.end_angle - slice.start_angle).abs();
         if span <= 0.0001 || total <= 0.0 {
