@@ -146,7 +146,7 @@ impl Theme {
         let tertiary_color = "#FFFFFF".to_string();
         let pie_colors = default_pie_colors(&primary_color, &secondary_color, &tertiary_color);
         Self {
-            font_family: "Inter, ui-sans-serif, system-ui, -apple-system, \"Segoe UI\", sans-serif"
+            font_family: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
                 .to_string(),
             font_size: 14.0,
             primary_color,

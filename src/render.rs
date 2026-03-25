@@ -3354,7 +3354,7 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
             label_x,
             label.y,
             anchor,
-            theme.font_family,
+            escape_xml(&theme.font_family),
             label.font_size,
             escape_xml(&theme.pie_section_text_color),
             label.text
@@ -3572,7 +3572,7 @@ fn render_quadrant(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"#131300\"><tspan>{}</tspan></text>",
             axis_x,
             axis_y,
-            theme.font_family,
+            escape_xml(&theme.font_family),
             theme.font_size,
             y_bottom.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
         ));
@@ -3584,7 +3584,7 @@ fn render_quadrant(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"#131300\"><tspan>{}</tspan></text>",
             axis_x,
             axis_y,
-            theme.font_family,
+            escape_xml(&theme.font_family),
             theme.font_size,
             y_top.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
         ));
@@ -4406,7 +4406,7 @@ fn render_gitgraph(gitgraph: &GitGraphLayout, theme: &Theme, config: &LayoutConf
                 "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                 label.text_x,
                 label.text_y,
-                theme.font_family,
+                escape_xml(&theme.font_family),
                 gg.commit_label_font_size,
                 escape_xml(&theme.git_commit_label_color),
                 escape_xml(&label.text)
@@ -4452,7 +4452,7 @@ fn render_gitgraph(gitgraph: &GitGraphLayout, theme: &Theme, config: &LayoutConf
                     "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                     tag.text_x,
                     tag.text_y,
-                    theme.font_family,
+                    escape_xml(&theme.font_family),
                     gg.tag_label_font_size,
                     escape_xml(&theme.git_tag_label_color),
                     escape_xml(&tag.text)
@@ -4579,7 +4579,7 @@ fn text_block_svg_with_font_size(
 
     text.push_str(&format!(
         "<text x=\"{x:.2}\" y=\"{start_y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">",
-        theme.font_family,
+        escape_xml(&theme.font_family),
         font_size,
         fill
     ));
@@ -4634,7 +4634,7 @@ fn text_block_svg_with_font_size_weight(
 
     text.push_str(&format!(
         "<text x=\"{x:.2}\" y=\"{start_y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\"{weight_attr}>",
-        theme.font_family,
+        escape_xml(&theme.font_family),
         font_size,
         fill
     ));
@@ -4672,7 +4672,7 @@ fn text_line_svg_with_font_size(
 ) -> String {
     format!(
         "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
-        theme.font_family,
+        escape_xml(&theme.font_family),
         font_size,
         fill,
         escape_xml(text)
@@ -4682,7 +4682,7 @@ fn text_line_svg_with_font_size(
 fn text_line_svg(x: f32, y: f32, text: &str, theme: &Theme, fill: &str, anchor: &str) -> String {
     format!(
         "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
-        theme.font_family,
+        escape_xml(&theme.font_family),
         theme.font_size,
         fill,
         escape_xml(text)
@@ -5467,7 +5467,7 @@ fn render_er_node_label(
                     "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" fill-opacity=\"0.75\">{}</text>",
                     left_x,
                     y,
-                    theme.font_family,
+                    escape_xml(&theme.font_family),
                     theme.font_size,
                     fill,
                     escape_xml(&ty)
@@ -5476,7 +5476,7 @@ fn render_er_node_label(
                     "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                     name_x,
                     y,
-                    theme.font_family,
+                    escape_xml(&theme.font_family),
                     theme.font_size,
                     fill,
                     escape_xml(&name)
@@ -5516,7 +5516,7 @@ fn text_lines_svg(
     let mut text = String::new();
     text.push_str(&format!(
         "<text x=\"{x:.2}\" y=\"{first_y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">",
-        theme.font_family,
+        escape_xml(&theme.font_family),
         theme.font_size,
         fill
     ));
@@ -5677,7 +5677,7 @@ fn er_badge_svg(
         "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.2}\" font-weight=\"600\" fill=\"{}\">{}</text>",
         x + width / 2.0,
         y + font_size * 0.26,
-        font_family,
+        escape_xml(font_family),
         font_size * 0.72,
         text_color,
         escape_xml(text)
@@ -7210,6 +7210,19 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
                 x + w - inset, x + w - inset, y + h,
             );
             format!("{rect}{line1}{line2}")
+        }
+        crate::ir::NodeShape::WavyRect => {
+            // Paper tape: rectangle with wavy top and bottom edges.
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let wave = h * 0.10;
+            // Path: start at top-left with wavy top edge, straight sides, wavy bottom edge
+            format!(
+                "<path d=\"M {x:.2} {y_mid:.2} q {q1x:.2} {q1y_up:.2} {qmx:.2} 0 q {q2x:.2} {q2y_dn:.2} {qmx:.2} 0 v {body:.2} q {q1x:.2} {q1y_up:.2} {qmx:.2} 0 q {q2x:.2} {q2y_dn:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                y_mid = y + wave,
+                q1x = w * 0.25, q1y_up = -wave * 2.0, qmx = w * 0.5,
+                q2x = w * 0.25, q2y_dn = wave * 2.0,
+                body = h - wave * 2.0,
+            )
         }
         _ => format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"6\" ry=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",

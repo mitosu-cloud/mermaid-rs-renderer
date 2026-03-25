@@ -559,6 +559,7 @@ pub enum NodeShape {
     HorizontalCylinder, // h-cyl / das — cylinder rotated 90 degrees
     DividedRect,      // div-rect / div-proc — rectangle with horizontal divider
     LinedRect,        // lin-rect / lin-proc — rectangle with vertical lines
+    WavyRect,         // wave-rect / paper-tape — rectangle with wavy top and bottom
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

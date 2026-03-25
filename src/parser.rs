@@ -435,6 +435,7 @@ fn parse_edge_metadata_line(line: &str) -> Option<(String, Option<crate::ir::Cur
     }
     let block = &trimmed[at_pos + 2..trimmed.len() - 1].trim();
     let mut curve: Option<crate::ir::CurveType> = None;
+    let mut has_shape = false;
     for pair in block.split(',') {
         let pair = pair.trim();
         if let Some(colon) = pair.find(':') {
@@ -446,8 +447,14 @@ fn parse_edge_metadata_line(line: &str) -> Option<(String, Option<crate::ir::Cur
             if key == "curve" {
                 curve = crate::ir::CurveType::from_name(val);
             }
+            if key == "shape" {
+                has_shape = true;
+            }
             // "animate" is skipped (not applicable to static output)
         }
+    }
+    if has_shape {
+        return None; // This is a node @{} declaration, not edge metadata
     }
     Some((edge_id, curve))
 }
@@ -6281,6 +6288,7 @@ fn resolve_shape_name(name: &str) -> Option<crate::ir::NodeShape> {
         "h-cyl" | "horizontal-cylinder" | "das" => Some(NodeShape::HorizontalCylinder),
         "div-rect" | "divided-rect" | "div-proc" => Some(NodeShape::DividedRect),
         "lin-rect" | "lined-rect" | "lin-proc" => Some(NodeShape::LinedRect),
+        "wave-rect" | "wavy-rect" | "paper-tape" => Some(NodeShape::WavyRect),
         _ => None,
     }
 }
