@@ -1953,14 +1953,14 @@ fn edge_label_background_visible(
         EdgeLabelKind::Center => {
             let gap_limit = match diagram_kind {
                 crate::ir::DiagramKind::Flowchart => 1.2,
-                crate::ir::DiagramKind::Sequence => 1.0,
+                crate::ir::DiagramKind::Sequence => (rect.height * 0.16).clamp(1.2, 2.4),
                 crate::ir::DiagramKind::Requirement => 1.0,
                 _ => 0.9,
             };
             gap <= gap_limit
         }
         EdgeLabelKind::Start | EdgeLabelKind::End => match diagram_kind {
-            crate::ir::DiagramKind::Sequence => gap <= 0.4,
+            crate::ir::DiagramKind::Sequence => gap <= (rect.height * 0.12).clamp(0.6, 1.4),
             crate::ir::DiagramKind::Flowchart | crate::ir::DiagramKind::Requirement => gap <= 0.35,
             _ => false,
         },
@@ -2341,7 +2341,7 @@ fn render_error(layout: &ErrorLayout, _theme: &Theme, _config: &LayoutConfig) ->
     svg
 }
 
-fn normalize_font_family_css(font_family: &str) -> String {
+fn normalize_font_family(font_family: &str) -> String {
     font_family
         .split(',')
         .map(|part| part.trim().trim_matches('\'').trim_matches('"'))
@@ -2351,7 +2351,7 @@ fn normalize_font_family_css(font_family: &str) -> String {
 }
 
 fn error_style_block(theme: &Theme) -> String {
-    let font_family = normalize_font_family_css(&theme.font_family);
+    let font_family = normalize_font_family(&theme.font_family);
     format!(
         "<style>svg{{font-family:{font_family};font-size:{font_size};fill:{fill};}}.error-icon{{fill:#552222;}}.error-text{{fill:#552222;stroke:#552222;}}</style>",
         font_family = font_family,
@@ -2363,7 +2363,7 @@ fn error_style_block(theme: &Theme) -> String {
 fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> String {
     let mut svg = String::new();
     let req = &config.requirement;
-    let font_family = escape_xml(&theme.font_family);
+    let font_family = normalize_font_family(&theme.font_family);
     let measure_font_size = theme.font_size.max(16.0);
     let line_height = measure_font_size * config.label_line_height;
 
@@ -2694,7 +2694,7 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
             lx,
             ly,
             anchor,
-            escape_xml(&theme.font_family),
+            normalize_font_family(&theme.font_family),
             AXIS_COLOR,
             escape_xml(axis)
         ));
@@ -2741,7 +2741,7 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
             "<text x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"start\" dominant-baseline=\"hanging\" font-family=\"{}\" font-size=\"12\" fill=\"{}\">{}</text>",
             legend_x + LEGEND_BOX_SIZE + LEGEND_GAP,
             legend_y,
-            escape_xml(&theme.font_family),
+            normalize_font_family(&theme.font_family),
             AXIS_COLOR,
             escape_xml(name)
         ));
@@ -2750,7 +2750,7 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
     svg.push_str(&format!(
         "<text x=\"0\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"hanging\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\"></text>",
         -(MAX_RADIUS + 50.0),
-        escape_xml(&theme.font_family),
+        normalize_font_family(&theme.font_family),
         theme.font_size,
         AXIS_COLOR
     ));
@@ -2964,7 +2964,7 @@ fn render_architecture(
             "<text x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
             node.width / 2.0,
             label_y,
-            escape_xml(&theme.font_family),
+            normalize_font_family(&theme.font_family),
             theme.font_size,
             escape_xml(&theme.primary_text_color),
             escape_xml(&label_text)
@@ -3018,7 +3018,7 @@ fn render_architecture(
             "<text x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
             label_x,
             label_y,
-            escape_xml(&theme.font_family),
+            normalize_font_family(&theme.font_family),
             theme.font_size,
             escape_xml(&theme.primary_text_color),
             escape_xml(first_line(&subgraph.label))
@@ -3354,7 +3354,7 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
             label_x,
             label.y,
             anchor,
-            escape_xml(&theme.font_family),
+            normalize_font_family(&theme.font_family),
             label.font_size,
             escape_xml(&theme.pie_section_text_color),
             label.text
@@ -3572,7 +3572,7 @@ fn render_quadrant(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"#131300\"><tspan>{}</tspan></text>",
             axis_x,
             axis_y,
-            escape_xml(&theme.font_family),
+            normalize_font_family(&theme.font_family),
             theme.font_size,
             y_bottom.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
         ));
@@ -3584,7 +3584,7 @@ fn render_quadrant(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"#131300\"><tspan>{}</tspan></text>",
             axis_x,
             axis_y,
-            escape_xml(&theme.font_family),
+            normalize_font_family(&theme.font_family),
             theme.font_size,
             y_top.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
         ));
@@ -3805,7 +3805,7 @@ fn render_gantt(
                         "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{:.2}\" fill=\"{}\">{}</text>",
                         text_x,
                         text_y,
-                        escape_xml(&theme.font_family),
+                        normalize_font_family(&theme.font_family),
                         font_size,
                         escape_xml(&gantt_label_color(&task.color)),
                         escape_xml(label_text)
@@ -3886,7 +3886,7 @@ fn render_xychart(
         svg.push_str(&format!(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
             layout.plot_x - 5.0, y + theme.font_size / 3.0,
-            escape_xml(&theme.font_family), theme.font_size * 0.8,
+            normalize_font_family(&theme.font_family), theme.font_size * 0.8,
             theme.primary_text_color, escape_xml(label)
         ));
     }
@@ -3896,7 +3896,7 @@ fn render_xychart(
         svg.push_str(&format!(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
             x, layout.plot_y + layout.plot_height + 20.0,
-            escape_xml(&theme.font_family), theme.font_size * 0.9,
+            normalize_font_family(&theme.font_family), theme.font_size * 0.9,
             theme.primary_text_color, escape_xml(label)
         ));
     }
@@ -3906,7 +3906,7 @@ fn render_xychart(
         svg.push_str(&format!(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\" transform=\"rotate(-90, {:.2}, {:.2})\">{}</text>",
             layout.y_axis_label_x, layout.plot_y + layout.plot_height / 2.0,
-            escape_xml(&theme.font_family), theme.font_size,
+            normalize_font_family(&theme.font_family), theme.font_size,
             theme.primary_text_color,
             layout.y_axis_label_x, layout.plot_y + layout.plot_height / 2.0,
             escape_xml(&y_label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
@@ -3918,7 +3918,7 @@ fn render_xychart(
         svg.push_str(&format!(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
             layout.plot_x + layout.plot_width / 2.0, layout.x_axis_label_y,
-            escape_xml(&theme.font_family), theme.font_size,
+            normalize_font_family(&theme.font_family), theme.font_size,
             theme.primary_text_color,
             escape_xml(&x_label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
         ));
@@ -4028,7 +4028,7 @@ fn render_timeline(
         svg.push_str(&format!(
             "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
             center_x, event.y + 20.0,
-            escape_xml(&theme.font_family), theme.font_size,
+            normalize_font_family(&theme.font_family), theme.font_size,
             theme.primary_text_color, escape_xml(&event.time.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
         ));
 
@@ -4038,7 +4038,7 @@ fn render_timeline(
             svg.push_str(&format!(
                 "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
                 center_x, event.y + y_offset,
-                escape_xml(&theme.font_family), theme.font_size * 0.9,
+                normalize_font_family(&theme.font_family), theme.font_size * 0.9,
                 theme.primary_text_color, escape_xml(&evt.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
             ));
             y_offset += theme.font_size * 1.2;
@@ -4406,7 +4406,7 @@ fn render_gitgraph(gitgraph: &GitGraphLayout, theme: &Theme, config: &LayoutConf
                 "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                 label.text_x,
                 label.text_y,
-                escape_xml(&theme.font_family),
+                normalize_font_family(&theme.font_family),
                 gg.commit_label_font_size,
                 escape_xml(&theme.git_commit_label_color),
                 escape_xml(&label.text)
@@ -4452,7 +4452,7 @@ fn render_gitgraph(gitgraph: &GitGraphLayout, theme: &Theme, config: &LayoutConf
                     "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                     tag.text_x,
                     tag.text_y,
-                    escape_xml(&theme.font_family),
+                    normalize_font_family(&theme.font_family),
                     gg.tag_label_font_size,
                     escape_xml(&theme.git_tag_label_color),
                     escape_xml(&tag.text)
@@ -4496,7 +4496,7 @@ fn render_gitgraph_multiline_text(
     let mut out = String::new();
     out.push_str(&format!(
         "<text x=\"{x:.2}\" y=\"{start_y:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">",
-        escape_xml(font_family),
+        normalize_font_family(font_family),
         font_size,
         escape_xml(color)
     ));
@@ -4579,7 +4579,7 @@ fn text_block_svg_with_font_size(
 
     text.push_str(&format!(
         "<text x=\"{x:.2}\" y=\"{start_y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">",
-        escape_xml(&theme.font_family),
+        normalize_font_family(&theme.font_family),
         font_size,
         fill
     ));
@@ -4634,7 +4634,7 @@ fn text_block_svg_with_font_size_weight(
 
     text.push_str(&format!(
         "<text x=\"{x:.2}\" y=\"{start_y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\"{weight_attr}>",
-        escape_xml(&theme.font_family),
+        normalize_font_family(&theme.font_family),
         font_size,
         fill
     ));
@@ -4672,7 +4672,7 @@ fn text_line_svg_with_font_size(
 ) -> String {
     format!(
         "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
-        escape_xml(&theme.font_family),
+        normalize_font_family(&theme.font_family),
         font_size,
         fill,
         escape_xml(text)
@@ -4682,7 +4682,7 @@ fn text_line_svg_with_font_size(
 fn text_line_svg(x: f32, y: f32, text: &str, theme: &Theme, fill: &str, anchor: &str) -> String {
     format!(
         "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
-        escape_xml(&theme.font_family),
+        normalize_font_family(&theme.font_family),
         theme.font_size,
         fill,
         escape_xml(text)
@@ -4837,7 +4837,7 @@ fn render_c4_shape(shape: &C4ShapeLayout, conf: &crate::config::C4Config) -> Str
     svg.push_str(&format!(
         "<text fill=\"{}\" font-family=\"{}\" font-size=\"{}\" font-style=\"italic\" lengthAdjust=\"spacing\" textLength=\"{:.0}\" x=\"{:.0}\" y=\"{:.0}\">{}</text>",
         font_color,
-        escape_xml(type_font_family),
+        normalize_font_family(type_font_family),
         type_font_size,
         shape.type_label.width.round(),
         shape.x + shape.width / 2.0 - shape.type_label.width / 2.0,
@@ -5095,7 +5095,7 @@ fn c4_text_svg(
             escape_xml(fill),
             font_size,
             escape_xml(font_weight),
-            escape_xml(font_family),
+            normalize_font_family(font_family),
             if italic { " font-style=\"italic\"" } else { "" },
             escape_xml(line)
         ));
@@ -5467,7 +5467,7 @@ fn render_er_node_label(
                     "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" fill-opacity=\"0.75\">{}</text>",
                     left_x,
                     y,
-                    escape_xml(&theme.font_family),
+                    normalize_font_family(&theme.font_family),
                     theme.font_size,
                     fill,
                     escape_xml(&ty)
@@ -5476,7 +5476,7 @@ fn render_er_node_label(
                     "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
                     name_x,
                     y,
-                    escape_xml(&theme.font_family),
+                    normalize_font_family(&theme.font_family),
                     theme.font_size,
                     fill,
                     escape_xml(&name)
@@ -5516,7 +5516,7 @@ fn text_lines_svg(
     let mut text = String::new();
     text.push_str(&format!(
         "<text x=\"{x:.2}\" y=\"{first_y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">",
-        escape_xml(&theme.font_family),
+        normalize_font_family(&theme.font_family),
         theme.font_size,
         fill
     ));
@@ -5661,8 +5661,9 @@ fn er_badge_svg(
     text_color: &str,
     font_family: &str,
 ) -> (String, f32) {
+    let font_family = normalize_font_family(font_family);
     let pad_x = (font_size * 0.45).max(4.0);
-    let text_width = text_metrics::measure_text_width(text, font_size * 0.72, font_family)
+    let text_width = text_metrics::measure_text_width(text, font_size * 0.72, &font_family)
         .unwrap_or(font_size * 0.9);
     let width = text_width + pad_x * 2.0;
     let height = (font_size * 0.9).max(10.0);
@@ -5677,7 +5678,7 @@ fn er_badge_svg(
         "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.2}\" font-weight=\"600\" fill=\"{}\">{}</text>",
         x + width / 2.0,
         y + font_size * 0.26,
-        escape_xml(font_family),
+        font_family,
         font_size * 0.72,
         text_color,
         escape_xml(text)
@@ -7217,10 +7218,12 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let wave = h * 0.10;
             // Path: start at top-left with wavy top edge, straight sides, wavy bottom edge
             format!(
-                "<path d=\"M {x:.2} {y_mid:.2} q {q1x:.2} {q1y_up:.2} {qmx:.2} 0 q {q2x:.2} {q2y_dn:.2} {qmx:.2} 0 v {body:.2} q {q1x:.2} {q1y_up:.2} {qmx:.2} 0 q {q2x:.2} {q2y_dn:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                "<path d=\"M {x:.2} {y_mid:.2} q {q1x:.2} {q1y_up:.2} {qmx:.2} 0 q {q2x:.2} {q2y_dn:.2} {qmx:.2} 0 v {body:.2} q {nq1x:.2} {q2y_dn:.2} {nqmx:.2} 0 q {nq2x:.2} {q1y_up:.2} {nqmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 y_mid = y + wave,
                 q1x = w * 0.25, q1y_up = -wave * 2.0, qmx = w * 0.5,
                 q2x = w * 0.25, q2y_dn = wave * 2.0,
+                nq1x = -(w * 0.25), nqmx = -(w * 0.5),
+                nq2x = -(w * 0.25),
                 body = h - wave * 2.0,
             )
         }
@@ -7349,5 +7352,112 @@ mod tests {
             &points,
             touching
         ));
+    }
+
+    #[test]
+    fn sequence_center_label_background_visible_for_near_clearance() {
+        let points = vec![(0.0, 0.0), (120.0, 0.0)];
+        let near = LabelRect {
+            x: 40.0,
+            y: -11.5,
+            width: 24.0,
+            height: 10.0,
+        };
+        assert!(edge_label_background_visible(
+            crate::ir::DiagramKind::Sequence,
+            EdgeLabelKind::Center,
+            &points,
+            near
+        ));
+        assert!(!edge_label_background_visible(
+            crate::ir::DiagramKind::Flowchart,
+            EdgeLabelKind::Center,
+            &points,
+            near
+        ));
+    }
+
+    #[test]
+    fn sequence_endpoint_label_background_visible_for_small_non_touch_gap() {
+        let points = vec![(0.0, 0.0), (120.0, 0.0)];
+        let near = LabelRect {
+            x: 8.0,
+            y: -8.9,
+            width: 16.0,
+            height: 8.0,
+        };
+        assert!(edge_label_background_visible(
+            crate::ir::DiagramKind::Sequence,
+            EdgeLabelKind::Start,
+            &points,
+            near
+        ));
+        assert!(!edge_label_background_visible(
+            crate::ir::DiagramKind::Class,
+            EdgeLabelKind::Start,
+            &points,
+            near
+        ));
+    }
+
+    #[test]
+    fn wavy_rect_bottom_edge_stays_within_bounds() {
+        // Regression: paper-tape (WavyRect) bottom wave went right instead of
+        // left, causing the shape to stretch into neighbouring nodes.
+        let mut graph = Graph::new();
+        graph.direction = Direction::RightLeft;
+        graph.ensure_node(
+            "E",
+            Some("Paper Records".to_string()),
+            Some(crate::ir::NodeShape::WavyRect),
+        );
+        let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        let (_, node) = layout.nodes.iter().find(|(id, _)| id.as_str() == "E").unwrap();
+        let node_right = (node.x + node.width + 1.0) as f64;
+
+        let paper_idx = svg.find("Paper Records").unwrap();
+        let path_before = &svg[..paper_idx];
+        let d_start = path_before.rfind("d=\"").unwrap() + 3;
+        let d_end = path_before[d_start..].find('"').unwrap() + d_start;
+        let d_attr = &svg[d_start..d_end];
+
+        let mut abs_x = 0.0_f64;
+        let mut max_x = f64::MIN;
+        let nums: Vec<f64> = d_attr
+            .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+            .filter(|s| !s.is_empty())
+            .map(|s| s.parse::<f64>().unwrap())
+            .collect();
+
+        abs_x = nums[0];
+        max_x = max_x.max(abs_x);
+
+        let remainder = d_attr.trim_start_matches(|c: char| c == 'M' || c == ' ' || c.is_ascii_digit() || c == '.' || c == '-');
+        for segment in remainder.split_inclusive(|c: char| c.is_ascii_uppercase() || c.is_ascii_lowercase()) {
+            let cmd = segment.chars().last().unwrap_or(' ');
+            let seg_nums: Vec<f64> = segment
+                .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
+                .filter(|s| !s.is_empty())
+                .map(|s| s.parse::<f64>().unwrap())
+                .collect();
+            match cmd {
+                'q' => {
+                    if seg_nums.len() >= 4 {
+                        abs_x += seg_nums[2];
+                        max_x = max_x.max(abs_x);
+                    }
+                }
+                'v' | 'Z' => {}
+                _ => {}
+            }
+        }
+
+        assert!(
+            max_x <= node_right,
+            "WavyRect path extends to x={max_x:.1} but node right edge is {node_right:.1}; \
+             bottom wave likely goes in wrong direction. d=\"{d_attr}\""
+        );
     }
 }
