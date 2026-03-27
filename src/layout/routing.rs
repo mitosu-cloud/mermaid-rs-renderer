@@ -2542,3 +2542,181 @@ pub(super) fn edge_crossings_with_existing(
     }
     (crossings, overlap)
 }
+
+// ── Edge path smoothing ─────────────────────────────────────────────
+//
+// The grid router produces orthogonal (right-angle) paths.  For small
+// or sparse graphs these sharp bends look unnatural. This pass tries
+// to simplify each path by progressively removing intermediate
+// waypoints, keeping the result only when it doesn't intersect
+// obstacles.  Fewer waypoints let the B-spline curve rendering
+// produce smoother arcs.
+
+/// Padding added around obstacles during the simplify-path check so
+/// that simplified edges don't graze node borders.
+const SMOOTH_OBSTACLE_PAD: f32 = 4.0;
+
+/// Target number of evenly-spaced control points for curves that
+/// need intermediate waypoints (detour paths).
+const SMOOTH_RESAMPLE_POINTS: usize = 6;
+
+/// Try to simplify an edge path by removing intermediate points.
+///
+/// Guarantees:
+/// - The first two and last two points are preserved (or synthesised)
+///   so that arrowheads are perpendicular to the node border.
+/// - For detour paths the middle section is resampled to produce
+///   evenly-spaced control points for smooth B-spline curves.
+pub(super) fn simplify_edge_path(
+    points: &[(f32, f32)],
+    obstacles: &[Obstacle],
+    from_id: &str,
+    to_id: &str,
+) -> Vec<(f32, f32)> {
+    if points.len() <= 3 {
+        return points.to_vec();
+    }
+
+    // Build padded obstacles (excluding source/target nodes).
+    let padded: Vec<Obstacle> = obstacles
+        .iter()
+        .filter(|o| o.members.is_none() && o.id != from_id && o.id != to_id)
+        .map(|o| Obstacle {
+            id: o.id.clone(),
+            x: o.x - SMOOTH_OBSTACLE_PAD,
+            y: o.y - SMOOTH_OBSTACLE_PAD,
+            width: o.width + 2.0 * SMOOTH_OBSTACLE_PAD,
+            height: o.height + 2.0 * SMOOTH_OBSTACLE_PAD,
+            members: None,
+        })
+        .collect();
+
+    let n = points.len();
+    let start = points[0];
+    let end = points[n - 1];
+
+    // Identify the departure and approach stubs (first/last segments
+    // that define arrowhead direction).  We keep at least two points at
+    // each end.
+    let depart_stub = points[1];
+    let approach_stub = points[n - 2];
+
+    // Try the simplest path: start → depart_stub → approach_stub → end.
+    // This preserves arrowhead directions and is the smoothest possible.
+    let simple_segs = [
+        (start, depart_stub),
+        (depart_stub, approach_stub),
+        (approach_stub, end),
+    ];
+    if !any_segment_hits(&simple_segs, &padded) {
+        return resample_smooth(
+            &[start, depart_stub, approach_stub, end],
+            &padded,
+        );
+    }
+
+    // Greedy simplification of the middle section only, keeping the
+    // start/end stubs intact.
+    let mut simplified = vec![start, depart_stub];
+    let mut i = 1; // start from depart_stub index
+    let last_inner = n - 2; // approach_stub index
+    while i < last_inner {
+        let mut best_j = i + 1;
+        for j in (i + 2..=last_inner).rev() {
+            if !any_segment_hits(&[(points[i], points[j])], &padded) {
+                best_j = j;
+                break;
+            }
+        }
+        if best_j < last_inner {
+            simplified.push(points[best_j]);
+        }
+        i = best_j;
+    }
+    simplified.push(approach_stub);
+    simplified.push(end);
+
+    resample_smooth(&simplified, &padded)
+}
+
+/// Resample the middle of a path to produce evenly-spaced control
+/// points.  The first two and last two points are always kept as-is
+/// (they define departure/approach direction for arrowheads).
+fn resample_smooth(
+    points: &[(f32, f32)],
+    obstacles: &[Obstacle],
+) -> Vec<(f32, f32)> {
+    if points.len() <= 4 {
+        return points.to_vec();
+    }
+
+    // Compute arc lengths along the middle section (indices 1 .. n-2).
+    let inner = &points[1..points.len() - 1];
+    if inner.len() <= 2 {
+        return points.to_vec();
+    }
+    let mut cumulative = vec![0.0f32];
+    for i in 1..inner.len() {
+        let dx = inner[i].0 - inner[i - 1].0;
+        let dy = inner[i].1 - inner[i - 1].1;
+        cumulative.push(cumulative[i - 1] + (dx * dx + dy * dy).sqrt());
+    }
+    let total_len = *cumulative.last().unwrap();
+    if total_len < 1.0 {
+        return points.to_vec();
+    }
+
+    // Resample to SMOOTH_RESAMPLE_POINTS evenly-spaced points along
+    // the inner polyline.
+    let target_count = SMOOTH_RESAMPLE_POINTS.min(inner.len());
+    if target_count <= 2 || target_count >= inner.len() {
+        return points.to_vec();
+    }
+
+    let mut resampled = Vec::with_capacity(target_count + 2);
+    resampled.push(points[0]); // start
+    resampled.push(inner[0]);  // depart stub
+
+    for k in 1..target_count - 1 {
+        let t = k as f32 / (target_count - 1) as f32;
+        let target_dist = t * total_len;
+        // Find the segment containing target_dist.
+        let seg = cumulative.partition_point(|&d| d < target_dist).min(inner.len() - 1);
+        let seg = seg.max(1);
+        let seg_start = cumulative[seg - 1];
+        let seg_end = cumulative[seg];
+        let seg_len = seg_end - seg_start;
+        let frac = if seg_len > 1e-6 {
+            ((target_dist - seg_start) / seg_len).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let px = inner[seg - 1].0 + frac * (inner[seg].0 - inner[seg - 1].0);
+        let py = inner[seg - 1].1 + frac * (inner[seg].1 - inner[seg - 1].1);
+        resampled.push((px, py));
+    }
+
+    resampled.push(inner[inner.len() - 1]); // approach stub
+    resampled.push(points[points.len() - 1]); // end
+
+    // Validate: the resampled path must not intersect obstacles.
+    // If it does, fall back to the original.
+    for pair in resampled.windows(2) {
+        if any_segment_hits(&[(pair[0], pair[1])], obstacles) {
+            return points.to_vec();
+        }
+    }
+
+    resampled
+}
+
+fn any_segment_hits(segments: &[((f32, f32), (f32, f32))], obstacles: &[Obstacle]) -> bool {
+    for &(a, b) in segments {
+        for obs in obstacles {
+            if segment_intersects_rect(a, b, obs) {
+                return true;
+            }
+        }
+    }
+    false
+}

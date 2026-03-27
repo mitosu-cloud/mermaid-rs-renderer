@@ -152,6 +152,9 @@ fn measure_subgraph_label(
 ) -> TextBlock {
     if sub.markdown_label {
         measure_markdown_label(&sub.label, theme, config)
+    } else if has_html_formatting(&sub.label) {
+        let normalized = normalize_html_label(&sub.label);
+        measure_markdown_label(&normalized, theme, config)
     } else {
         measure_label(&sub.label, theme, config)
     }
@@ -266,6 +269,11 @@ fn adaptive_spacing_for_nodes(
     if count == 0 {
         return max_spacing;
     }
+    // Small graphs don't benefit from spacing reduction – keep the
+    // configured spacing so edges have room to route smoothly.
+    if count <= 8 {
+        return max_spacing;
+    }
     let avg = total / count as f32;
     let target = (avg * 0.5).max(min_spacing);
     target.min(max_spacing)
@@ -346,8 +354,20 @@ fn compute_flowchart_layout(
     let tiny_graph = graph.subgraphs.is_empty() && node_count <= 4 && edge_count <= 4;
     if tiny_graph {
         effective_config.flowchart.order_passes = 1;
-        effective_config.flowchart.routing.enable_grid_router = false;
         effective_config.flowchart.routing.snap_ports_to_grid = false;
+        // Small dense graphs need extra spacing for edges to route smoothly
+        // around nodes without sharp bends.
+        let density = if node_count > 0 {
+            edge_count as f32 / node_count as f32
+        } else {
+            0.0
+        };
+        if density >= 0.8 {
+            effective_config.node_spacing =
+                (effective_config.node_spacing * 1.6).max(80.0);
+            effective_config.rank_spacing =
+                (effective_config.rank_spacing * 1.6).max(80.0);
+        }
     }
     if prefer_direct_hub_routing {
         effective_config.flowchart.routing.enable_grid_router = false;
@@ -366,6 +386,9 @@ fn compute_flowchart_layout(
     for node in graph.nodes.values() {
         let label = if node.markdown_label {
             measure_markdown_label(&node.label, theme, &label_config)
+        } else if has_html_formatting(&node.label) {
+            let normalized = normalize_html_label(&node.label);
+            measure_markdown_label(&normalized, theme, &label_config)
         } else {
             measure_label_with_font_size(
                 &node.label,
@@ -516,6 +539,10 @@ fn compute_flowchart_layout(
             field.as_ref().map(|label| {
                 if markdown_label {
                     return measure_markdown_label(label, theme, config);
+                }
+                if has_html_formatting(label) {
+                    let normalized = normalize_html_label(label);
+                    return measure_markdown_label(&normalized, theme, config);
                 }
                 let label_text = if graph.kind == crate::ir::DiagramKind::Requirement {
                     requirement_edge_label_text(label, config)
@@ -1165,7 +1192,7 @@ fn compute_flowchart_layout(
             config,
             obstacles: &obstacles,
             label_obstacles: &route_label_obstacles,
-            fast_route: tiny_graph,
+            fast_route: false,
             base_offset,
             start_side: port_info.start_side,
             end_side: port_info.end_side,
@@ -1282,6 +1309,15 @@ fn compute_flowchart_layout(
         reduce_orthogonal_path_crossings(graph, &nodes, &mut routed_points, config);
         if graph.kind == crate::ir::DiagramKind::Er {
             deoverlap_flowchart_paths(graph, &nodes, &mut routed_points, config);
+        }
+    }
+
+    // Simplify edge paths: remove unnecessary intermediate waypoints so
+    // the B-spline curve renderer can produce smoother arcs.
+    for (idx, edge) in graph.edges.iter().enumerate() {
+        if routed_points[idx].len() > 2 {
+            routed_points[idx] =
+                simplify_edge_path(&routed_points[idx], &obstacles, &edge.from, &edge.to);
         }
     }
 
@@ -1531,8 +1567,7 @@ fn assign_positions_manual(
 
     let use_label_dummies = !matches!(
         graph.kind,
-        crate::ir::DiagramKind::Flowchart
-            | crate::ir::DiagramKind::Class
+        crate::ir::DiagramKind::Class
             | crate::ir::DiagramKind::Er
             | crate::ir::DiagramKind::Requirement
             | crate::ir::DiagramKind::State
@@ -3427,12 +3462,26 @@ fn bounds_with_edges(
         max_x = max_x.max(sub.x + sub.width);
         max_y = max_y.max(sub.y + sub.height);
     }
-    // Also include edge points - routing can place waypoints outside node bounds
+    // Also include edge points - routing can place waypoints outside node bounds.
+    // Add a margin for curved edges since Bezier control points can extend
+    // ~20% beyond the waypoints.
+    let mut edge_max_x: f32 = 0.0;
+    let mut edge_max_y: f32 = 0.0;
+    let mut edge_min_x = f32::MAX;
+    let mut edge_min_y = f32::MAX;
     for edge in edges {
         for point in &edge.points {
-            max_x = max_x.max(point.0);
-            max_y = max_y.max(point.1);
+            edge_max_x = edge_max_x.max(point.0);
+            edge_max_y = edge_max_y.max(point.1);
+            edge_min_x = edge_min_x.min(point.0);
+            edge_min_y = edge_min_y.min(point.1);
         }
+    }
+    if edge_max_x > 0.0 {
+        let margin_x = (edge_max_x - edge_min_x) * 0.20 + 8.0;
+        let margin_y = (edge_max_y - edge_min_y) * 0.20 + 8.0;
+        max_x = max_x.max(edge_max_x + margin_x);
+        max_y = max_y.max(edge_max_y + margin_y);
     }
     (max_x, max_y)
 }
@@ -4086,6 +4135,9 @@ fn build_graph_node_layouts(
     for node in graph.nodes.values() {
         let label = if node.markdown_label {
             measure_markdown_label(&node.label, theme, config)
+        } else if has_html_formatting(&node.label) {
+            let normalized = normalize_html_label(&node.label);
+            measure_markdown_label(&normalized, theme, config)
         } else {
             measure_label(&node.label, theme, config)
         };

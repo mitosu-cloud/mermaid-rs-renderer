@@ -1608,6 +1608,15 @@ fn points_to_curved_path(points: &[(f32, f32)], curve: crate::ir::CurveType) -> 
 }
 
 /// B-spline (basis) curve through points.
+///
+/// For short paths (≤ 5 points) this uses cubic Bezier curves that
+/// guarantee the tangent at each endpoint matches the first/last
+/// segment direction — so SVG arrowheads (orient="auto") are always
+/// perpendicular to the node border.
+///
+/// For longer paths the classic B-spline approximation is used with
+/// a corrected closing segment that respects the final approach
+/// direction.
 fn curve_basis(pts: &[(f32, f32)]) -> String {
     if pts.len() < 3 {
         let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
@@ -1616,8 +1625,16 @@ fn curve_basis(pts: &[(f32, f32)]) -> String {
         }
         return d;
     }
+
+    // Use a tangent-preserving cubic Bezier approach for most paths.
+    // This produces the smoothest possible curve while guaranteeing
+    // arrowhead perpendicularity at both ends.
+    if pts.len() <= 8 {
+        return curve_tangent_bezier(pts);
+    }
+
+    // Longer paths: classic B-spline with a corrected closing segment.
     let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
-    // First segment: quadratic from first point
     let x1 = (2.0 * pts[0].0 + pts[1].0) / 3.0;
     let y1 = (2.0 * pts[0].1 + pts[1].1) / 3.0;
     let x2 = (pts[0].0 + 2.0 * pts[1].0) / 3.0;
@@ -1625,23 +1642,136 @@ fn curve_basis(pts: &[(f32, f32)]) -> String {
     let mx = (x2 + (pts[1].0 + 2.0 * pts[2].0) / 3.0) / 2.0;
     let my = (y2 + (pts[1].1 + 2.0 * pts[2].1) / 3.0) / 2.0;
     d.push_str(&format!(" C {x1:.3},{y1:.3} {x2:.3},{y2:.3} {mx:.3},{my:.3}"));
+    let mut last_ex = mx;
+    let mut last_ey = my;
     for i in 2..pts.len() - 1 {
         let p0 = pts[i - 1];
         let p1 = pts[i];
         let p2 = pts[i + 1];
-        let cx1 = (2.0 * p0.0 + p1.0) / 3.0;
-        let cy1 = (2.0 * p0.1 + p1.1) / 3.0;
         let cx2 = (p0.0 + 2.0 * p1.0) / 3.0;
         let cy2 = (p0.1 + 2.0 * p1.1) / 3.0;
-        let _ = (cx1, cy1); // previous control handled by symmetry
         let nx1 = (p1.0 + 2.0 * p2.0) / 3.0;
         let ny1 = (p1.1 + 2.0 * p2.1) / 3.0;
         let ex = (cx2 + nx1) / 2.0;
         let ey = (cy2 + ny1) / 2.0;
         d.push_str(&format!(" S {cx2:.3},{cy2:.3} {ex:.3},{ey:.3}"));
+        last_ex = ex;
+        last_ey = ey;
     }
+    // Close with a cubic Bezier that arrives at the endpoint from the
+    // approach direction (second-to-last → last point), ensuring the
+    // arrowhead is perpendicular.
     let last = pts[pts.len() - 1];
-    d.push_str(&format!(" L {:.3},{:.3}", last.0, last.1));
+    let approach = pts[pts.len() - 2];
+    let cp2x = last.0 + (approach.0 - last.0) / 3.0;
+    let cp2y = last.1 + (approach.1 - last.1) / 3.0;
+    // Reflect the previous control point for C1 continuity.
+    let cp1x = 2.0 * last_ex - (pts[pts.len() - 3].0 + 2.0 * approach.0) / 3.0;
+    let cp1y = 2.0 * last_ey - (pts[pts.len() - 3].1 + 2.0 * approach.1) / 3.0;
+    d.push_str(&format!(
+        " C {cp1x:.3},{cp1y:.3} {cp2x:.3},{cp2y:.3} {:.3},{:.3}",
+        last.0, last.1
+    ));
+    d
+}
+
+/// Construct a smooth cubic Bezier path for short edge paths (≤ 5 pts).
+///
+/// For a path `[start, depart, ..., approach, end]`:
+/// - The tangent at `start` points toward `depart`
+/// - The tangent at `end` comes from the direction `approach → end`
+/// - Any intermediate points are interpolated with Catmull-Rom–style
+///   tangents so the curve passes near them without sharp turns.
+fn curve_tangent_bezier(pts: &[(f32, f32)]) -> String {
+    let n = pts.len();
+    debug_assert!(n >= 3);
+
+    // 3 points: single cubic Bezier.
+    // [start, mid, end] → tangent at start = (start→mid), tangent at end = (mid→end)
+    if n == 3 {
+        let (start, mid, end) = (pts[0], pts[1], pts[2]);
+        // Control points at 1/3 and 2/3 of the way, aligned with tangents.
+        let c1x = start.0 + (mid.0 - start.0) * 0.66;
+        let c1y = start.1 + (mid.1 - start.1) * 0.66;
+        let c2x = end.0 + (mid.0 - end.0) * 0.66;
+        let c2y = end.1 + (mid.1 - end.1) * 0.66;
+        return format!(
+            "M {:.3},{:.3} C {c1x:.3},{c1y:.3} {c2x:.3},{c2y:.3} {:.3},{:.3}",
+            start.0, start.1, end.0, end.1
+        );
+    }
+
+    // 4 points: [start, depart, approach, end]
+    // Use depart as first control point, approach as second → perfect
+    // tangents at both ends.
+    if n == 4 {
+        let (start, depart, approach, end) = (pts[0], pts[1], pts[2], pts[3]);
+        return format!(
+            "M {:.3},{:.3} C {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
+            start.0, start.1, depart.0, depart.1, approach.0, approach.1, end.0, end.1
+        );
+    }
+
+    // 5+ points: Catmull-Rom–style multi-segment cubic Bezier.
+    // Compute tangents at each point, then build one cubic Bezier per
+    // segment.  The first tangent = (pts[0]→pts[1]), the last tangent
+    // = (pts[n-2]→pts[n-1]), and interior tangents are estimated from
+    // the neighbouring points.
+    let mut tangents: Vec<(f32, f32)> = Vec::with_capacity(n);
+    // First tangent: departure direction.
+    tangents.push((pts[1].0 - pts[0].0, pts[1].1 - pts[0].1));
+    for i in 1..n - 1 {
+        tangents.push((
+            (pts[i + 1].0 - pts[i - 1].0) * 0.5,
+            (pts[i + 1].1 - pts[i - 1].1) * 0.5,
+        ));
+    }
+    // Last tangent: approach direction.
+    tangents.push((
+        pts[n - 1].0 - pts[n - 2].0,
+        pts[n - 1].1 - pts[n - 2].1,
+    ));
+
+    // Compute the bounding box of all edge waypoints to clamp control
+    // points and prevent the curve from swinging outside the SVG.
+    let mut bb_min_x = f32::MAX;
+    let mut bb_min_y = f32::MAX;
+    let mut bb_max_x = f32::MIN;
+    let mut bb_max_y = f32::MIN;
+    for p in pts {
+        bb_min_x = bb_min_x.min(p.0);
+        bb_min_y = bb_min_y.min(p.1);
+        bb_max_x = bb_max_x.max(p.0);
+        bb_max_y = bb_max_y.max(p.1);
+    }
+    // Allow control points to extend up to 20% beyond the waypoint
+    // bounding box for natural-looking curves.
+    let margin_x = (bb_max_x - bb_min_x) * 0.20 + 8.0;
+    let margin_y = (bb_max_y - bb_min_y) * 0.20 + 8.0;
+    let clamp_min_x = bb_min_x - margin_x;
+    let clamp_max_x = bb_max_x + margin_x;
+    let clamp_min_y = bb_min_y - margin_y;
+    let clamp_max_y = bb_max_y + margin_y;
+
+    let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+    for i in 0..n - 1 {
+        let p0 = pts[i];
+        let p1 = pts[i + 1];
+        // Scale tangents by 1/3 of the segment length for natural-looking curves.
+        let seg_len = ((p1.0 - p0.0).powi(2) + (p1.1 - p0.1).powi(2)).sqrt();
+        let t0_len = (tangents[i].0.powi(2) + tangents[i].1.powi(2)).sqrt().max(1e-6);
+        let t1_len = (tangents[i + 1].0.powi(2) + tangents[i + 1].1.powi(2)).sqrt().max(1e-6);
+        let scale0 = seg_len / (3.0 * t0_len);
+        let scale1 = seg_len / (3.0 * t1_len);
+        let c1x = (p0.0 + tangents[i].0 * scale0).clamp(clamp_min_x, clamp_max_x);
+        let c1y = (p0.1 + tangents[i].1 * scale0).clamp(clamp_min_y, clamp_max_y);
+        let c2x = (p1.0 - tangents[i + 1].0 * scale1).clamp(clamp_min_x, clamp_max_x);
+        let c2y = (p1.1 - tangents[i + 1].1 * scale1).clamp(clamp_min_y, clamp_max_y);
+        d.push_str(&format!(
+            " C {c1x:.3},{c1y:.3} {c2x:.3},{c2y:.3} {:.3},{:.3}",
+            p1.0, p1.1
+        ));
+    }
     d
 }
 

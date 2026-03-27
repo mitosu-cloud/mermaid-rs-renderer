@@ -1,3 +1,6 @@
+use regex::Regex;
+use std::sync::LazyLock;
+
 use crate::config::LayoutConfig;
 use crate::text_metrics;
 use crate::theme::Theme;
@@ -5,7 +8,66 @@ use crate::theme::Theme;
 use super::markdown::parse_markdown_spans;
 use super::{TextBlock, TextLine};
 
+static HTML_TAG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"</?[a-zA-Z][a-zA-Z0-9]*[^>]*>").unwrap());
+
+/// Check whether a label string contains HTML formatting tags (not just `<br>`).
+pub(super) fn has_html_formatting(text: &str) -> bool {
+    // Quick pre-check before hitting the regex.
+    if !text.contains('<') {
+        return false;
+    }
+    // Match any HTML tag that is NOT <br>, <br/>, or <br />.
+    for m in HTML_TAG_RE.find_iter(text) {
+        let tag = m.as_str().to_ascii_lowercase();
+        if tag.starts_with("<br") {
+            continue;
+        }
+        return true;
+    }
+    false
+}
+
+/// Convert HTML formatting tags to Markdown equivalents and normalise
+/// line-break tags to `\n`.  Returns the normalised string.
+pub(super) fn normalize_html_label(text: &str) -> String {
+    let mut s = text.to_string();
+    // Line-break tags → newline (case-insensitive).
+    s = regex::RegexBuilder::new(r"<br\s*/?>")
+        .case_insensitive(true)
+        .build()
+        .unwrap()
+        .replace_all(&s, "\n")
+        .into_owned();
+    // Bold tags → markdown bold.
+    for tag in &["<b>", "</b>", "<strong>", "</strong>"] {
+        s = replace_tag_ci(&s, tag, "**");
+    }
+    // Italic tags → markdown italic.
+    for tag in &["<i>", "</i>", "<em>", "</em>"] {
+        s = replace_tag_ci(&s, tag, "*");
+    }
+    // Strip any remaining HTML tags.
+    s = HTML_TAG_RE.replace_all(&s, "").into_owned();
+    s
+}
+
+/// Case-insensitive replacement of a specific HTML tag with a substitute string.
+fn replace_tag_ci(text: &str, tag: &str, replacement: &str) -> String {
+    let re = regex::RegexBuilder::new(&regex::escape(tag))
+        .case_insensitive(true)
+        .build()
+        .unwrap();
+    re.replace_all(text, replacement).into_owned()
+}
+
 pub(super) fn measure_label(text: &str, theme: &Theme, config: &LayoutConfig) -> TextBlock {
+    // Intercept HTML-formatted labels and route them through the
+    // markdown measurement path so <b>, <i>, <br/> etc. are honoured.
+    if has_html_formatting(text) {
+        let normalized = normalize_html_label(text);
+        return measure_markdown_label(&normalized, theme, config);
+    }
     // Mermaid's layout sizing appears to use a baseline font size (~16px)
     // even when the configured theme font size is smaller. Using that
     // baseline improves parity with mermaid-cli node sizes.
@@ -26,6 +88,17 @@ pub(super) fn measure_label_with_font_size(
     wrap: bool,
     font_family: &str,
 ) -> TextBlock {
+    // Intercept HTML-formatted labels – convert to markdown so styling
+    // and line-breaks are preserved regardless of how we were called.
+    if has_html_formatting(text) {
+        let normalized = normalize_html_label(text);
+        let theme_stub = crate::theme::Theme {
+            font_size,
+            font_family: font_family.to_string(),
+            ..crate::theme::Theme::modern()
+        };
+        return measure_markdown_label(&normalized, &theme_stub, config);
+    }
     let raw_lines = split_lines(text);
     let mut lines = Vec::new();
     let fast_metrics = config.fast_text_metrics;
@@ -355,5 +428,50 @@ mod tests {
         let config = LayoutConfig::default();
         let block = measure_markdown_label("line1\nline2", &theme, &config);
         assert_eq!(block.lines.len(), 2);
+    }
+
+    #[test]
+    fn has_html_formatting_detects_bold_tags() {
+        assert!(has_html_formatting("<b>bold</b>"));
+        assert!(has_html_formatting("<B>Bold</B>"));
+        assert!(has_html_formatting("<i>italic</i>"));
+        assert!(has_html_formatting("<strong>strong</strong>"));
+    }
+
+    #[test]
+    fn has_html_formatting_ignores_br_tags() {
+        assert!(!has_html_formatting("hello<br/>world"));
+        assert!(!has_html_formatting("hello<br>world"));
+        assert!(!has_html_formatting("no tags here"));
+    }
+
+    #[test]
+    fn normalize_html_label_converts_bold() {
+        assert_eq!(
+            normalize_html_label("<b>Node A</b><br/>10.0.0.1"),
+            "**Node A**\n10.0.0.1"
+        );
+    }
+
+    #[test]
+    fn normalize_html_label_converts_italic() {
+        assert_eq!(
+            normalize_html_label("<i>italic</i> text"),
+            "*italic* text"
+        );
+    }
+
+    #[test]
+    fn normalize_html_label_strips_unknown_tags() {
+        assert_eq!(
+            normalize_html_label("<u>underline</u> <font>text</font>"),
+            "underline text"
+        );
+    }
+
+    #[test]
+    fn normalize_html_label_handles_emoji() {
+        let result = normalize_html_label("<b>Node A</b><br/>⭐ Leader");
+        assert_eq!(result, "**Node A**\n⭐ Leader");
     }
 }
