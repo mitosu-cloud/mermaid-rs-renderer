@@ -1666,6 +1666,8 @@ fn assign_positions_manual(
                     img: None,
                     img_w: None,
                     img_h: None,
+                    sub_label: None,
+                    is_treemap_leaf: false,
                 },
             );
 
@@ -4066,6 +4068,8 @@ fn build_node_layout(
         img: node.img.clone(),
         img_w: node.img_w,
         img_h: node.img_h,
+        sub_label: None,
+        is_treemap_leaf: false,
     }
 }
 
@@ -5793,6 +5797,8 @@ mod tests {
             img: None,
             img_w: None,
             img_h: None,
+            sub_label: None,
+            is_treemap_leaf: false,
         }
     }
 

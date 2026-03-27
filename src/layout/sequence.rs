@@ -102,6 +102,8 @@ pub(super) fn compute_sequence_layout(
                 img: None,
                 img_w: None,
                 img_h: None,
+                sub_label: None,
+                is_treemap_leaf: false,
             },
         );
         cursor_x += actor_width + actor_gap;

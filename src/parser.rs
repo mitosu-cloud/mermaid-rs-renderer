@@ -4463,6 +4463,7 @@ fn parse_treemap_diagram(input: &str) -> Result<ParseOutput> {
     let (lines, init_config) = preprocess_input_keep_indent(input)?;
     let mut stack: Vec<String> = Vec::new();
     let mut base_indent: Option<usize> = None;
+    let mut indent_unit: Option<usize> = None;
 
     for raw_line in lines {
         let trimmed = raw_line.trim();
@@ -4476,7 +4477,12 @@ fn parse_treemap_diagram(input: &str) -> Result<ParseOutput> {
         let indent = count_indent(&raw_line);
         let base = *base_indent.get_or_insert(indent);
         let rel_indent = indent.saturating_sub(base);
-        let mut level = rel_indent / 2;
+        // Auto-detect indentation unit from the first indented line
+        if rel_indent > 0 && indent_unit.is_none() {
+            indent_unit = Some(rel_indent);
+        }
+        let unit = indent_unit.unwrap_or(2);
+        let mut level = rel_indent / unit;
         if level > stack.len() {
             level = stack.len();
         }
@@ -4486,14 +4492,9 @@ fn parse_treemap_diagram(input: &str) -> Result<ParseOutput> {
             .as_ref()
             .and_then(|raw| raw.trim().parse::<f32>().ok());
         let node_id = format!("treemap_{}", graph.nodes.len());
-        let node_label = if let Some(value) = value {
-            format!("{}\n{}", label, value)
-        } else {
-            label.clone()
-        };
         graph.ensure_node(
             &node_id,
-            Some(node_label),
+            Some(label.clone()),
             Some(crate::ir::NodeShape::Rectangle),
         );
         if let Some(parsed) = numeric_value

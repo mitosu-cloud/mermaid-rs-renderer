@@ -1361,17 +1361,54 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 || node.id.starts_with("__end_");
             if !hide_label {
                 let label_svg = if layout.kind == crate::ir::DiagramKind::Treemap {
-                    let label_x = node.x + config.treemap.label_padding_x;
-                    let label_y = node.y + config.treemap.label_padding_y + node.label.height / 2.0;
-                    text_block_svg_anchor(
-                        label_x,
-                        label_y,
-                        &node.label,
-                        theme,
-                        config,
-                        "start",
-                        node.style.text_color.as_deref(),
-                    )
+                    if node.is_treemap_leaf {
+                        // Leaf nodes: name centered, value centered below in smaller font
+                        let mut out = String::new();
+                        let sub_h = node.sub_label.as_ref().map_or(0.0, |sl| sl.height);
+                        let total_h = node.label.height + sub_h;
+                        let label_y = center_y - total_h / 2.0 + node.label.height / 2.0;
+                        out.push_str(&text_block_svg(
+                            center_x,
+                            label_y,
+                            &node.label,
+                            theme,
+                            config,
+                            false,
+                            node.style.text_color.as_deref(),
+                        ));
+                        if let Some(ref sub) = node.sub_label {
+                            let sub_font = theme.font_size * 0.75;
+                            let sub_y = label_y + node.label.height / 2.0 + sub.height / 2.0 + 2.0;
+                            out.push_str(&text_block_svg_with_font_size(
+                                center_x,
+                                sub_y,
+                                sub,
+                                theme,
+                                config,
+                                sub_font,
+                                "middle",
+                                node.style.text_color.as_deref(),
+                                false,
+                            ));
+                        }
+                        out
+                    } else {
+                        // Parent/category nodes: label top-left
+                        let label_x = node.x + config.treemap.label_padding_x;
+                        let label_y = node.y + config.treemap.label_padding_y + node.label.height / 2.0;
+                        let small_font = theme.font_size * 0.7;
+                        text_block_svg_with_font_size(
+                            label_x,
+                            label_y,
+                            &node.label,
+                            theme,
+                            config,
+                            small_font,
+                            "start",
+                            node.style.text_color.as_deref(),
+                            false,
+                        )
+                    }
                 } else if layout.kind == crate::ir::DiagramKind::Er {
                     render_er_node_label(node, theme, config).unwrap_or_else(|| {
                         if node.label.lines.iter().any(|line| is_divider_text_line(line)) {
@@ -5947,6 +5984,11 @@ pub fn write_output_png(
     };
 
     opt.fontdb_mut().load_system_fonts();
+    #[cfg(target_os = "ios")]
+    {
+        opt.fontdb_mut().load_fonts_dir("/System/Library/Fonts");
+        opt.fontdb_mut().load_fonts_dir("/System/Library/Fonts/Core");
+    }
 
     let tree = usvg::Tree::from_str(svg, &opt)?;
     let size = tree.size().to_int_size();

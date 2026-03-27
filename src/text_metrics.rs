@@ -110,6 +110,11 @@ impl TextMeasurer {
 
         if !self.loaded_system_fonts {
             self.db.load_system_fonts();
+            #[cfg(target_os = "ios")]
+            {
+                self.db.load_fonts_dir("/System/Library/Fonts");
+                self.db.load_fonts_dir("/System/Library/Fonts/Core");
+            }
             self.loaded_system_fonts = true;
         }
 

@@ -136,6 +136,7 @@ fn layout_treemap_nodes(
         };
 
         let mut child_header_reserve = 0.0_f32;
+        let is_leaf = !children.contains_key(id);
         if let Some(node) = graph.nodes.get(id) {
             let mut style = resolve_node_style(id, graph);
             if style.fill.is_none() {
@@ -158,7 +159,9 @@ fn layout_treemap_nodes(
                 && label.height <= (node_rect.h - pad_y * 2.0).max(0.0);
             let area = node_rect.w * node_rect.h;
             let label = if fits && area >= config.treemap.min_label_area {
-                child_header_reserve = (label.height + pad_y * 2.0).max(0.0);
+                if !is_leaf {
+                    child_header_reserve = (label.height + pad_y * 2.0).max(0.0);
+                }
                 label
             } else {
                 TextBlock {
@@ -166,6 +169,20 @@ fn layout_treemap_nodes(
                     width: 0.0,
                     height: 0.0,
                 }
+            };
+
+            // For leaf nodes with a numeric value, create a sub_label with the value
+            let sub_label = if is_leaf {
+                node.value.map(|v| {
+                    let val_str = if v.fract() == 0.0 {
+                        format!("{}", v as i64)
+                    } else {
+                        format!("{}", v)
+                    };
+                    measure_label(&val_str, theme, config)
+                })
+            } else {
+                None
             };
 
             nodes_out.insert(
@@ -186,6 +203,8 @@ fn layout_treemap_nodes(
                     img: None,
                     img_w: None,
                     img_h: None,
+                    sub_label,
+                    is_treemap_leaf: is_leaf,
                 },
             );
         }

@@ -74,6 +74,10 @@ pub struct NodeLayout {
     pub img: Option<String>,
     pub img_w: Option<f32>,
     pub img_h: Option<f32>,
+    /// Secondary label for treemap leaf nodes (displays the value below the name).
+    pub sub_label: Option<TextBlock>,
+    /// Whether this treemap node is a leaf (no children) — affects label centering.
+    pub is_treemap_leaf: bool,
 }
 
 #[derive(Debug, Clone)]
