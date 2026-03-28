@@ -353,7 +353,7 @@ fn compute_flowchart_layout(
     let edge_count = graph.edges.len();
     let tiny_graph = graph.subgraphs.is_empty() && node_count <= 4 && edge_count <= 4;
     if tiny_graph {
-        effective_config.flowchart.order_passes = 1;
+        effective_config.flowchart.order_passes = 4;
         effective_config.flowchart.routing.snap_ports_to_grid = false;
         // Small dense graphs need extra spacing for edges to route smoothly
         // around nodes without sharp bends.
@@ -1567,7 +1567,8 @@ fn assign_positions_manual(
 
     let use_label_dummies = !matches!(
         graph.kind,
-        crate::ir::DiagramKind::Class
+        crate::ir::DiagramKind::Flowchart
+            | crate::ir::DiagramKind::Class
             | crate::ir::DiagramKind::Er
             | crate::ir::DiagramKind::Requirement
             | crate::ir::DiagramKind::State
@@ -1996,6 +1997,65 @@ fn assign_positions_manual(
         }
         for rank_idx in (0..rank_nodes.len()).rev() {
             place_rank(rank_idx, false, nodes);
+        }
+    }
+
+    // Post-pass: for single-node ranks that have long-span edges (edges
+    // that skip ranks), center the node under the centroid of ALL its
+    // connected peers.  This handles the case where Node C connects to
+    // both Node B (nearby, left) and Node A (far, centered) — the
+    // barycenter only sees direct rank neighbours, but the visual layout
+    // benefits from considering all connections.
+    let node_ranks: HashMap<String, usize> = {
+        let mut m = HashMap::new();
+        for (rank_idx, bucket) in rank_nodes.iter().enumerate() {
+            for nid in bucket {
+                m.insert(nid.clone(), rank_idx);
+            }
+        }
+        m
+    };
+    for rank_idx in 0..rank_nodes.len() {
+        let bucket = &rank_nodes[rank_idx];
+        let real_ids: Vec<&String> = bucket
+            .iter()
+            .filter(|id| nodes.get(*id).map(|n| !n.hidden).unwrap_or(false))
+            .collect();
+        if real_ids.len() != 1 {
+            continue;
+        }
+        let node_id = real_ids[0];
+        // Collect cross-axis centers of ALL connected real nodes
+        // (not just direct-rank neighbours).
+        let mut peer_centers: Vec<f32> = Vec::new();
+        for edge in &layout_edges {
+            let peer = if edge.from == *node_id {
+                &edge.to
+            } else if edge.to == *node_id {
+                &edge.from
+            } else {
+                continue;
+            };
+            // Skip hidden dummy nodes — only count real nodes.
+            if let Some(pnode) = nodes.get(peer) {
+                if pnode.hidden {
+                    continue;
+                }
+            }
+            if let Some(c) = cross_pos.get(peer) {
+                peer_centers.push(*c);
+            }
+        }
+        if peer_centers.len() >= 2 {
+            let mean = peer_centers.iter().sum::<f32>() / peer_centers.len() as f32;
+            if let Some(node) = nodes.get_mut(node_id) {
+                if is_horizontal(graph.direction) {
+                    node.y = mean - node.height / 2.0;
+                } else {
+                    node.x = mean - node.width / 2.0;
+                }
+                cross_pos.insert(node_id.clone(), mean);
+            }
         }
     }
 }

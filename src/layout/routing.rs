@@ -2609,10 +2609,13 @@ pub(super) fn simplify_edge_path(
         (approach_stub, end),
     ];
     if !any_segment_hits(&simple_segs, &padded) {
-        return resample_smooth(
-            &[start, depart_stub, approach_stub, end],
-            &padded,
-        );
+        // Try the most minimal path: a straight line from start to end.
+        // This produces the simplest possible rendering (diagonal line).
+        if !any_segment_hits(&[(start, end)], &padded) {
+            return vec![start, end];
+        }
+        // Otherwise keep the 4-point path with approach stubs.
+        return vec![start, depart_stub, approach_stub, end];
     }
 
     // Greedy simplification of the middle section only, keeping the
