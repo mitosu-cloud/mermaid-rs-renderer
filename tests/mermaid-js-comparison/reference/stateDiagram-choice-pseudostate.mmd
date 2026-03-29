@@ -1,0 +1,8 @@
+stateDiagram-v2
+    state if_state <<choice>>
+    [*] --> if_state
+    if_state --> sw1: if value1
+    if_state --> sw2: if value2
+    sw1 --> end
+    sw2 --> end
+    end --> [*]

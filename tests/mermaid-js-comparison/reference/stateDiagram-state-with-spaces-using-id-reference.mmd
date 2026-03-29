@@ -1,0 +1,8 @@
+stateDiagram-v2
+    [*] --> yswsii
+    state "Your state with spaces in it" as yswsii
+    yswsii --> YetAnotherState
+    state "Another State" as YetAnotherState
+    YetAnotherState --> [*]
+    classDef movement font-style:italic
+    class yswsii movement

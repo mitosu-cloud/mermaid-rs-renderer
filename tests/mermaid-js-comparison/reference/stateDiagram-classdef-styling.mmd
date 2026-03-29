@@ -1,0 +1,12 @@
+stateDiagram-v2
+    [*] --> Moving
+    state Moving {
+        [*] --> fast
+        fast --> slow
+        slow --> [*]
+    }
+    Moving --> [*]
+    classDef movement font-style:italic;
+    classDef badBadEvent fill:#f00,color:white,font-weight:bold,stroke-width:2px,stroke:yellow
+    class Moving movement
+    class Crash badBadEvent

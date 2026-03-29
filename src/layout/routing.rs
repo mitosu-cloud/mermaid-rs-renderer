@@ -2573,7 +2573,7 @@ pub(super) fn simplify_edge_path(
     from_id: &str,
     to_id: &str,
 ) -> Vec<(f32, f32)> {
-    if points.len() <= 3 {
+    if points.len() <= 1 {
         return points.to_vec();
     }
 
@@ -2595,25 +2595,29 @@ pub(super) fn simplify_edge_path(
     let start = points[0];
     let end = points[n - 1];
 
+    // Always try the most minimal path first: a straight line from
+    // start to end.  This produces the simplest possible rendering.
+    if !any_segment_hits(&[(start, end)], &padded) {
+        return vec![start, end];
+    }
+
+    if n <= 3 {
+        return points.to_vec();
+    }
+
     // Identify the departure and approach stubs (first/last segments
     // that define arrowhead direction).  We keep at least two points at
     // each end.
     let depart_stub = points[1];
     let approach_stub = points[n - 2];
 
-    // Try the simplest path: start → depart_stub → approach_stub → end.
-    // This preserves arrowhead directions and is the smoothest possible.
+    // Try the 4-point path: start → depart_stub → approach_stub → end.
     let simple_segs = [
         (start, depart_stub),
         (depart_stub, approach_stub),
         (approach_stub, end),
     ];
     if !any_segment_hits(&simple_segs, &padded) {
-        // Try the most minimal path: a straight line from start to end.
-        // This produces the simplest possible rendering (diagonal line).
-        if !any_segment_hits(&[(start, end)], &padded) {
-            return vec![start, end];
-        }
         // Otherwise keep the 4-point path with approach stubs.
         return vec![start, depart_stub, approach_stub, end];
     }

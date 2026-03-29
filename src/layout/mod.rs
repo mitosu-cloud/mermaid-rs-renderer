@@ -1798,6 +1798,34 @@ fn assign_positions_manual(
                 if let Some(bucket) = rank_nodes.get_mut(current_rank) {
                     bucket.push(id.clone());
                 }
+                // Create a minimal hidden NodeLayout so the span dummy
+                // participates in cross-axis positioning (barycenter).
+                nodes.insert(
+                    id.clone(),
+                    NodeLayout {
+                        id: id.clone(),
+                        x: 0.0,
+                        y: 0.0,
+                        width: 1.0,
+                        height: 1.0,
+                        label: TextBlock {
+                            lines: vec![],
+                            width: 0.0,
+                            height: 0.0,
+                        },
+                        shape: crate::ir::NodeShape::Rectangle,
+                        style: crate::ir::NodeStyle::default(),
+                        link: None,
+                        anchor_subgraph: None,
+                        hidden: true,
+                        icon: None,
+                        img: None,
+                        img_w: None,
+                        img_h: None,
+                        sub_label: None,
+                        is_treemap_leaf: false,
+                    },
+                );
                 id
             };
             expanded_edges.push(crate::ir::Edge {
@@ -1891,16 +1919,23 @@ fn assign_positions_manual(
             .push(edge.to.clone());
     }
 
+    // Initialize cross-axis positions with meaningful spacing so the
+    // barycenter iterations have asymmetry to work with. This matches
+    // dagre's approach where virtual nodes (label dummies) start
+    // separated from real nodes, not all at x=0.
     let mut cross_pos: HashMap<String, f32> = HashMap::new();
     for bucket in &rank_nodes {
-        for (idx, node_id) in bucket.iter().enumerate() {
+        let mut cursor = 0.0f32;
+        for node_id in bucket.iter() {
             if let Some(node) = nodes.get(node_id) {
-                let center = if is_horizontal(graph.direction) {
-                    node.y + node.height / 2.0
+                let half = if is_horizontal(graph.direction) {
+                    node.height / 2.0
                 } else {
-                    node.x + node.width / 2.0
+                    node.width / 2.0
                 };
-                cross_pos.insert(node_id.clone(), center + idx as f32 * 0.01);
+                let center = cursor + half;
+                cross_pos.insert(node_id.clone(), center);
+                cursor = center + half + config.node_spacing;
             }
         }
     }
@@ -2000,64 +2035,6 @@ fn assign_positions_manual(
         }
     }
 
-    // Post-pass: for single-node ranks that have long-span edges (edges
-    // that skip ranks), center the node under the centroid of ALL its
-    // connected peers.  This handles the case where Node C connects to
-    // both Node B (nearby, left) and Node A (far, centered) — the
-    // barycenter only sees direct rank neighbours, but the visual layout
-    // benefits from considering all connections.
-    let node_ranks: HashMap<String, usize> = {
-        let mut m = HashMap::new();
-        for (rank_idx, bucket) in rank_nodes.iter().enumerate() {
-            for nid in bucket {
-                m.insert(nid.clone(), rank_idx);
-            }
-        }
-        m
-    };
-    for rank_idx in 0..rank_nodes.len() {
-        let bucket = &rank_nodes[rank_idx];
-        let real_ids: Vec<&String> = bucket
-            .iter()
-            .filter(|id| nodes.get(*id).map(|n| !n.hidden).unwrap_or(false))
-            .collect();
-        if real_ids.len() != 1 {
-            continue;
-        }
-        let node_id = real_ids[0];
-        // Collect cross-axis centers of ALL connected real nodes
-        // (not just direct-rank neighbours).
-        let mut peer_centers: Vec<f32> = Vec::new();
-        for edge in &layout_edges {
-            let peer = if edge.from == *node_id {
-                &edge.to
-            } else if edge.to == *node_id {
-                &edge.from
-            } else {
-                continue;
-            };
-            // Skip hidden dummy nodes — only count real nodes.
-            if let Some(pnode) = nodes.get(peer) {
-                if pnode.hidden {
-                    continue;
-                }
-            }
-            if let Some(c) = cross_pos.get(peer) {
-                peer_centers.push(*c);
-            }
-        }
-        if peer_centers.len() >= 2 {
-            let mean = peer_centers.iter().sum::<f32>() / peer_centers.len() as f32;
-            if let Some(node) = nodes.get_mut(node_id) {
-                if is_horizontal(graph.direction) {
-                    node.y = mean - node.height / 2.0;
-                } else {
-                    node.x = mean - node.width / 2.0;
-                }
-                cross_pos.insert(node_id.clone(), mean);
-            }
-        }
-    }
 }
 
 fn resolve_edge_style(idx: usize, graph: &Graph) -> crate::ir::EdgeStyleOverride {
