@@ -1,0 +1,15 @@
+graph TD
+    A["<b>Node A</b><br/>10.0.0.1<br/>k3s server (control plane)"]
+    B["<b>Node B</b><br/>10.0.0.2<br/>k3s agent"]
+    C["<b>Node C</b><br/>10.0.0.3<br/>k3s agent"]
+
+    A <-->|WireGuard| B
+    A <-->|WireGuard| C
+    B <-->|WireGuard| C
+
+    B -->|"k3s join (port 6443)"| A
+    C -->|"k3s join (port 6443)"| A
+
+    style A fill:#2d6a4f,stroke:#1b4332,color:#fff
+    style B fill:#344e6e,stroke:#1d3557,color:#fff
+    style C fill:#344e6e,stroke:#1d3557,color:#fff
