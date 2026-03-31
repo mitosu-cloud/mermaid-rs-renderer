@@ -6268,13 +6268,13 @@ fn render_sequence_actor_shape(
             let off = 4.0;
             // Back rectangle (offset)
             svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
                 x + off, y, w - off, h - off,
                 fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
             ));
             // Front rectangle
             svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
                 x, y + off, w - off, h - off,
                 fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
             ));
@@ -6341,7 +6341,7 @@ fn render_sequence_actor_shape(
             } else {
                 // Rectangle (participant, ActorBox)
                 svg.push_str(&format!(
-                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
+                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
                     node.x, node.y, node.width, node.height,
                     theme.sequence_actor_fill, theme.sequence_actor_border
                 ));
@@ -6557,7 +6557,7 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
     let h = node.height;
     match node.shape {
         crate::ir::NodeShape::Rectangle => format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
             y,
             w,
@@ -6577,7 +6577,7 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             node.style.stroke_width.unwrap_or(1.0)
         ),
         crate::ir::NodeShape::ActorBox => format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
             y,
             w,
@@ -6891,48 +6891,46 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             svg
         }
         crate::ir::NodeShape::Document => {
-            // Document shape: rectangle with wavy bottom edge.
-            // The bottom is a smooth S-curve matching mermaid-js: the
-            // left half dips down, the right half curves back up.
+            // Curved trapezoid matching mermaid-js `doc` shape:
+            // left side tapers (pointed at middle), right side is a
+            // semicircular arc.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let wave = h * 0.15;
-            let by = y + h; // baseline y
+            let radius = h / 2.0;
+            let rw = (w - radius).max(0.0); // where the arc starts
+            let tw = h / 4.0;               // trapezoid indent
             format!(
-                "<path d=\"M {x:.2} {y:.2} h {w:.2} v {h:.2} \
-                 C {c1x:.2} {c1y:.2} {c2x:.2} {c2y:.2} {ex:.2} {ey:.2} \
+                "<path d=\"M {rx:.2} {y:.2} \
+                 L {lx:.2} {y:.2} \
+                 L {x:.2} {my:.2} \
+                 L {lx:.2} {by:.2} \
+                 L {rx:.2} {by:.2} \
+                 A {r:.2} {r:.2} 0 0 0 {rx:.2} {y:.2} \
                  Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                c1x = x + w * 0.67, c1y = by + wave,
-                c2x = x + w * 0.33, c2y = by - wave,
-                ex = x, ey = by,
+                rx = x + rw, lx = x + tw, my = y + h / 2.0,
+                by = y + h, r = radius,
             )
         }
         crate::ir::NodeShape::StackedDocument => {
-            // Two offset document shapes.
+            // Two offset curved-trapezoid document shapes.
             let sw = node.style.stroke_width.unwrap_or(1.0);
             let off = 4.0;
-            let wave = (h - off) * 0.15;
             let bw = w - off;
             let bh = h - off;
-            let back_by = y + bh;
-            let back = format!(
-                "<path d=\"M {x1:.2} {y:.2} h {bw:.2} v {bh:.2} \
-                 C {c1x:.2} {c1y:.2} {c2x:.2} {c2y:.2} {ex:.2} {ey:.2} \
-                 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x1 = x + off,
-                c1x = x + off + bw * 0.67, c1y = back_by + wave,
-                c2x = x + off + bw * 0.33, c2y = back_by - wave,
-                ex = x + off, ey = back_by,
-            );
-            let front_by = y + off + bh;
-            let front = format!(
-                "<path d=\"M {x:.2} {y1:.2} h {bw:.2} v {bh:.2} \
-                 C {c1x:.2} {c1y:.2} {c2x:.2} {c2y:.2} {ex:.2} {ey:.2} \
-                 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                y1 = y + off,
-                c1x = x + bw * 0.67, c1y = front_by + wave,
-                c2x = x + bw * 0.33, c2y = front_by - wave,
-                ex = x, ey = front_by,
-            );
+            let doc_path = |sx: f32, sy: f32, dw: f32, dh: f32| -> String {
+                let radius = dh / 2.0;
+                let rw = (dw - radius).max(0.0);
+                let tw = dh / 4.0;
+                format!(
+                    "<path d=\"M {rx:.2} {sy:.2} L {lx:.2} {sy:.2} L {sx:.2} {my:.2} \
+                     L {lx:.2} {by:.2} L {rx:.2} {by:.2} \
+                     A {r:.2} {r:.2} 0 0 0 {rx:.2} {sy:.2} Z\" \
+                     fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                    rx = sx + rw, lx = sx + tw, my = sy + dh / 2.0,
+                    by = sy + dh, r = radius,
+                )
+            };
+            let back = doc_path(x + off, y, bw, bh);
+            let front = doc_path(x, y + off, bw, bh);
             format!("{back}{front}")
         }
         crate::ir::NodeShape::NotchRect => {
@@ -7002,7 +7000,7 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let mx = x + w / 2.0;
             let my = y + h / 2.0;
             let rect = format!(
-                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             );
             let vert = format!(
                 "<line x1=\"{mx:.2}\" y1=\"{y:.2}\" x2=\"{mx:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
@@ -7140,25 +7138,29 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             lines
         }
         crate::ir::NodeShape::TagDocument => {
-            // Document shape with a folded corner (tag) in the top-right
-            // and wavy bottom edge, matching mermaid-js tag-doc.
+            // Curved trapezoid (doc shape) with a folded corner in the
+            // top area, matching mermaid-js tag-doc.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let wave = h * 0.15;
+            let radius = h / 2.0;
+            let rw = (w - radius).max(0.0);
+            let tw = h / 4.0;
             let fold = (w.min(h) * 0.15).min(14.0);
-            let by = y + h;
             let doc = format!(
-                "<path d=\"M {x:.2} {y:.2} h {w1:.2} v {fold:.2} h {fold:.2} v {bh:.2} \
-                 C {c1x:.2} {c1y:.2} {c2x:.2} {c2y:.2} {ex:.2} {ey:.2} \
+                "<path d=\"M {rx:.2} {y:.2} \
+                 L {fx:.2} {y:.2} L {fx:.2} {fy:.2} L {lx:.2} {fy:.2} \
+                 L {lx:.2} {y:.2} \
+                 L {x:.2} {my:.2} \
+                 L {lx:.2} {by:.2} \
+                 L {rx:.2} {by:.2} \
+                 A {r:.2} {r:.2} 0 0 0 {rx:.2} {y:.2} \
                  Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                w1 = w - fold,
-                bh = h - fold,
-                c1x = x + w * 0.67, c1y = by + wave,
-                c2x = x + w * 0.33, c2y = by - wave,
-                ex = x, ey = by,
+                rx = x + rw, lx = x + tw, fx = x + tw + fold,
+                fy = y + fold, my = y + h / 2.0,
+                by = y + h, r = radius,
             );
             let fold_line = format!(
-                "<path d=\"M {fx:.2} {y:.2} v {fold:.2} h {fold:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                fx = x + w - fold,
+                "<path d=\"M {fx:.2} {y:.2} v {fold:.2} h {nf:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                fx = x + tw + fold, nf = -fold,
             );
             format!("{doc}{fold_line}")
         }
@@ -7293,15 +7295,15 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let bw = w - off;
             let bh = h - off;
             let back2 = format!(
-                "<rect x=\"{:.2}\" y=\"{y:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                "<rect x=\"{:.2}\" y=\"{y:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 x + 2.0 * off,
             );
             let back1 = format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 x + off, y + off,
             );
             let front = format!(
-                "<rect x=\"{x:.2}\" y=\"{:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                "<rect x=\"{x:.2}\" y=\"{:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 y + 2.0 * off,
             );
             format!("{back2}{back1}{front}")
@@ -7389,7 +7391,7 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             // top, matching mermaid-js dividedRectangle (rectOffset = h * 0.2).
             let sw = node.style.stroke_width.unwrap_or(1.0);
             let rect = format!(
-                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             );
             let div_y = y + h * 0.2;
             let line = format!(
@@ -7403,7 +7405,7 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let sw = node.style.stroke_width.unwrap_or(1.0);
             let inset = w.min(h) * 0.12;
             let rect = format!(
-                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             );
             let line1 = format!(
                 "<line x1=\"{:.2}\" y1=\"{y:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
