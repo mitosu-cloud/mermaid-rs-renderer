@@ -1,6 +1,9 @@
 #!/bin/bash
 # Render comparison: mermaid-rs vs mermaid-js
-# Outputs NAME-rs.svg and NAME-js.svg for each .mmd source file
+# Usage:
+#   bash render-comparison.sh                              # all files
+#   bash render-comparison.sh flowchart-k3s-cluster-wireguard  # one file (no .mmd extension)
+#   bash render-comparison.sh flowchart-k3s-cluster-wireguard.mmd  # also works
 
 set -e
 
@@ -18,13 +21,27 @@ echo "Building mermaid-rs..."
 cd "$REPO_DIR"
 cargo build --release 2>/dev/null
 
+# Determine which files to process
+if [ -n "$1" ]; then
+    # Single file mode — strip .mmd if provided
+    name="${1%.mmd}"
+    mmd="$REF_DIR/${name}.mmd"
+    if [ ! -f "$mmd" ]; then
+        echo "Error: $mmd not found"
+        exit 1
+    fi
+    files=("$mmd")
+else
+    files=("$REF_DIR"/*.mmd)
+fi
+
 total=0
 rs_ok=0
 rs_fail=0
 js_ok=0
 js_fail=0
 
-for mmd in "$REF_DIR"/*.mmd; do
+for mmd in "${files[@]}"; do
     name="$(basename "$mmd" .mmd)"
     total=$((total + 1))
 
