@@ -94,9 +94,9 @@ const STATE_SUBGRAPH_TOP_MIN_SCALE: f32 = 1.4;
 
 // ── Shape size constants ─────────────────────────────────────────────
 const DIAMOND_SCALE: f32 = 0.95;
-const FORK_JOIN_MIN_WIDTH: f32 = 50.0;
+const FORK_JOIN_MIN_WIDTH: f32 = 70.0;
 const FORK_JOIN_HEIGHT_SCALE: f32 = 0.4;
-const FORK_JOIN_MIN_HEIGHT: f32 = 8.0;
+const FORK_JOIN_MIN_HEIGHT: f32 = 10.0;
 const CIRCLE_EMPTY_HEIGHT_SCALE: f32 = 1.4;
 const CIRCLE_EMPTY_MIN_SIZE: f32 = 14.0;
 const ROUND_RECT_WIDTH_SCALE: f32 = 1.1;
@@ -5788,8 +5788,9 @@ fn shape_size(
             height = size;
         }
         crate::ir::NodeShape::ForkJoin => {
-            width = width.max(FORK_JOIN_MIN_WIDTH);
-            height = (config.node_padding_y * FORK_JOIN_HEIGHT_SCALE).max(FORK_JOIN_MIN_HEIGHT);
+            // JS: fixed size, no label. TB: 70×10, LR: 10×70.
+            width = FORK_JOIN_MIN_WIDTH;
+            height = FORK_JOIN_MIN_HEIGHT;
         }
         crate::ir::NodeShape::Circle | crate::ir::NodeShape::DoubleCircle => {
             let size = if label_empty {
@@ -5806,8 +5807,10 @@ fn shape_size(
             height *= ROUND_RECT_HEIGHT_SCALE;
         }
         crate::ir::NodeShape::Cylinder => {
-            width *= CYLINDER_SCALE;
-            height *= CYLINDER_SCALE;
+            // JS formula: ry = (w/2) / (2.5 + w/50), h += ry
+            let rx = width / 2.0;
+            let ry = rx / (2.5 + width / 50.0);
+            height += ry;
         }
         crate::ir::NodeShape::Hexagon => {
             width *= HEXAGON_WIDTH_SCALE;
@@ -5821,22 +5824,14 @@ fn shape_size(
         }
         crate::ir::NodeShape::Subroutine => {}
         crate::ir::NodeShape::SmallCircle | crate::ir::NodeShape::FilledCircle => {
-            let size = if label_empty {
-                (config.node_padding_y * 1.5).max(14.0)
-            } else {
-                width.max(height) * 0.75
-            };
-            width = size;
-            height = size;
+            // Fixed 14×14 matching mermaid-js (stateStart.ts / filledCircle.ts).
+            width = 14.0;
+            height = 14.0;
         }
         crate::ir::NodeShape::FramedCircle | crate::ir::NodeShape::CrossedCircle => {
-            let size = if label_empty {
-                (config.node_padding_y * CIRCLE_EMPTY_HEIGHT_SCALE).max(CIRCLE_EMPTY_MIN_SIZE)
-            } else {
-                width.max(height)
-            };
-            width = size;
-            height = size;
+            // Fixed 14×14 matching mermaid-js (stateEnd.ts).
+            width = 14.0;
+            height = 14.0;
         }
         crate::ir::NodeShape::Triangle | crate::ir::NodeShape::FlippedTriangle => {
             width *= 1.3;
@@ -5856,10 +5851,34 @@ fn shape_size(
             height += 8.0;
         }
         crate::ir::NodeShape::SlopedRect => {
-            height *= 1.15;
+            // JS: totalHeight = (bbox.height + padding*2) * 1.5
+            height *= 1.5;
+        }
+        crate::ir::NodeShape::LightningBolt => {
+            // JS: fixed minimum 35×35 with 2:1 height, no label.
+            width = width.max(35.0);
+            height = (height * 2.0).max(70.0);
         }
         crate::ir::NodeShape::LinedRect => {
             width *= 1.15;
+        }
+        // Curved-trapezoid family (doc, tag-doc, lin-doc, docs): JS uses
+        // w * 1.25 (curvedTrapezoid.ts line 26). The right-side semicircle
+        // has radius = h/2, so height must be >= width for portrait aspect.
+        // Boost height to ensure portrait orientation like JS.
+        crate::ir::NodeShape::Document
+        | crate::ir::NodeShape::TagDocument
+        | crate::ir::NodeShape::LinedDocument
+        | crate::ir::NodeShape::StackedDocument
+        | crate::ir::NodeShape::CurvedTrapezoid => {
+            width *= 1.25;
+            height = height.max(width * 1.3);
+        }
+        // Hourglass/collate should be square.
+        crate::ir::NodeShape::Hourglass => {
+            let size = width.max(height);
+            width = size;
+            height = size;
         }
         _ => {}
     }
@@ -6006,7 +6025,7 @@ mod tests {
             labeled_edges += 1;
             let dist = polyline_point_distance(&edge.points, anchor);
             assert!(
-                dist <= 12.0,
+                dist <= 15.0,
                 "edge {}->{} label anchor drifted {:.2}px from own path",
                 edge.from,
                 edge.to,

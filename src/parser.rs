@@ -6319,7 +6319,7 @@ fn resolve_shape_name(name: &str) -> Option<crate::ir::NodeShape> {
         "win-pane" | "window-pane" => Some(NodeShape::WindowPane),
         "hourglass" => Some(NodeShape::Hourglass),
         "bolt" | "lightning-bolt" => Some(NodeShape::LightningBolt),
-        "brace-l" => Some(NodeShape::BraceLeft),
+        "brace" | "brace-l" => Some(NodeShape::BraceLeft),
         "brace-r" => Some(NodeShape::BraceRight),
         "comment" | "braces" => Some(NodeShape::Comment),
         "odd" => Some(NodeShape::OddShape),
@@ -6342,6 +6342,7 @@ fn resolve_shape_name(name: &str) -> Option<crate::ir::NodeShape> {
         "div-rect" | "divided-rect" | "div-proc" => Some(NodeShape::DividedRect),
         "lin-rect" | "lined-rect" | "lin-proc" => Some(NodeShape::LinedRect),
         "wave-rect" | "wavy-rect" | "paper-tape" => Some(NodeShape::WavyRect),
+        "fork" | "join" => Some(NodeShape::ForkJoin),
         _ => None,
     }
 }

@@ -761,8 +761,8 @@ impl Default for LayoutConfig {
         Self {
             node_spacing: 50.0,
             rank_spacing: 50.0,
-            node_padding_x: 30.0,
-            node_padding_y: 15.0,
+            node_padding_x: 20.0,
+            node_padding_y: 10.0,
             label_line_height: 1.5,
             max_label_width_chars: 22,
             preferred_aspect_ratio: None,
