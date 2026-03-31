@@ -6932,12 +6932,25 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             )
         }
         crate::ir::NodeShape::TagRect => {
-            // Rectangle with a small triangular tag/flag on the right.
+            // Rectangle with a folded corner (document tag) in the
+            // bottom-right, matching mermaid-js tag-rect shape.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let tag = 8.0;
+            let fold = (w * 0.15).min(h * 0.3).max(6.0);
+            // Outer rectangle (with fold cutout at bottom-right).
+            let rect_path = format!(
+                "M {x:.2} {y:.2} h {w:.2} v {hf:.2} l {nf:.2} {f:.2} h {nwf:.2} Z",
+                hf = h - fold, nf = -fold, f = fold, nwf = -(w - fold),
+            );
+            // Fold triangle overlay.
+            let fx = x + w - fold;
+            let fy = y + h - fold;
+            let fold_path = format!(
+                "M {fx:.2} {fy2:.2} h {f:.2} v {nf:.2} Z",
+                fy2 = y + h, f = fold, nf = -fold,
+            );
             format!(
-                "<path d=\"M {x:.2} {y:.2} h {tw:.2} l {tag:.2} {th:.2} l {ntag:.2} {th:.2} h {ntw:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                tw = w - tag, th = h / 2.0, ntag = -tag, ntw = -(w - tag),
+                "<path d=\"{rect_path}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>\
+                 <path d=\"{fold_path}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\" stroke-linejoin=\"round\"/>",
             )
         }
         crate::ir::NodeShape::Flag => {
