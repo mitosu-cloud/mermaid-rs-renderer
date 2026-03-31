@@ -6892,33 +6892,46 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
         }
         crate::ir::NodeShape::Document => {
             // Document shape: rectangle with wavy bottom edge.
+            // The bottom is a smooth S-curve matching mermaid-js: the
+            // left half dips down, the right half curves back up.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let wave = h * 0.12;
+            let wave = h * 0.15;
+            let by = y + h; // baseline y
             format!(
-                "<path d=\"M {x:.2} {y:.2} h {w:.2} v {bh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                bh = h - wave,
-                q1x = w * 0.25, q1y = wave * 2.0, qmx = w * -0.5,
-                q2x = w * -0.25, q2y = wave * -2.0,
+                "<path d=\"M {x:.2} {y:.2} h {w:.2} v {h:.2} \
+                 C {c1x:.2} {c1y:.2} {c2x:.2} {c2y:.2} {ex:.2} {ey:.2} \
+                 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                c1x = x + w * 0.67, c1y = by + wave,
+                c2x = x + w * 0.33, c2y = by - wave,
+                ex = x, ey = by,
             )
         }
         crate::ir::NodeShape::StackedDocument => {
             // Two offset document shapes.
             let sw = node.style.stroke_width.unwrap_or(1.0);
             let off = 4.0;
-            let wave = (h - off) * 0.12;
+            let wave = (h - off) * 0.15;
             let bw = w - off;
             let bh = h - off;
+            let back_by = y + bh;
             let back = format!(
-                "<path d=\"M {x1:.2} {y:.2} h {bw:.2} v {vh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x1 = x + off, vh = bh - wave,
-                q1x = bw * 0.25, q1y = wave * 2.0, qmx = bw * -0.5,
-                q2x = bw * -0.25, q2y = wave * -2.0,
+                "<path d=\"M {x1:.2} {y:.2} h {bw:.2} v {bh:.2} \
+                 C {c1x:.2} {c1y:.2} {c2x:.2} {c2y:.2} {ex:.2} {ey:.2} \
+                 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                x1 = x + off,
+                c1x = x + off + bw * 0.67, c1y = back_by + wave,
+                c2x = x + off + bw * 0.33, c2y = back_by - wave,
+                ex = x + off, ey = back_by,
             );
+            let front_by = y + off + bh;
             let front = format!(
-                "<path d=\"M {x:.2} {y1:.2} h {bw:.2} v {vh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                y1 = y + off, vh = bh - wave,
-                q1x = bw * 0.25, q1y = wave * 2.0, qmx = bw * -0.5,
-                q2x = bw * -0.25, q2y = wave * -2.0,
+                "<path d=\"M {x:.2} {y1:.2} h {bw:.2} v {bh:.2} \
+                 C {c1x:.2} {c1y:.2} {c2x:.2} {c2y:.2} {ex:.2} {ey:.2} \
+                 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                y1 = y + off,
+                c1x = x + bw * 0.67, c1y = front_by + wave,
+                c2x = x + bw * 0.33, c2y = front_by - wave,
+                ex = x, ey = front_by,
             );
             format!("{back}{front}")
         }
@@ -7127,23 +7140,27 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             lines
         }
         crate::ir::NodeShape::TagDocument => {
-            // Document shape with a triangular tag/tab in the top-right corner.
+            // Document shape with a folded corner (tag) in the top-right
+            // and wavy bottom edge, matching mermaid-js tag-doc.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let wave = h * 0.12;
-            let tag = (w.min(h) * 0.15).min(14.0);
+            let wave = h * 0.15;
+            let fold = (w.min(h) * 0.15).min(14.0);
+            let by = y + h;
             let doc = format!(
-                "<path d=\"M {x:.2} {y:.2} h {w1:.2} v {tag:.2} h {tag:.2} v {bh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                w1 = w - tag,
-                bh = h - wave - tag,
-                q1x = w * 0.25, q1y = wave * 2.0, qmx = w * -0.5,
-                q2x = w * -0.25, q2y = wave * -2.0,
+                "<path d=\"M {x:.2} {y:.2} h {w1:.2} v {fold:.2} h {fold:.2} v {bh:.2} \
+                 C {c1x:.2} {c1y:.2} {c2x:.2} {c2y:.2} {ex:.2} {ey:.2} \
+                 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                w1 = w - fold,
+                bh = h - fold,
+                c1x = x + w * 0.67, c1y = by + wave,
+                c2x = x + w * 0.33, c2y = by - wave,
+                ex = x, ey = by,
             );
-            // Fold line for the tag
-            let fold = format!(
-                "<path d=\"M {fx:.2} {y:.2} v {tag:.2} h {tag:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                fx = x + w - tag,
+            let fold_line = format!(
+                "<path d=\"M {fx:.2} {y:.2} v {fold:.2} h {fold:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                fx = x + w - fold,
             );
-            format!("{doc}{fold}")
+            format!("{doc}{fold_line}")
         }
         crate::ir::NodeShape::CurvedTrapezoid => {
             // Trapezoid with bezier-curved left and right edges.
@@ -7368,14 +7385,15 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             s
         }
         crate::ir::NodeShape::DividedRect => {
-            // Rectangle with a horizontal divider line.
+            // Rectangle with a horizontal divider line at 20% from the
+            // top, matching mermaid-js dividedRectangle (rectOffset = h * 0.2).
             let sw = node.style.stroke_width.unwrap_or(1.0);
             let rect = format!(
                 "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"3\" ry=\"3\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             );
-            let mid_y = y + h / 2.0;
+            let div_y = y + h * 0.2;
             let line = format!(
-                "<line x1=\"{x:.2}\" y1=\"{mid_y:.2}\" x2=\"{:.2}\" y2=\"{mid_y:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                "<line x1=\"{x:.2}\" y1=\"{div_y:.2}\" x2=\"{:.2}\" y2=\"{div_y:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
                 x + w,
             );
             format!("{rect}{line}")
