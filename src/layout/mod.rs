@@ -1482,6 +1482,51 @@ fn compute_flowchart_layout(
             .saturating_add(edge_routing_start.elapsed().as_micros());
     }
 
+    // Fix overlapping edge labels: when two labels overlap, push them
+    // apart horizontally so both are readable.
+    if graph.kind == crate::ir::DiagramKind::Flowchart {
+        for i in 0..label_anchors.len() {
+            let Some((ax, ay)) = label_anchors[i] else {
+                continue;
+            };
+            let Some(label_i) = edge_route_labels[i].as_ref() else {
+                continue;
+            };
+            for j in (i + 1)..label_anchors.len() {
+                let Some((bx, by)) = label_anchors[j] else {
+                    continue;
+                };
+                let Some(label_j) = edge_route_labels[j].as_ref() else {
+                    continue;
+                };
+                // Check vertical overlap (same y band).
+                let half_h_i = label_i.height / 2.0 + 4.0;
+                let half_h_j = label_j.height / 2.0 + 4.0;
+                if (ay - by).abs() > half_h_i + half_h_j {
+                    continue;
+                }
+                // Check horizontal overlap.
+                let half_w_i = label_i.width / 2.0 + 8.0;
+                let half_w_j = label_j.width / 2.0 + 8.0;
+                let needed_sep = half_w_i + half_w_j;
+                let current_sep = (ax - bx).abs();
+                if current_sep >= needed_sep {
+                    continue;
+                }
+                // Push apart: center them around their midpoint with
+                // the required separation.
+                let mid = (ax + bx) / 2.0;
+                let (new_ax, new_bx) = if ax <= bx {
+                    (mid - needed_sep / 2.0, mid + needed_sep / 2.0)
+                } else {
+                    (mid + needed_sep / 2.0, mid - needed_sep / 2.0)
+                };
+                label_anchors[i] = Some((new_ax, ay));
+                label_anchors[j] = Some((new_bx, by));
+            }
+        }
+    }
+
     let mut edges = Vec::new();
     for (idx, edge) in graph.edges.iter().enumerate() {
         let label = edge_route_labels[idx].clone();
