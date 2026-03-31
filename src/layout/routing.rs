@@ -17,7 +17,7 @@ const SIDE_LOAD_SOFT_CAP: f32 = 6.0;
 /// separation is clearly stronger and the forced sides are already saturated.
 const HUB_DIVERSIFY_GEOM_RATIO: f32 = 1.35;
 const HUB_DIVERSIFY_LOAD_SUM: usize = 14;
-const LOW_DEGREE_BALANCE_MIN_PRIMARY_LOAD: usize = 4;
+const LOW_DEGREE_BALANCE_MIN_PRIMARY_LOAD: usize = 2;
 
 // ── Port stub sizing ────────────────────────────────────────────────
 /// Ratio of node_spacing used as base port stub length.
@@ -54,7 +54,7 @@ const CHANNEL_CANDIDATE_RATIO: f32 = 0.75;
 
 // ── Obstacle construction ───────────────────────────────────────────
 /// Ratio of node_spacing used for obstacle padding around nodes/subgraphs.
-const OBSTACLE_PAD_RATIO: f32 = 0.35;
+const OBSTACLE_PAD_RATIO: f32 = 0.5;
 /// Minimum obstacle padding.
 const OBSTACLE_PAD_MIN: f32 = 6.0;
 

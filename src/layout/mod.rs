@@ -326,6 +326,14 @@ fn compute_flowchart_layout(
                 (effective_config.rank_spacing * scale).max(auto.min_spacing);
         }
 
+        // Flowcharts with labeled edges need extra rank spacing so labels
+        // fit between ranks without overlapping nodes — matching dagre's
+        // effective ranksep which includes label height.
+        let has_edge_labels = graph.edges.iter().any(|e| e.label.is_some());
+        if has_edge_labels && effective_config.rank_spacing < 75.0 {
+            effective_config.rank_spacing = 75.0;
+        }
+
         // Hub-and-spoke flowcharts (one high-degree node) tend to over-expand
         // with generic spacing and produce long radial connectors. Compress
         // spacing slightly when hub dominance is high.
@@ -351,7 +359,7 @@ fn compute_flowchart_layout(
     }
     let node_count = graph.nodes.len();
     let edge_count = graph.edges.len();
-    let tiny_graph = graph.subgraphs.is_empty() && node_count <= 4 && edge_count <= 4;
+    let tiny_graph = graph.subgraphs.is_empty() && node_count <= 4 && edge_count <= 8;
     if tiny_graph {
         effective_config.flowchart.order_passes = 4;
         effective_config.flowchart.routing.snap_ports_to_grid = false;
@@ -366,7 +374,7 @@ fn compute_flowchart_layout(
             effective_config.node_spacing =
                 (effective_config.node_spacing * 1.6).max(80.0);
             effective_config.rank_spacing =
-                (effective_config.rank_spacing * 1.6).max(80.0);
+                effective_config.rank_spacing.max(80.0);
         }
     }
     if prefer_direct_hub_routing {
@@ -645,6 +653,60 @@ fn compute_flowchart_layout(
         *node_degrees.entry(edge.from.clone()).or_insert(0) += 1;
         *node_degrees.entry(edge.to.clone()).or_insert(0) += 1;
     }
+    // Detect parallel long edges (multiple edges between the same node
+    // pair where at least one spans 2+ ranks) and force them to alternate
+    // Left/Right sides.  This matches dagre's behavior where such edges
+    // route to opposite sides of intermediate nodes.  Adjacent-rank pairs
+    // (both span 1) keep natural Bottom→Top routing with offset separation.
+    let mut forced_sides: HashMap<usize, EdgeSide> = HashMap::new();
+    if graph.kind == crate::ir::DiagramKind::Flowchart {
+        let mut pair_edges: HashMap<(String, String), Vec<usize>> = HashMap::new();
+        for (idx, edge) in graph.edges.iter().enumerate() {
+            let key = if edge.from <= edge.to {
+                (edge.from.clone(), edge.to.clone())
+            } else {
+                (edge.to.clone(), edge.from.clone())
+            };
+            pair_edges.entry(key).or_default().push(idx);
+        }
+        for indices in pair_edges.values() {
+            if indices.len() < 2 {
+                continue;
+            }
+            // Only force sides if the nodes are far apart on the main
+            // axis (indicating a long-span edge that routes around
+            // intermediate nodes).  Adjacent nodes keep normal routing.
+            let has_long_span = indices.iter().any(|&idx| {
+                let e = &graph.edges[idx];
+                let f = nodes.get(&e.from);
+                let t = nodes.get(&e.to);
+                if let (Some(fn_), Some(tn)) = (f, t) {
+                    let main_gap = if is_horizontal(graph.direction) {
+                        (fn_.x - tn.x).abs() - fn_.width.max(tn.width)
+                    } else {
+                        (fn_.y - tn.y).abs() - fn_.height.max(tn.height)
+                    };
+                    main_gap > config.rank_spacing * 1.5
+                } else {
+                    false
+                }
+            });
+            if !has_long_span {
+                continue;
+            }
+            for (i, &idx) in indices.iter().enumerate() {
+                forced_sides.insert(
+                    idx,
+                    if i % 2 == 0 {
+                        EdgeSide::Left
+                    } else {
+                        EdgeSide::Right
+                    },
+                );
+            }
+        }
+    }
+
     let mut side_loads: HashMap<String, [usize; 4]> = HashMap::new();
     let mut edge_ports: Vec<EdgePortInfo> = Vec::with_capacity(graph.edges.len());
     let mut port_candidates: HashMap<(String, EdgeSide), Vec<PortCandidate>> = HashMap::new();
@@ -667,8 +729,8 @@ fn compute_flowchart_layout(
         let use_balanced_sides = !matches!(graph.kind, crate::ir::DiagramKind::Architecture);
         let from_degree = node_degrees.get(&edge.from).copied().unwrap_or(0);
         let to_degree = node_degrees.get(&edge.to).copied().unwrap_or(0);
-        let allow_low_degree_balancing =
-            edge.style == crate::ir::EdgeStyle::Dotted && from_degree <= 4 && to_degree <= 4;
+        let allow_low_degree_balancing = graph.kind == crate::ir::DiagramKind::Flowchart
+            || (edge.style == crate::ir::EdgeStyle::Dotted && from_degree <= 4 && to_degree <= 4);
         let primary_sides = edge_sides(from, to, graph.direction);
         let mut selected_sides = if use_balanced_sides {
             edge_sides_balanced(
@@ -702,6 +764,10 @@ fn compute_flowchart_layout(
             if candidate_crossings > primary_crossings {
                 selected_sides = primary_sides;
             }
+        }
+        // Override with forced Left/Right for parallel long edges.
+        if let Some(&forced) = forced_sides.get(&idx) {
+            selected_sides = (forced, forced, selected_sides.2);
         }
         let (start_side, end_side, _is_backward) = selected_sides;
         bump_side_load(&mut side_loads, &edge.from, start_side);
@@ -1212,12 +1278,32 @@ fn compute_flowchart_layout(
         } else {
             None
         };
-        let mut points = route_edge_with_avoidance(
-            &route_ctx,
-            edge_occupancy.as_ref(),
-            routing_grid.as_ref(),
-            existing_for_edge,
-        );
+        // For forced Left/Right edges, generate clean orthogonal paths
+        // (out → vertical → back) instead of complex A* routing.
+        // This produces smooth rectangular detours like dagre.
+        let mut points = if forced_sides.contains_key(idx) {
+            let detour_offset = config.node_spacing * 1.2;
+            let start_pt = anchor_point_for_node(from, port_info.start_side, port_info.start_offset);
+            let end_pt = anchor_point_for_node(to, port_info.end_side, port_info.end_offset);
+            let detour_x = if port_info.start_side == EdgeSide::Left {
+                start_pt.0.min(end_pt.0) - detour_offset
+            } else {
+                start_pt.0.max(end_pt.0) + detour_offset
+            };
+            vec![
+                start_pt,
+                (detour_x, start_pt.1),
+                (detour_x, end_pt.1),
+                end_pt,
+            ]
+        } else {
+            route_edge_with_avoidance(
+                &route_ctx,
+                edge_occupancy.as_ref(),
+                routing_grid.as_ref(),
+                existing_for_edge,
+            )
+        };
         if matches!(
             graph.kind,
             crate::ir::DiagramKind::Class | crate::ir::DiagramKind::Er
@@ -1318,6 +1404,30 @@ fn compute_flowchart_layout(
         if routed_points[idx].len() > 2 {
             routed_points[idx] =
                 simplify_edge_path(&routed_points[idx], &obstacles, &edge.from, &edge.to);
+        }
+    }
+
+    // Clamp detour swing: prevent curves from extending too far beyond the
+    // source/target node bounding box.  Keeps diagrams proportional.
+    if graph.kind == crate::ir::DiagramKind::Flowchart {
+        let max_swing = config.node_spacing * 2.5;
+        for (idx, edge) in graph.edges.iter().enumerate() {
+            let points = &mut routed_points[idx];
+            if points.len() <= 2 {
+                continue;
+            }
+            let from_node = nodes.get(&edge.from);
+            let to_node = nodes.get(&edge.to);
+            if let (Some(f), Some(t)) = (from_node, to_node) {
+                let min_x = f.x.min(t.x) - max_swing;
+                let max_x = (f.x + f.width).max(t.x + t.width) + max_swing;
+                let min_y = f.y.min(t.y) - max_swing;
+                let max_y = (f.y + f.height).max(t.y + t.height) + max_swing;
+                for p in points.iter_mut() {
+                    p.0 = p.0.clamp(min_x, max_x);
+                    p.1 = p.1.clamp(min_y, max_y);
+                }
+            }
         }
     }
 
@@ -1919,23 +2029,16 @@ fn assign_positions_manual(
             .push(edge.to.clone());
     }
 
-    // Initialize cross-axis positions with meaningful spacing so the
-    // barycenter iterations have asymmetry to work with. This matches
-    // dagre's approach where virtual nodes (label dummies) start
-    // separated from real nodes, not all at x=0.
     let mut cross_pos: HashMap<String, f32> = HashMap::new();
     for bucket in &rank_nodes {
-        let mut cursor = 0.0f32;
-        for node_id in bucket.iter() {
+        for (idx, node_id) in bucket.iter().enumerate() {
             if let Some(node) = nodes.get(node_id) {
-                let half = if is_horizontal(graph.direction) {
-                    node.height / 2.0
+                let center = if is_horizontal(graph.direction) {
+                    node.y + node.height / 2.0
                 } else {
-                    node.width / 2.0
+                    node.x + node.width / 2.0
                 };
-                let center = cursor + half;
-                cross_pos.insert(node_id.clone(), center);
-                cursor = center + half + config.node_spacing;
+                cross_pos.insert(node_id.clone(), center + idx as f32 * 0.01);
             }
         }
     }
@@ -1948,7 +2051,7 @@ fn assign_positions_manual(
             return;
         }
         let neighbors = if use_incoming { &incoming } else { &outgoing };
-        let mut entries: Vec<(String, f32, f32, usize)> = Vec::new();
+        let mut entries: Vec<(String, f32, f32, usize, bool)> = Vec::new();
         for (idx, node_id) in bucket.iter().enumerate() {
             let Some(node) = nodes.get(node_id) else {
                 continue;
@@ -1984,7 +2087,7 @@ fn assign_positions_manual(
             } else {
                 node.width / 2.0
             };
-            entries.push((node_id.clone(), desired, half, idx));
+            entries.push((node_id.clone(), desired, half, idx, node.hidden));
         }
         entries.sort_by(|a, b| {
             a.1.partial_cmp(&b.1)
@@ -1992,24 +2095,30 @@ fn assign_positions_manual(
                 .then_with(|| a.3.cmp(&b.3))
         });
         let desired_mean =
-            entries.iter().map(|(_, d, _, _)| *d).sum::<f32>() / entries.len() as f32;
+            entries.iter().map(|(_, d, _, _, _)| *d).sum::<f32>() / entries.len() as f32;
         let mut assigned: Vec<(String, f32, f32)> = Vec::new();
         let mut prev_center: Option<f32> = None;
         let mut prev_half = 0.0;
-        for (node_id, desired, half, _idx) in entries {
+        for (node_id, desired, half, _idx, hidden) in entries {
             let center = if let Some(prev) = prev_center {
                 let min_center = prev + prev_half + half + config.node_spacing;
-                if desired < min_center {
-                    min_center
-                } else {
+                // Hidden nodes (span dummies) don't render — skip spacing
+                // constraints so they don't push real nodes off-center.
+                if hidden || desired >= min_center {
                     desired
+                } else {
+                    min_center
                 }
             } else {
                 desired
             };
             assigned.push((node_id, center, half));
-            prev_center = Some(center);
-            prev_half = half;
+            // Hidden nodes (span dummies) don't occupy visual space —
+            // don't let them create spacing constraints for the next node.
+            if !hidden {
+                prev_center = Some(center);
+                prev_half = half;
+            }
         }
         let actual_mean = assigned.iter().map(|(_, c, _)| *c).sum::<f32>() / assigned.len() as f32;
         let delta = desired_mean - actual_mean;
