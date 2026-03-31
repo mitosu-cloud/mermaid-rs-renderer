@@ -766,7 +766,7 @@ impl Default for LayoutConfig {
             label_line_height: 1.5,
             max_label_width_chars: 22,
             preferred_aspect_ratio: None,
-            fast_text_metrics: false,
+            fast_text_metrics: true,
             requirement: RequirementConfig::default(),
             mindmap: MindmapConfig::default(),
             gitgraph: GitGraphConfig::default(),

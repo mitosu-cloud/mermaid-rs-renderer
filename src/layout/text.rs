@@ -126,9 +126,18 @@ pub(super) fn measure_label_with_font_size(
         .iter()
         .map(|line| text_width(line, font_size, font_family, fast_metrics))
         .fold(0.0, f32::max);
-    let avg_char = average_char_width(font_family, font_size, fast_metrics);
-    let guard_width = max_len as f32 * avg_char;
-    let width = max_width.max(guard_width);
+    // Guard width: a safety floor based on character count × average width.
+    // With fast_text_metrics the per-char fallback is already the primary
+    // measurement, so the guard would always dominate and inflate widths.
+    // Only apply it when using the font library (which can return 0 for
+    // missing glyphs).
+    let width = if fast_metrics {
+        max_width
+    } else {
+        let avg_char = average_char_width(font_family, font_size, fast_metrics);
+        let guard_width = max_len as f32 * avg_char;
+        max_width.max(guard_width)
+    };
     let height = lines.len() as f32 * font_size * config.label_line_height;
 
     TextBlock {
