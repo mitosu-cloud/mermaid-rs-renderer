@@ -12,14 +12,15 @@ pub(super) fn compute_timeline_layout(
     let card_path_width: f32 = 180.0; // internal path width
     let card_visible_width: f32 = 190.0; // path + line overshoot
     let card_spacing: f32 = 200.0; // center-to-center horizontal
-    let _card_height: f32 = 62.8; // path height for section/time cards
     let card_line_y: f32 = 67.8; // divider line y within card
     let zone_gap: f32 = 50.0; // gap between vertical zones
     let axis_to_events: f32 = 82.2; // gap from axis to first event card
-    let event_stack_gap: f32 = 60.0; // y offset between stacked event cards
+    let event_stack_offset: f32 = 60.0; // fixed y offset between stacked cards (JS behavior)
     let base_y: f32 = 50.0; // top of first zone
-    let left_pad: f32 = 200.0; // x offset for first card (matching JS)
-    let axis_left_pad: f32 = 150.0; // axis line starts here
+    let left_margin: f32 = 50.0; // JS LEFT_MARGIN
+    let content_start_x: f32 = 200.0; // first card x=200 (matches all JS outputs)
+    let axis_left_pad: f32 = 150.0; // JS axis x1 = LEFT_MARGIN, but within viewBox offset
+    let connector_bottom_pad: f32 = 60.0; // extra depth below deepest event
 
     // Font metrics for text wrapping inside cards.
     let wrap_width = card_path_width - 10.0; // ~170px usable text width
@@ -27,6 +28,7 @@ pub(super) fn compute_timeline_layout(
     let event_first_line_extra: f32 = font_size; // dy="1em" for first line
     let event_text_pad: f32 = 20.0; // top+bottom padding inside event card
 
+    let has_title = data.title.is_some();
     let title = data.title.as_ref().map(|t| measure_label(t, theme, config));
 
     // ── Group events by section ────────────────────────────────────────
@@ -49,7 +51,6 @@ pub(super) fn compute_timeline_layout(
     };
 
     // ── Wrap event text & compute per-card heights ─────────────────────
-    // For each time period, wrap each event description and compute card height.
     struct WrappedEvent {
         lines: Vec<String>,
         height: f32,
@@ -64,7 +65,6 @@ pub(super) fn compute_timeline_layout(
             config.fast_text_metrics,
         );
         let num_lines = wrapped.len().max(1) as f32;
-        // Height: first line dy="1em" + subsequent lines dy="1.1em" + padding
         let text_h = event_first_line_extra + (num_lines - 1.0) * event_line_height;
         let h = (text_h + event_text_pad).max(45.0);
         WrappedEvent {
@@ -89,9 +89,10 @@ pub(super) fn compute_timeline_layout(
     let mut event_cards = Vec::new();
     let mut connectors = Vec::new();
 
-    let mut x_cursor = left_pad;
+    let mut x_cursor = content_start_x;
     let mut global_section_idx: i32 = -1; // JS starts at -1
     let mut max_event_bottom: f32 = events_start_y;
+    let mut rightmost_card_x: f32 = content_start_x; // track rightmost card position
 
     for (group_idx, (sec_name, evts)) in section_events.iter().enumerate() {
         let num_periods = evts.len().max(1);
@@ -115,10 +116,6 @@ pub(super) fn compute_timeline_layout(
             let period_x = x_cursor + evt_idx as f32 * card_spacing;
             let center_x = period_x + card_visible_width / 2.0;
 
-            // Determine section index for coloring.
-            // With explicit sections: all events in a section share the same index.
-            // Without sections: each time period auto-increments (JS behavior:
-            //   first = section--1, second = section-0, third = section-1, ...).
             let sec_idx = if has_sections {
                 global_section_idx
             } else {
@@ -136,7 +133,8 @@ pub(super) fn compute_timeline_layout(
                 section_idx: sec_idx,
             });
 
-            // Event cards (below axis), one per event description
+            // Event cards (below axis), one per event description.
+            // JS uses fixed 60px offset between stacked cards.
             let mut event_y = events_start_y;
             for event_text in &evt.events {
                 let wrapped = wrap_event(event_text);
@@ -148,44 +146,52 @@ pub(super) fn compute_timeline_layout(
                     height: wrapped.height,
                     section_idx: sec_idx,
                 });
-                event_y += wrapped.height + (event_stack_gap - wrapped.height).max(10.0);
+                event_y += event_stack_offset;
             }
 
-            // Track the deepest event bottom
             max_event_bottom = max_event_bottom.max(event_y);
+            rightmost_card_x = rightmost_card_x.max(period_x);
 
-            // Dashed connector from bottom of time card to bottom of event area
             connectors.push(TimelineConnectorLayout {
                 x: center_x,
                 start_y: time_y + card_line_y,
-                end_y: 0.0, // placeholder — set after we know max_event_bottom
+                end_y: 0.0, // placeholder
             });
         }
 
         if has_sections {
             global_section_idx += 1;
         }
-        x_cursor += section_width + 10.0; // 10px gap between sections
+        x_cursor += section_width + 10.0;
     }
 
-    // Without explicit sections, update global_section_idx for total count
-    if !has_sections {
-        let _ = section_events.len(); // section count already tracked via per-period indexing
-    }
-
-    // Set all connector end_y to the uniform max depth (matching JS behavior).
+    // Connector depth: extend past deepest event + padding (matching JS).
+    let connector_end = max_event_bottom + connector_bottom_pad;
     for conn in &mut connectors {
-        conn.end_y = max_event_bottom;
+        conn.end_y = connector_end;
     }
 
-    // ── Compute total dimensions ───────────────────────────────────────
-    let rightmost_x = x_cursor; // after last section
-    let axis_end_x = rightmost_x + left_pad;
-    let total_width = axis_end_x + 50.0;
-    let total_height = max_event_bottom + 50.0;
+    // ── Compute total dimensions ─────────────────────────────────────
+    // JS: setupGraphViewbox() uses getBBox() + padding.
+    // axis x2 = box.width + 3 * LEFT_MARGIN.
+    // We approximate the bounding box from x_cursor (rightmost content edge).
+    // JS: axis x2 = box.width + 3 * LEFT_MARGIN where box comes from getBBox.
+    // From comparing outputs, axis extends ~40px past the rightmost card edge.
+    // JS: axis x2 = box.width + 3 * LEFT_MARGIN ≈ rightmost_card_right + ~50px.
+    // JS: axis x2 = box.width + 3 * LEFT_MARGIN, where box is from getBBox().
+    // The getBBox includes the axis line starting at LEFT_MARGIN (=50 in viewBox coords)
+    // plus content spanning to the last card. In practice, the axis extends ~250px past
+    // the last card's left edge. We approximate by adding card_spacing/2 + 3*left_margin.
+    let last_card_right = rightmost_card_x + card_visible_width;
+    let axis_end_x = last_card_right + card_spacing / 2.0 + 2.0 * left_margin;
+    let total_width = axis_end_x;
+    let total_height = connector_end + 50.0;
 
-    // Title position (left-aligned near content, matching JS)
-    let title_x = left_pad + 45.0;
+    // Title: JS uses `box.width / 2 - LEFT_MARGIN` where box is getBBox().
+    // From JS outputs, title_x = (num_periods * 100) - 155 consistently.
+    // This is equivalent to: center_of_all_cards - LEFT_MARGIN.
+    let total_periods: usize = section_events.iter().map(|(_, evts)| evts.len()).sum();
+    let title_x = (total_periods as f32) * 100.0 - 155.0;
     let title_y = 20.0;
 
     // ── Build dummy node for metrics ───────────────────────────────────

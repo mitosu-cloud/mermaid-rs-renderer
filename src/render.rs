@@ -118,6 +118,14 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let viewbox_x = min_x - pad;
             let viewbox_y = min_y - pad;
             (width, height, viewbox_x, viewbox_y, width, height)
+        } else if let DiagramData::Timeline(tl) = &layout.diagram {
+            // Match JS viewBox: origin at (100, -61) with title, (100, 0) without.
+            let has_title = tl.title.is_some();
+            let vb_x = 100.0_f32;
+            let vb_y = if has_title { -61.0_f32 } else { 0.0 };
+            let vb_w = tl.width;
+            let vb_h = tl.height - vb_y; // extend to cover content below y=0
+            (tl.width, tl.height, vb_x, vb_y, vb_w, vb_h)
         } else {
             let width = layout.width.max(1.0);
             let height = layout.height.max(1.0);
@@ -175,6 +183,14 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             height_attr.clear();
             style_attr = format!(
                 " style=\"max-width: {:.3}px;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if matches!(layout.diagram, DiagramData::Timeline(_)) {
+            // Timeline: responsive width + white background (matching JS).
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.0}px; background-color: white;{}\"",
                 viewbox_width, preferred_ratio_style
             );
         } else if layout.kind == crate::ir::DiagramKind::Pie && config.pie.use_max_width {
@@ -241,10 +257,13 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         svg.push_str(&error_style_block(theme));
     }
 
-    svg.push_str(&format!(
-        "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
-        theme.background
-    ));
+    // Timeline uses CSS background-color on the SVG element (matching JS).
+    if !matches!(layout.diagram, DiagramData::Timeline(_)) {
+        svg.push_str(&format!(
+            "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
+            theme.background
+        ));
+    }
 
     if let DiagramData::C4(ref c4) = layout.diagram {
         svg.push_str(&render_c4(c4, config));
@@ -266,6 +285,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         color_ids.insert(color.clone(), idx);
     }
 
+    // Timeline diagrams define their own arrowhead marker — skip generic defs.
+    let is_timeline = matches!(layout.diagram, DiagramData::Timeline(_));
+    if is_timeline {
+        // Jump past generic marker defs — render_timeline() adds its own.
+    } else {
     svg.push_str("<defs>");
     for color in &colors {
         let idx = color_ids.get(color).copied().unwrap_or(0);
@@ -315,6 +339,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         }
     }
     svg.push_str("</defs>");
+    } // end !is_timeline defs block
 
     if let DiagramData::Error(ref error) = layout.diagram {
         svg.push_str(&render_error(error, theme, config));
@@ -4197,9 +4222,10 @@ fn render_timeline(
     let has_custom = !theme.cscale_colors.is_empty();
     let custom_colors: Vec<(String, &str, String)> = if has_custom {
         theme.cscale_colors.iter().map(|c| {
-            // Use the custom fill; derive a darker line color and pick text color.
-            let text_color = "black"; // custom themes typically use dark text
-            let line_color = format!("{}88", c); // translucent version as divider
+            let text_color = "black";
+            // JS applies the same section class to both path and line,
+            // so the divider line uses the same fill color as the card.
+            let line_color = c.clone();
             (c.clone(), text_color, line_color)
         }).collect()
     } else {
@@ -4354,11 +4380,9 @@ fn render_timeline(
             .collect::<Vec<_>>()
             .join(" ");
         svg.push_str(&format!(
-            "<text x=\"{x}\" font-size=\"4ex\" font-weight=\"bold\" \
-             font-family=\"{ff}\" y=\"{y}\">{text}</text>",
+            "<text x=\"{x}\" font-size=\"4ex\" font-weight=\"bold\" font-family=\"'Helvetica Neue', Helvetica, Arial, sans-serif\" y=\"{y}\">{text}</text>",
             x = layout.title_x,
             y = layout.title_y,
-            ff = font_family,
             text = escape_xml(&title_text),
         ));
     }
