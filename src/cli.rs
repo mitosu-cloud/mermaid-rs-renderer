@@ -712,6 +712,19 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
         if is_base && !has_secondary && !has_tertiary {
             config.theme.derive_base_colors();
         }
+        // Parse cScale colors (cScale0, cScale1, ...) for timeline diagrams.
+        let mut cscale = Vec::new();
+        for i in 0..12 {
+            let key = format!("cScale{}", i);
+            if let Some(val) = theme_vars.get(key.as_str()).and_then(|v| v.as_str()) {
+                cscale.push(val.to_string());
+            } else {
+                break;
+            }
+        }
+        if !cscale.is_empty() {
+            config.theme.cscale_colors = cscale;
+        }
     }
     if let Some(ratio) = init
         .get("preferredAspectRatio")

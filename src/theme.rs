@@ -75,6 +75,10 @@ pub struct Theme {
     pub pie_outer_stroke_width: f32,
     pub pie_outer_stroke_color: String,
     pub pie_opacity: f32,
+    /// Custom cScale colors from themeVariables (cScale0, cScale1, ...).
+    /// Used by timeline diagrams. Empty means use the default HSL palette.
+    #[serde(default)]
+    pub cscale_colors: Vec<String>,
 }
 
 impl Theme {
@@ -137,6 +141,7 @@ impl Theme {
             pie_outer_stroke_width: 2.0,
             pie_outer_stroke_color: "#000000".to_string(),
             pie_opacity: 0.7,
+            cscale_colors: Vec::new(),
         }
     }
 
@@ -187,6 +192,7 @@ impl Theme {
             pie_outer_stroke_width: 1.6,
             pie_outer_stroke_color: "#CBD5E1".to_string(),
             pie_opacity: 0.85,
+            cscale_colors: Vec::new(),
         }
     }
     /// Official Mermaid "dark" theme — dark background with bright accents.
@@ -237,6 +243,7 @@ impl Theme {
             pie_outer_stroke_width: 2.0,
             pie_outer_stroke_color: "#3E4452".to_string(),
             pie_opacity: 0.85,
+            cscale_colors: Vec::new(),
         }
     }
 
@@ -298,6 +305,7 @@ impl Theme {
             pie_outer_stroke_width: 2.0,
             pie_outer_stroke_color: "#999999".to_string(),
             pie_opacity: 0.7,
+            cscale_colors: Vec::new(),
         }
     }
 
@@ -359,6 +367,7 @@ impl Theme {
             pie_outer_stroke_width: 2.0,
             pie_outer_stroke_color: "#6EAA49".to_string(),
             pie_opacity: 0.7,
+            cscale_colors: Vec::new(),
         }
     }
 
@@ -412,6 +421,7 @@ impl Theme {
             pie_outer_stroke_width: 2.0,
             pie_outer_stroke_color: "black".to_string(),
             pie_opacity: 0.7,
+            cscale_colors: Vec::new(),
         }
     }
 }

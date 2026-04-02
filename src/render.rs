@@ -2953,61 +2953,90 @@ fn architecture_icon_svg(icon_type: Option<&str>, w: f32, h: f32, fill: &str) ->
             )
         }
         Some("server") => {
-            // Server rack: stacked rectangles
-            let bx = cx - r;
-            let by = cy - r;
-            let bw = r * 2.0;
-            let bh = r * 2.0;
-            let rows = 3;
-            let row_h = bh / rows as f32;
-            let mut s = String::new();
-            for i in 0..rows {
-                let ry = by + i as f32 * row_h;
-                s.push_str(&format!(
-                    "<rect x=\"{bx:.1}\" y=\"{ry:.1}\" width=\"{bw:.1}\" height=\"{row_h:.1}\" rx=\"2\" {style}/>"
-                ));
-                // Small indicator circle in each row
-                let dot_x = bx + bw - row_h * 0.35;
-                let dot_y = ry + row_h * 0.5;
-                let dot_r = row_h * 0.12;
-                s.push_str(&format!(
-                    "<circle cx=\"{dot_x:.1}\" cy=\"{dot_y:.1}\" r=\"{dot_r:.1}\" fill=\"{fill}\" stroke=\"none\"/>"
-                ));
-            }
-            s
-        }
-        Some("database") | Some("disk") => {
-            // Database cylinder: rect body + ellipses top/bottom
-            let bx = cx - r;
-            let bw = r * 2.0;
-            let ell_ry = r * 0.3;
-            let body_top = cy - r + ell_ry;
-            let body_bot = cy + r - ell_ry;
-            let body_h = body_bot - body_top;
+            // Server rack — matching Iconify icon from mermaid-js.
+            // Source icon is 80×80, scale to fit w×h.
+            let s = w.min(h) / 80.0;
+            let t = format!("transform=\"scale({s:.3})\"");
+            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            let fst = format!("fill=\"{fill}\"");
             format!(
-                "<rect x=\"{bx:.1}\" y=\"{body_top:.1}\" width=\"{bw:.1}\" height=\"{body_h:.1}\" {style}/>\
-                 <ellipse cx=\"{cx:.1}\" cy=\"{body_top:.1}\" rx=\"{r:.1}\" ry=\"{ell_ry:.1}\" {style}/>\
-                 <ellipse cx=\"{cx:.1}\" cy=\"{body_bot:.1}\" rx=\"{r:.1}\" ry=\"{ell_ry:.1}\" {style}/>\
-                 <line x1=\"{x1:.1}\" y1=\"{body_top:.1}\" x2=\"{x1:.1}\" y2=\"{body_bot:.1}\" {style}/>\
-                 <line x1=\"{x2:.1}\" y1=\"{body_top:.1}\" x2=\"{x2:.1}\" y2=\"{body_bot:.1}\" {style}/>",
-                x1 = bx,
-                x2 = bx + bw,
+                "<g {t}>\
+                 <rect x=\"17.5\" y=\"17.5\" width=\"45\" height=\"45\" rx=\"2\" ry=\"2\" {lst}/>\
+                 <line x1=\"17.5\" y1=\"32.5\" x2=\"62.5\" y2=\"32.5\" {lst}/>\
+                 <line x1=\"17.5\" y1=\"47.5\" x2=\"62.5\" y2=\"47.5\" {lst}/>\
+                 <circle cx=\"55\" cy=\"25\" r=\"1.5\" {fst}/>\
+                 <circle cx=\"55\" cy=\"40\" r=\"1.5\" {fst}/>\
+                 <circle cx=\"55\" cy=\"55\" r=\"1.5\" {fst}/>\
+                 </g>"
+            )
+        }
+        Some("database") => {
+            // Database cylinder — matching Iconify icon from mermaid-js.
+            let s = w.min(h) / 80.0;
+            let t = format!("transform=\"scale({s:.3})\"");
+            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            format!(
+                "<g {t}>\
+                 <path d=\"m20,57.86c0,3.94,8.95,7.14,20,7.14s20-3.2,20-7.14\" {lst}/>\
+                 <path d=\"m20,45.95c0,3.94,8.95,7.14,20,7.14s20-3.2,20-7.14\" {lst}/>\
+                 <path d=\"m20,34.05c0,3.94,8.95,7.14,20,7.14s20-3.2,20-7.14\" {lst}/>\
+                 <ellipse cx=\"40\" cy=\"22.14\" rx=\"20\" ry=\"7.14\" {lst}/>\
+                 <line x1=\"20\" y1=\"22.14\" x2=\"20\" y2=\"57.86\" {lst}/>\
+                 <line x1=\"60\" y1=\"22.14\" x2=\"60\" y2=\"57.86\" {lst}/>\
+                 </g>"
+            )
+        }
+        Some("disk") => {
+            // Hard drive — matching Iconify icon from mermaid-js.
+            // Casing + corner screws + platter + spindle + actuator arm.
+            let s = w.min(h) / 80.0;
+            let t = format!("transform=\"scale({s:.3})\"");
+            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            let fst = format!("fill=\"{fill}\"");
+            format!(
+                "<g {t}>\
+                 <rect x=\"20\" y=\"15\" width=\"40\" height=\"50\" rx=\"1\" ry=\"1\" {lst}/>\
+                 <ellipse cx=\"24\" cy=\"19.17\" rx=\".8\" ry=\".83\" {lst}/>\
+                 <ellipse cx=\"56\" cy=\"19.17\" rx=\".8\" ry=\".83\" {lst}/>\
+                 <ellipse cx=\"24\" cy=\"60.83\" rx=\".8\" ry=\".83\" {lst}/>\
+                 <ellipse cx=\"56\" cy=\"60.83\" rx=\".8\" ry=\".83\" {lst}/>\
+                 <ellipse cx=\"40\" cy=\"33.75\" rx=\"14\" ry=\"14.58\" {lst}/>\
+                 <ellipse cx=\"40\" cy=\"33.75\" rx=\"4\" ry=\"4.17\" {fst} stroke=\"{fill}\" stroke-width=\"2\"/>\
+                 <path d=\"m37.51,42.52l-4.83,13.22c-.26.71-1.1,1.02-1.76.64l-4.18-2.42c-.66-.38-.81-1.26-.33-1.84l9.01-10.8c.88-1.05,2.56-.08,2.09,1.2Z\" {fst}/>\
+                 </g>"
             )
         }
         Some("cloud") => {
-            // Cloud: rounded bumpy shape using cubic bezier
-            let s = r * 0.7;
+            // Cloud — matching Iconify icon from mermaid-js.
+            let s = w.min(h) / 80.0;
+            let t = format!("transform=\"scale({s:.3})\"");
+            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
             format!(
-                "<path d=\"M {x1:.1} {y_mid:.1} \
-                 Q {x1:.1} {y_top:.1} {cx:.1} {y_top:.1} \
-                 Q {x2:.1} {y_top:.1} {x2:.1} {y_mid:.1} \
-                 Q {x2:.1} {y_bot:.1} {cx:.1} {y_bot:.1} \
-                 Q {x1:.1} {y_bot:.1} {x1:.1} {y_mid:.1} Z\" {style}/>",
-                x1 = cx - s,
-                x2 = cx + s,
-                y_mid = cy,
-                y_top = cy - s * 0.8,
-                y_bot = cy + s * 0.6,
+                "<g {t}>\
+                 <path d=\"m65,47.5c0,2.76-2.24,5-5,5H20c-2.76,0-5-2.24-5-5,0-1.87,1.03-3.51,2.56-4.36-.04-.21-.06-.42-.06-.64,0-2.6,2.48-4.74,5.65-4.97,1.65-4.51,6.34-7.76,11.85-7.76.86,0,1.69.08,2.5.23,2.09-1.57,4.69-2.5,7.5-2.5,6.1,0,11.19,4.38,12.28,10.17,2.14.56,3.72,2.51,3.72,4.83,0,.03,0,.07-.01.1,2.29.46,4.01,2.48,4.01,4.9Z\" {lst}/>\
+                 </g>"
+            )
+        }
+        // Keep old fallback for unrecognized database/disk references
+        Some(t) if t.contains("database") || t.contains("cylinder") => {
+            let s = w.min(h) / 80.0;
+            let tf = format!("transform=\"scale({s:.3})\"");
+            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            format!(
+                "<g {tf}>\
+                 <path d=\"m20,57.86c0,3.94,8.95,7.14,20,7.14s20-3.2,20-7.14\" {lst}/>\
+                 <ellipse cx=\"40\" cy=\"22.14\" rx=\"20\" ry=\"7.14\" {lst}/>\
+                 <line x1=\"20\" y1=\"22.14\" x2=\"20\" y2=\"57.86\" {lst}/>\
+                 <line x1=\"60\" y1=\"22.14\" x2=\"60\" y2=\"57.86\" {lst}/>\
+                 </g>"
+            )
+        }
+        Some(t) if t.contains("cloud") => {
+            let s = w.min(h) / 80.0;
+            let tf = format!("transform=\"scale({s:.3})\"");
+            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            format!(
+                "<g {tf}><path d=\"m65,47.5c0,2.76-2.24,5-5,5H20c-2.76,0-5-2.24-5-5,0-1.87,1.03-3.51,2.56-4.36-.04-.21-.06-.42-.06-.64,0-2.6,2.48-4.74,5.65-4.97,1.65-4.51,6.34-7.76,11.85-7.76.86,0,1.69.08,2.5.23,2.09-1.57,4.69-2.5,7.5-2.5,6.1,0,11.19,4.38,12.28,10.17,2.14.56,3.72,2.51,3.72,4.83,0,.03,0,.07-.01.1,2.29.46,4.01,2.48,4.01,4.9Z\" {lst}/></g>"
             )
         }
         _ => {
@@ -4134,83 +4163,214 @@ fn render_xychart(
 fn render_timeline(
     layout: &crate::layout::TimelineLayout,
     theme: &Theme,
-    config: &LayoutConfig,
+    _config: &LayoutConfig,
 ) -> String {
     let mut svg = String::new();
+    let font_family = normalize_font_family(&theme.font_family);
+    let font_size = theme.font_size;
 
-    // Background
-    svg.push_str(&format!(
-        "<rect x=\"0\" y=\"0\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        layout.width, layout.height, theme.background
-    ));
+    // ── Card shape constants (matching JS) ─────────────────────────────
+    let card_path_w: f32 = 180.0;
+    let card_line_w: f32 = 190.0;
+    let card_path_h: f32 = 62.8;
+    let card_line_y: f32 = 67.8;
 
-    // Title
-    if let Some(ref title) = layout.title {
-        svg.push_str(&text_block_svg(
-            layout.width / 2.0,
-            layout.title_y,
-            title,
-            theme,
-            config,
-            false,
-            Some(theme.primary_text_color.as_str()),
-        ));
-    }
-
-    // Main timeline line
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"3\"/>",
-        layout.line_start_x, layout.line_y, layout.line_end_x, layout.line_y, theme.primary_border_color
-    ));
-
-    // Colors for events
-    let colors = [
-        "#ECECFF", "#FFE6CC", "#D5E8D4", "#F8CECC", "#FFF2CC", "#E1D5E7",
+    // ── HSL color system matching JS ───────────────────────────────────
+    // Returns (fill_hsl, text_color, line_hsl) for a given section index.
+    // Default HSL palette (matches JS CSS class colors).
+    // idx=-1 → section--1 (first), idx=0 → section-0, etc.
+    let default_colors: [(& str, &str, &str); 11] = [
+        ("hsl(240, 100%, 76.2745098039%)", "#ffffff", "hsl(60, 100%, 86.2745098039%)"),
+        ("hsl(60, 100%, 73.5294117647%)",  "black",   "hsl(240, 100%, 83.5294117647%)"),
+        ("hsl(80, 100%, 76.2745098039%)",  "black",   "hsl(260, 100%, 86.2745098039%)"),
+        ("hsl(270, 100%, 76.2745098039%)", "#ffffff", "hsl(90, 100%, 86.2745098039%)"),
+        ("hsl(300, 100%, 76.2745098039%)", "black",   "hsl(120, 100%, 86.2745098039%)"),
+        ("hsl(330, 100%, 76.2745098039%)", "black",   "hsl(150, 100%, 86.2745098039%)"),
+        ("hsl(0, 100%, 76.2745098039%)",   "black",   "hsl(180, 100%, 86.2745098039%)"),
+        ("hsl(30, 100%, 76.2745098039%)",  "black",   "hsl(210, 100%, 86.2745098039%)"),
+        ("hsl(90, 100%, 76.2745098039%)",  "black",   "hsl(270, 100%, 86.2745098039%)"),
+        ("hsl(150, 100%, 76.2745098039%)", "black",   "hsl(330, 100%, 86.2745098039%)"),
+        ("hsl(180, 100%, 76.2745098039%)", "black",   "hsl(0, 100%, 86.2745098039%)"),
     ];
 
-    // Events
-    for (i, event) in layout.events.iter().enumerate() {
-        let color = colors[i % colors.len()];
-        let center_x = event.x + event.width / 2.0;
+    // Custom cScale colors from themeVariables override the default palette.
+    let has_custom = !theme.cscale_colors.is_empty();
+    let custom_colors: Vec<(String, &str, String)> = if has_custom {
+        theme.cscale_colors.iter().map(|c| {
+            // Use the custom fill; derive a darker line color and pick text color.
+            let text_color = "black"; // custom themes typically use dark text
+            let line_color = format!("{}88", c); // translucent version as divider
+            (c.clone(), text_color, line_color)
+        }).collect()
+    } else {
+        Vec::new()
+    };
 
-        // Circle on timeline
-        svg.push_str(&format!(
-            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"8\" fill=\"{}\" stroke=\"{}\" stroke-width=\"2\"/>",
-            center_x, event.circle_y, theme.primary_color, theme.primary_border_color
-        ));
-
-        // Vertical connector line
-        svg.push_str(&format!(
-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"2\" stroke-dasharray=\"4,2\"/>",
-            center_x, event.circle_y + 8.0, center_x, event.y, theme.primary_border_color
-        ));
-
-        // Event box
-        svg.push_str(&format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"5\" ry=\"5\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-            event.x, event.y, event.width, event.height, color, theme.primary_border_color
-        ));
-
-        // Time label (bold, at top of box)
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-            center_x, event.y + 20.0,
-            normalize_font_family(&theme.font_family), theme.font_size,
-            theme.primary_text_color, escape_xml(&event.time.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
-        ));
-
-        // Event descriptions
-        let mut y_offset = 40.0;
-        for evt in &event.events {
-            svg.push_str(&format!(
-                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
-                center_x, event.y + y_offset,
-                normalize_font_family(&theme.font_family), theme.font_size * 0.9,
-                theme.primary_text_color, escape_xml(&evt.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
-            ));
-            y_offset += theme.font_size * 1.2;
+    // Returns (fill, text_color, line_color) for a given section index.
+    let section_colors = |idx: i32| -> (String, String, String) {
+        if has_custom {
+            let i = ((idx + 1).rem_euclid(custom_colors.len() as i32)) as usize;
+            let (ref f, tc, ref lc) = custom_colors[i];
+            (f.clone(), tc.to_string(), lc.clone())
+        } else {
+            let i = ((idx + 1).rem_euclid(11)) as usize;
+            let (f, tc, lc) = default_colors[i];
+            (f.to_string(), tc.to_string(), lc.to_string())
         }
+    };
+
+    // ── Arrowhead marker definition ────────────────────────────────────
+    svg.push_str(
+        "<defs><marker id=\"timeline-arrowhead\" refX=\"5\" refY=\"2\" \
+         markerWidth=\"6\" markerHeight=\"4\" orient=\"auto\">\
+         <path d=\"M 0,0 V 4 L6,2 Z\"/></marker></defs>"
+    );
+
+    // ── Section headers ────────────────────────────────────────────────
+    for section in &layout.sections {
+        let (fill, text_color, line_color) = section_colors(section.section_idx);
+        let w = section.width - 10.0; // path internal width
+        svg.push_str(&format!(
+            "<g transform=\"translate({}, {})\"><g>\
+             <path d=\"M0 {ch} v-{chm5} q0,-5 5,-5 h{w} q5,0 5,5 v{ch} H0 Z\" fill=\"{fill}\"/>\
+             <line x1=\"0\" y1=\"{cly}\" x2=\"{lw}\" y2=\"{cly}\" stroke=\"{line_color}\" stroke-width=\"3\"/>\
+             </g>\
+             <g transform=\"translate({tx}, 10)\">\
+             <text dy=\"1em\" alignment-baseline=\"middle\" dominant-baseline=\"middle\" \
+             text-anchor=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" fill=\"{text_color}\">\
+             <tspan x=\"0\" dy=\"1em\">{label}</tspan></text></g></g>",
+            section.x, section.y,
+            ch = card_path_h,
+            chm5 = card_path_h - 5.0,
+            w = w,
+            fill = fill,
+            cly = card_line_y,
+            lw = section.width,
+            line_color = line_color,
+            tx = section.width / 2.0,
+            ff = font_family,
+            fs = font_size,
+            text_color = text_color,
+            label = escape_xml(
+                &section.label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" ")
+            ),
+        ));
     }
+
+    // ── Time period cards ──────────────────────────────────────────────
+    for period in &layout.time_periods {
+        let (fill, text_color, line_color) = section_colors(period.section_idx);
+        let label_text = period.label.lines.iter()
+            .map(|l| l.text().into_owned())
+            .collect::<Vec<_>>()
+            .join(" ");
+        svg.push_str(&format!(
+            "<g class=\"taskWrapper\" transform=\"translate({}, {})\">\
+             <g>\
+             <path d=\"M0 {ch} v-{chm5} q0,-5 5,-5 h{w} q5,0 5,5 v{ch} H0 Z\" fill=\"{fill}\"/>\
+             <line x1=\"0\" y1=\"{cly}\" x2=\"{lw}\" y2=\"{cly}\" stroke=\"{line_color}\" stroke-width=\"3\"/>\
+             </g>\
+             <g transform=\"translate({tx}, 10)\">\
+             <text dy=\"1em\" alignment-baseline=\"middle\" dominant-baseline=\"middle\" \
+             text-anchor=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" fill=\"{text_color}\">\
+             <tspan x=\"0\" dy=\"1em\">{label}</tspan></text></g></g>",
+            period.x, period.y,
+            ch = card_path_h,
+            chm5 = card_path_h - 5.0,
+            w = card_path_w,
+            fill = fill,
+            cly = card_line_y,
+            lw = card_line_w,
+            line_color = line_color,
+            tx = card_line_w / 2.0,
+            ff = font_family,
+            fs = font_size,
+            text_color = text_color,
+            label = escape_xml(&label_text),
+        ));
+    }
+
+    // ── Dashed connectors (time card → event area) ─────────────────────
+    for conn in &layout.connectors {
+        svg.push_str(&format!(
+            "<g class=\"lineWrapper\"><line x1=\"{x}\" y1=\"{sy}\" x2=\"{x}\" y2=\"{ey}\" \
+             stroke-width=\"2\" stroke=\"black\" marker-end=\"url(#timeline-arrowhead)\" \
+             stroke-dasharray=\"5,5\"/></g>",
+            x = conn.x,
+            sy = conn.start_y,
+            ey = conn.end_y,
+        ));
+    }
+
+    // ── Event cards (below axis) ───────────────────────────────────────
+    for card in &layout.event_cards {
+        let (fill, text_color, line_color) = section_colors(card.section_idx);
+        // Event cards use the section fill + brightness(120%) filter.
+        let card_h = card.height;
+        let card_line = card_h + 5.0;
+
+        // Build tspan text with wrapping
+        let mut tspans = String::new();
+        for (i, line) in card.lines.iter().enumerate() {
+            let dy = if i == 0 { "1em" } else { "1.1em" };
+            tspans.push_str(&format!(
+                "<tspan x=\"0\" dy=\"{dy}\">{text}</tspan>",
+                dy = dy,
+                text = escape_xml(line),
+            ));
+        }
+
+        svg.push_str(&format!(
+            "<g class=\"eventWrapper\" transform=\"translate({x}, {y})\" style=\"filter: brightness(120%)\">\
+             <g>\
+             <path d=\"M0 {h} v-{hm5} q0,-5 5,-5 h{w} q5,0 5,5 v{h} H0 Z\" fill=\"{fill}\"/>\
+             <line x1=\"0\" y1=\"{ly}\" x2=\"{lw}\" y2=\"{ly}\" stroke=\"{line_color}\" stroke-width=\"3\"/>\
+             </g>\
+             <g transform=\"translate({tx}, 10)\">\
+             <text dy=\"1em\" alignment-baseline=\"middle\" dominant-baseline=\"middle\" \
+             text-anchor=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" fill=\"{text_color}\">\
+             {tspans}</text></g></g>",
+            x = card.x,
+            y = card.y,
+            h = card_h,
+            hm5 = (card_h - 5.0_f32).max(0.0),
+            w = card_path_w,
+            fill = fill,
+            ly = card_line,
+            lw = card_line_w,
+            line_color = line_color,
+            tx = card_line_w / 2.0,
+            ff = font_family,
+            fs = font_size,
+            text_color = text_color,
+            tspans = tspans,
+        ));
+    }
+
+    // ── Title ──────────────────────────────────────────────────────────
+    if let Some(ref title) = layout.title {
+        let title_text = title.lines.iter()
+            .map(|l| l.text().into_owned())
+            .collect::<Vec<_>>()
+            .join(" ");
+        svg.push_str(&format!(
+            "<text x=\"{x}\" font-size=\"4ex\" font-weight=\"bold\" \
+             font-family=\"{ff}\" y=\"{y}\">{text}</text>",
+            x = layout.title_x,
+            y = layout.title_y,
+            ff = font_family,
+            text = escape_xml(&title_text),
+        ));
+    }
+
+    // ── Horizontal timeline axis (with arrowhead) ──────────────────────
+    svg.push_str(&format!(
+        "<g class=\"lineWrapper\"><line x1=\"{x1}\" y1=\"{y}\" x2=\"{x2}\" y2=\"{y}\" \
+         stroke-width=\"4\" stroke=\"black\" marker-end=\"url(#timeline-arrowhead)\"/></g>",
+        x1 = layout.axis_start_x,
+        y = layout.axis_y,
+        x2 = layout.axis_end_x,
+    ));
 
     svg
 }
@@ -7482,7 +7642,7 @@ mod tests {
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
-                curve: None,
+                curve: None, arch_port_from: None, arch_port_to: None,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());

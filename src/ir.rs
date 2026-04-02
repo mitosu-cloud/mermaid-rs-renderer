@@ -372,6 +372,19 @@ pub struct Edge {
     pub markdown_label: bool,
     pub id: Option<String>,
     pub curve: Option<CurveType>,
+    /// Architecture diagram port constraint on the source node (L/R/T/B).
+    pub arch_port_from: Option<ArchPort>,
+    /// Architecture diagram port constraint on the target node (L/R/T/B).
+    pub arch_port_to: Option<ArchPort>,
+}
+
+/// Port direction for architecture diagram edges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchPort {
+    Left,
+    Right,
+    Top,
+    Bottom,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

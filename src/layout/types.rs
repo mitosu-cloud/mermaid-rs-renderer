@@ -395,17 +395,29 @@ pub struct XYChartLayout {
     pub height: f32,
 }
 
+/// A time period card displayed above the timeline axis ("taskWrapper" in JS).
 #[derive(Debug, Clone)]
-pub struct TimelineEventLayout {
-    pub time: TextBlock,
-    pub events: Vec<TextBlock>,
+pub struct TimelineTimePeriodLayout {
+    pub label: TextBlock,
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
-    pub circle_y: f32,
+    pub section_idx: i32,
 }
 
+/// An individual event card displayed below the timeline axis ("eventWrapper" in JS).
+#[derive(Debug, Clone)]
+pub struct TimelineEventCardLayout {
+    pub lines: Vec<String>,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub section_idx: i32,
+}
+
+/// A section header spanning multiple time periods.
 #[derive(Debug, Clone)]
 pub struct TimelineSectionLayout {
     pub label: TextBlock,
@@ -413,17 +425,29 @@ pub struct TimelineSectionLayout {
     pub y: f32,
     pub width: f32,
     pub height: f32,
+    pub section_idx: i32,
+}
+
+/// Dashed connector from a time card down to the event area.
+#[derive(Debug, Clone)]
+pub struct TimelineConnectorLayout {
+    pub x: f32,
+    pub start_y: f32,
+    pub end_y: f32,
 }
 
 #[derive(Debug, Clone)]
 pub struct TimelineLayout {
     pub title: Option<TextBlock>,
+    pub title_x: f32,
     pub title_y: f32,
-    pub events: Vec<TimelineEventLayout>,
     pub sections: Vec<TimelineSectionLayout>,
-    pub line_y: f32,
-    pub line_start_x: f32,
-    pub line_end_x: f32,
+    pub time_periods: Vec<TimelineTimePeriodLayout>,
+    pub event_cards: Vec<TimelineEventCardLayout>,
+    pub connectors: Vec<TimelineConnectorLayout>,
+    pub axis_y: f32,
+    pub axis_start_x: f32,
+    pub axis_end_x: f32,
     pub width: f32,
     pub height: f32,
 }

@@ -8,9 +8,9 @@ pub(super) fn compute_architecture_layout(
     const MARGIN: f32 = 24.0;
     const SERVICE_SIZE: f32 = 64.0;
     const SERVICE_GAP: f32 = 72.0;
-    const GROUP_PAD_X: f32 = 28.0;
-    const GROUP_PAD_TOP: f32 = 32.0;
-    const GROUP_PAD_BOTTOM: f32 = 44.0;
+    const GROUP_PAD_X: f32 = 40.0;
+    const GROUP_PAD_TOP: f32 = 44.0;
+    const GROUP_PAD_BOTTOM: f32 = 52.0;
     const GROUP_GAP_Y: f32 = 48.0;
     const GROUP_STROKE: &str = "hsl(240, 60%, 86.2745098039%)";
     const ICON_FILL: &str = "#087ebf";
@@ -29,15 +29,88 @@ pub(super) fn compute_architecture_layout(
         if style.stroke_width.is_none() {
             style.stroke_width = Some(0.0);
         }
-        let mut nl = build_node_layout(node, label, SERVICE_SIZE, SERVICE_SIZE, style, graph);
+        let is_junction = graph
+            .node_classes
+            .get(&node.id)
+            .map(|c| c.iter().any(|s| s == "__junction__"))
+            .unwrap_or(false);
+        let (nw, nh) = if is_junction {
+            (1.0, 1.0)
+        } else {
+            (SERVICE_SIZE, SERVICE_SIZE)
+        };
+        let mut nl = build_node_layout(node, label, nw, nh, style, graph);
         nl.shape = crate::ir::NodeShape::Rectangle;
         nl.icon = node.icon.clone();
+        nl.hidden = is_junction;
         nodes.insert(node.id.clone(), nl);
     }
 
+    // Build spatial grid from port constraints (like mermaid-js).
+    // BFS from the first connected node, using port directions to
+    // determine grid offsets.
+    let mut grid: HashMap<String, (i32, i32)> = HashMap::new();
+    if !graph.edges.is_empty() {
+        // Build adjacency list with direction info.
+        let mut adj: HashMap<String, Vec<(String, Option<crate::ir::ArchPort>, Option<crate::ir::ArchPort>)>> =
+            HashMap::new();
+        for edge in &graph.edges {
+            adj.entry(edge.from.clone())
+                .or_default()
+                .push((edge.to.clone(), edge.arch_port_from, edge.arch_port_to));
+            adj.entry(edge.to.clone())
+                .or_default()
+                .push((edge.from.clone(), edge.arch_port_to, edge.arch_port_from));
+        }
+
+        // BFS to assign grid coordinates.
+        let start = graph.edges[0].from.clone();
+        grid.insert(start.clone(), (0, 0));
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(start);
+
+        while let Some(id) = queue.pop_front() {
+            let (cx, cy) = grid[&id];
+            if let Some(neighbors) = adj.get(&id) {
+                for (neighbor, my_port, _their_port) in neighbors {
+                    if grid.contains_key(neighbor) {
+                        continue;
+                    }
+                    // Shift grid position based on MY port direction:
+                    // If I connect from my Left, neighbor is to my Left (dx=-1)
+                    // If I connect from my Right, neighbor is to my Right (dx=+1)
+                    // If I connect from my Top, neighbor is above (dy=-1)
+                    // If I connect from my Bottom, neighbor is below (dy=+1)
+                    let (dx, dy) = match my_port {
+                        Some(crate::ir::ArchPort::Left) => (-1, 0),
+                        Some(crate::ir::ArchPort::Right) => (1, 0),
+                        Some(crate::ir::ArchPort::Top) => (0, -1),
+                        Some(crate::ir::ArchPort::Bottom) => (0, 1),
+                        None => (1, 0), // default: place to the right
+                    };
+                    grid.insert(neighbor.clone(), (cx + dx, cy + dy));
+                    queue.push_back(neighbor.clone());
+                }
+            }
+        }
+    }
+
+    // Assign any unpositioned nodes to the grid.
+    let mut next_col = grid.values().map(|(x, _)| *x).max().unwrap_or(0) + 1;
+    for node_id in nodes.keys() {
+        if !grid.contains_key(node_id) {
+            grid.insert(node_id.clone(), (next_col, 0));
+            next_col += 1;
+        }
+    }
+
+    // Convert grid coords to pixel positions.
+    let min_gx = grid.values().map(|(x, _)| *x).min().unwrap_or(0);
+    let min_gy = grid.values().map(|(_, y)| *y).min().unwrap_or(0);
+    let cell = SERVICE_SIZE + SERVICE_GAP;
+
     let mut assigned: HashSet<String> = HashSet::new();
     let mut subgraphs = Vec::new();
-    let mut current_y = MARGIN;
 
     for sub in &graph.subgraphs {
         let mut group_nodes: Vec<String> = sub
@@ -56,21 +129,32 @@ pub(super) fn compute_architecture_layout(
         });
         assigned.extend(group_nodes.iter().cloned());
 
-        let count = group_nodes.len() as f32;
-        let gaps = (count - 1.0).max(0.0);
-        let group_width = GROUP_PAD_X * 2.0 + SERVICE_SIZE * count + SERVICE_GAP * gaps;
-        let group_height = GROUP_PAD_TOP + SERVICE_SIZE + GROUP_PAD_BOTTOM;
-        let group_x = MARGIN;
-        let group_y = current_y;
-
-        let mut x_cursor = group_x + GROUP_PAD_X;
+        // Position nodes using grid coordinates.
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
         for node_id in &group_nodes {
+            let (gx, gy) = grid.get(node_id).copied().unwrap_or((0, 0));
+            let px = MARGIN + GROUP_PAD_X + (gx - min_gx) as f32 * cell;
+            let py = MARGIN + GROUP_PAD_TOP + (gy - min_gy) as f32 * cell;
             if let Some(node) = nodes.get_mut(node_id) {
-                node.x = x_cursor;
-                node.y = group_y + GROUP_PAD_TOP;
+                // Center small nodes (junctions) in the grid cell so
+                // their midpoint aligns with service midpoints.
+                node.x = px + (SERVICE_SIZE - node.width) / 2.0;
+                node.y = py + (SERVICE_SIZE - node.height) / 2.0;
             }
-            x_cursor += SERVICE_SIZE + SERVICE_GAP;
+            min_x = min_x.min(px);
+            min_y = min_y.min(py);
+            max_x = max_x.max(px + SERVICE_SIZE);
+            max_y = max_y.max(py + SERVICE_SIZE);
         }
+
+        let group_x = min_x - GROUP_PAD_X;
+        let group_y = min_y - GROUP_PAD_TOP;
+        // max_x/max_y already include SERVICE_SIZE (line 136-137)
+        let group_width = (max_x - min_x) + GROUP_PAD_X * 2.0;
+        let group_height = (max_y - min_y) + GROUP_PAD_TOP + GROUP_PAD_BOTTOM;
 
         let label_block = measure_label(&sub.label, theme, config);
         let mut style = resolve_subgraph_style(sub, graph);
@@ -94,9 +178,9 @@ pub(super) fn compute_architecture_layout(
             icon: sub.icon.clone(),
         });
 
-        current_y += group_height + GROUP_GAP_Y;
     }
 
+    // Free nodes: position using grid coordinates.
     let mut free_nodes: Vec<String> = nodes
         .keys()
         .filter(|id| !assigned.contains(*id))
@@ -108,14 +192,14 @@ pub(super) fn compute_architecture_layout(
         order_a.cmp(&order_b).then_with(|| a.cmp(b))
     });
     if !free_nodes.is_empty() {
-        let row_y = current_y;
-        let mut x_cursor = MARGIN + GROUP_PAD_X;
         for node_id in &free_nodes {
+            let (gx, gy) = grid.get(node_id).copied().unwrap_or((0, 0));
+            let px = MARGIN + GROUP_PAD_X + (gx - min_gx) as f32 * cell;
+            let py = MARGIN + GROUP_PAD_TOP + (gy - min_gy) as f32 * cell;
             if let Some(node) = nodes.get_mut(node_id) {
-                node.x = x_cursor;
-                node.y = row_y + GROUP_PAD_TOP;
+                node.x = px + (SERVICE_SIZE - node.width) / 2.0;
+                node.y = py + (SERVICE_SIZE - node.height) / 2.0;
             }
-            x_cursor += SERVICE_SIZE + SERVICE_GAP;
         }
     }
 
@@ -127,57 +211,50 @@ pub(super) fn compute_architecture_layout(
         let Some(to) = nodes.get(&edge.to) else {
             continue;
         };
-        let (start_side, end_side, _is_backward) = edge_sides(from, to, graph.direction);
-        let start = anchor_point_for_node(from, start_side, 0.0);
-        let end = anchor_point_for_node(to, end_side, 0.0);
-        let mut points = vec![start];
-        let dx = (start.0 - end.0).abs();
-        let dy = (start.1 - end.1).abs();
-        if dx > 1e-3 && dy <= 1e-3 {
-            let y = start.1;
-            let seg_min_x = start.0.min(end.0);
-            let seg_max_x = start.0.max(end.0);
-            let mut block_top = f32::MAX;
-            let mut block_bottom = f32::MIN;
-            let mut has_blocker = false;
-            for node in nodes.values() {
-                if node.id == edge.from || node.id == edge.to {
-                    continue;
-                }
-                let node_min_x = node.x;
-                let node_max_x = node.x + node.width;
-                let node_min_y = node.y;
-                let node_max_y = node.y + node.height;
-                if y > node_min_y
-                    && y < node_max_y
-                    && seg_max_x > node_min_x
-                    && seg_min_x < node_max_x
-                {
-                    has_blocker = true;
-                    block_top = block_top.min(node_min_y);
-                    block_bottom = block_bottom.max(node_max_y);
-                }
-            }
-            if has_blocker {
-                let gap = 16.0;
-                let above = block_top - gap;
-                let below = block_bottom + gap;
-                let detour_y = if (y - above).abs() <= (below - y).abs() {
-                    above
-                } else {
-                    below
-                };
-                points.push((start.0, detour_y));
-                points.push((end.0, detour_y));
-            }
-        } else if dx > 1e-3 && dy > 1e-3 {
+        // Use port constraints to determine edge sides. Fall back to
+        // geometric heuristic if no ports specified.
+        let start_side = match edge.arch_port_from {
+            Some(crate::ir::ArchPort::Left) => EdgeSide::Left,
+            Some(crate::ir::ArchPort::Right) => EdgeSide::Right,
+            Some(crate::ir::ArchPort::Top) => EdgeSide::Top,
+            Some(crate::ir::ArchPort::Bottom) => EdgeSide::Bottom,
+            None => edge_sides(from, to, graph.direction).0,
+        };
+        let end_side = match edge.arch_port_to {
+            Some(crate::ir::ArchPort::Left) => EdgeSide::Left,
+            Some(crate::ir::ArchPort::Right) => EdgeSide::Right,
+            Some(crate::ir::ArchPort::Top) => EdgeSide::Top,
+            Some(crate::ir::ArchPort::Bottom) => EdgeSide::Bottom,
+            None => edge_sides(from, to, graph.direction).1,
+        };
+        // For hidden nodes (junctions), use their center as the
+        // connection point.  For visible services, use the port anchor.
+        let start = if from.hidden {
+            (from.x + from.width / 2.0, from.y + from.height / 2.0)
+        } else {
+            anchor_point_for_node(from, start_side, 0.0)
+        };
+        let end = if to.hidden {
+            (to.x + to.width / 2.0, to.y + to.height / 2.0)
+        } else {
+            anchor_point_for_node(to, end_side, 0.0)
+        };
+
+        // Build orthogonal path (horizontal + vertical segments only).
+        let points = if (start.0 - end.0).abs() < 1e-3 || (start.1 - end.1).abs() < 1e-3 {
+            // Already aligned — straight line.
+            vec![start, end]
+        } else {
+            // L-shaped orthogonal routing: decide bend direction from
+            // the port sides.
             if side_is_vertical(start_side) {
-                points.push((start.0, end.1));
+                // Start exits horizontally → go horizontal first, then vertical.
+                vec![start, (end.0, start.1), end]
             } else {
-                points.push((end.0, start.1));
+                // Start exits vertically → go vertical first, then horizontal.
+                vec![start, (start.0, end.1), end]
             }
-        }
-        points.push(end);
+        };
         let mut override_style = resolve_edge_style(idx, graph);
         if override_style.stroke.is_none() {
             override_style.stroke = Some(theme.line_color.clone());
@@ -194,9 +271,9 @@ pub(super) fn compute_architecture_layout(
             start_label_anchor: None,
             end_label_anchor: None,
             points: compress_path(&points),
-            directed: true,
+            directed: false,
             arrow_start: false,
-            arrow_end: true,
+            arrow_end: false,
             arrow_start_kind: None,
             arrow_end_kind: None,
             start_decoration: None,

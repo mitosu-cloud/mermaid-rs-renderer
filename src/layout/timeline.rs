@@ -7,78 +7,197 @@ pub(super) fn compute_timeline_layout(
 ) -> Layout {
     let data = &graph.timeline;
     let font_size = theme.font_size;
-    let padding = 30.0;
-    let event_width = 120.0;
-    let event_height = 80.0;
-    let event_spacing = 40.0;
-    let title_height = if data.title.is_some() { 40.0 } else { 0.0 };
-    let line_y = padding + title_height + 60.0;
 
-    let num_events = data.events.len().max(1);
-    let total_events_width =
-        num_events as f32 * event_width + (num_events - 1).max(0) as f32 * event_spacing;
+    // ── Constants matching JS timelineRenderer ──────────────────────────
+    let card_path_width: f32 = 180.0; // internal path width
+    let card_visible_width: f32 = 190.0; // path + line overshoot
+    let card_spacing: f32 = 200.0; // center-to-center horizontal
+    let _card_height: f32 = 62.8; // path height for section/time cards
+    let card_line_y: f32 = 67.8; // divider line y within card
+    let zone_gap: f32 = 50.0; // gap between vertical zones
+    let axis_to_events: f32 = 82.2; // gap from axis to first event card
+    let event_stack_gap: f32 = 60.0; // y offset between stacked event cards
+    let base_y: f32 = 50.0; // top of first zone
+    let left_pad: f32 = 200.0; // x offset for first card (matching JS)
+    let axis_left_pad: f32 = 150.0; // axis line starts here
 
-    let width = padding * 2.0 + total_events_width;
-    let height = padding * 2.0 + title_height + event_height + 100.0;
+    // Font metrics for text wrapping inside cards.
+    let wrap_width = card_path_width - 10.0; // ~170px usable text width
+    let event_line_height: f32 = font_size * 1.1; // dy="1.1em" for subsequent lines
+    let event_first_line_extra: f32 = font_size; // dy="1em" for first line
+    let event_text_pad: f32 = 20.0; // top+bottom padding inside event card
 
     let title = data.title.as_ref().map(|t| measure_label(t, theme, config));
 
-    let events: Vec<TimelineEventLayout> = data
-        .events
-        .iter()
-        .enumerate()
-        .map(|(i, event)| {
-            let x = padding + i as f32 * (event_width + event_spacing);
-            let y = line_y + 30.0;
+    // ── Group events by section ────────────────────────────────────────
+    let has_sections = !data.sections.is_empty();
+    let section_events: Vec<(&str, Vec<&crate::ir::TimelineEvent>)> = if has_sections {
+        data.sections
+            .iter()
+            .map(|s| {
+                let evts: Vec<_> = data
+                    .events
+                    .iter()
+                    .filter(|e| e.section.as_deref() == Some(s.as_str()))
+                    .collect();
+                (s.as_str(), evts)
+            })
+            .collect()
+    } else {
+        // No sections — each event is its own "section" (auto-indexed).
+        data.events.iter().map(|e| ("", vec![e])).collect()
+    };
 
-            let time_block = measure_label(&event.time, theme, config);
-            let event_blocks: Vec<TextBlock> = event
-                .events
-                .iter()
-                .map(|e| measure_label(e, theme, config))
-                .collect();
+    // ── Wrap event text & compute per-card heights ─────────────────────
+    // For each time period, wrap each event description and compute card height.
+    struct WrappedEvent {
+        lines: Vec<String>,
+        height: f32,
+    }
 
-            TimelineEventLayout {
-                time: time_block,
-                events: event_blocks,
-                x,
-                y,
-                width: event_width,
-                height: event_height,
-                circle_y: line_y,
-            }
-        })
-        .collect();
+    let wrap_event = |text: &str| -> WrappedEvent {
+        let wrapped = wrap_line(
+            text,
+            wrap_width,
+            font_size,
+            &theme.font_family,
+            config.fast_text_metrics,
+        );
+        let num_lines = wrapped.len().max(1) as f32;
+        // Height: first line dy="1em" + subsequent lines dy="1.1em" + padding
+        let text_h = event_first_line_extra + (num_lines - 1.0) * event_line_height;
+        let h = (text_h + event_text_pad).max(45.0);
+        WrappedEvent {
+            lines: wrapped,
+            height: h,
+        }
+    };
 
-    let line_start_x = padding;
-    let line_end_x = width - padding;
+    // ── Compute Y coordinates for vertical zones ───────────────────────
+    let section_y = base_y;
+    let time_y = if has_sections {
+        section_y + card_line_y + zone_gap // 50 + 67.8 + 50 = 167.8
+    } else {
+        base_y
+    };
+    let axis_y = time_y + card_line_y + zone_gap;
+    let events_start_y = axis_y + axis_to_events;
 
-    // Sections (simplified - just record them)
-    let sections: Vec<TimelineSectionLayout> = data
-        .sections
-        .iter()
-        .enumerate()
-        .map(|(i, section)| {
-            let label = measure_label(section, theme, config);
-            TimelineSectionLayout {
+    // ── Layout all elements left-to-right ──────────────────────────────
+    let mut sections_layout = Vec::new();
+    let mut time_periods = Vec::new();
+    let mut event_cards = Vec::new();
+    let mut connectors = Vec::new();
+
+    let mut x_cursor = left_pad;
+    let mut global_section_idx: i32 = -1; // JS starts at -1
+    let mut max_event_bottom: f32 = events_start_y;
+
+    for (group_idx, (sec_name, evts)) in section_events.iter().enumerate() {
+        let num_periods = evts.len().max(1);
+        let section_width = (num_periods as f32) * card_spacing - 10.0;
+
+        // Section header (only when explicit sections exist)
+        if has_sections && !sec_name.is_empty() {
+            let label = measure_label(sec_name, theme, config);
+            sections_layout.push(TimelineSectionLayout {
                 label,
-                x: padding + i as f32 * 200.0,
-                y: padding,
-                width: 180.0,
-                height: 30.0,
-            }
-        })
-        .collect();
+                x: x_cursor,
+                y: section_y,
+                width: section_width,
+                height: card_line_y,
+                section_idx: global_section_idx,
+            });
+        }
 
+        // Time period cards + event cards for each event in this section
+        for (evt_idx, evt) in evts.iter().enumerate() {
+            let period_x = x_cursor + evt_idx as f32 * card_spacing;
+            let center_x = period_x + card_visible_width / 2.0;
+
+            // Determine section index for coloring.
+            // With explicit sections: all events in a section share the same index.
+            // Without sections: each time period auto-increments (JS behavior:
+            //   first = section--1, second = section-0, third = section-1, ...).
+            let sec_idx = if has_sections {
+                global_section_idx
+            } else {
+                -1 + group_idx as i32
+            };
+
+            // Time period card (above axis)
+            let time_label = measure_label(&evt.time, theme, config);
+            time_periods.push(TimelineTimePeriodLayout {
+                label: time_label,
+                x: period_x,
+                y: time_y,
+                width: card_visible_width,
+                height: card_line_y,
+                section_idx: sec_idx,
+            });
+
+            // Event cards (below axis), one per event description
+            let mut event_y = events_start_y;
+            for event_text in &evt.events {
+                let wrapped = wrap_event(event_text);
+                event_cards.push(TimelineEventCardLayout {
+                    lines: wrapped.lines,
+                    x: period_x,
+                    y: event_y,
+                    width: card_visible_width,
+                    height: wrapped.height,
+                    section_idx: sec_idx,
+                });
+                event_y += wrapped.height + (event_stack_gap - wrapped.height).max(10.0);
+            }
+
+            // Track the deepest event bottom
+            max_event_bottom = max_event_bottom.max(event_y);
+
+            // Dashed connector from bottom of time card to bottom of event area
+            connectors.push(TimelineConnectorLayout {
+                x: center_x,
+                start_y: time_y + card_line_y,
+                end_y: 0.0, // placeholder — set after we know max_event_bottom
+            });
+        }
+
+        if has_sections {
+            global_section_idx += 1;
+        }
+        x_cursor += section_width + 10.0; // 10px gap between sections
+    }
+
+    // Without explicit sections, update global_section_idx for total count
+    if !has_sections {
+        let _ = section_events.len(); // section count already tracked via per-period indexing
+    }
+
+    // Set all connector end_y to the uniform max depth (matching JS behavior).
+    for conn in &mut connectors {
+        conn.end_y = max_event_bottom;
+    }
+
+    // ── Compute total dimensions ───────────────────────────────────────
+    let rightmost_x = x_cursor; // after last section
+    let axis_end_x = rightmost_x + left_pad;
+    let total_width = axis_end_x + 50.0;
+    let total_height = max_event_bottom + 50.0;
+
+    // Title position (left-aligned near content, matching JS)
+    let title_x = left_pad + 45.0;
+    let title_y = 20.0;
+
+    // ── Build dummy node for metrics ───────────────────────────────────
     let mut nodes = BTreeMap::new();
     nodes.insert(
         "__timeline_metrics_content".to_string(),
         NodeLayout {
             id: "__timeline_metrics_content".to_string(),
-            x: padding,
-            y: padding,
-            width: (width - padding * 2.0).max(1.0),
-            height: (height - padding * 2.0).max(1.0),
+            x: 0.0,
+            y: 0.0,
+            width: total_width.max(1.0),
+            height: total_height.max(1.0),
             label: TextBlock {
                 lines: vec![TextLine::plain(String::new())],
                 width: 0.0,
@@ -107,16 +226,19 @@ pub(super) fn compute_timeline_layout(
         acc_descr: None,
         diagram: DiagramData::Timeline(TimelineLayout {
             title,
-            title_y: padding + font_size,
-            events,
-            sections,
-            line_y,
-            line_start_x,
-            line_end_x,
-            width,
-            height,
+            title_x,
+            title_y,
+            sections: sections_layout,
+            time_periods,
+            event_cards,
+            connectors,
+            axis_y,
+            axis_start_x: axis_left_pad,
+            axis_end_x,
+            width: total_width,
+            height: total_height,
         }),
-        width,
-        height,
+        width: total_width,
+        height: total_height,
     }
 }

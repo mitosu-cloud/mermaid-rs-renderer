@@ -2000,6 +2000,8 @@ fn assign_positions_manual(
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
             });
             prev = dummy_id;
         }
@@ -2020,6 +2022,8 @@ fn assign_positions_manual(
             markdown_label: false,
             id: None,
             curve: None,
+            arch_port_from: None,
+            arch_port_to: None,
         });
     }
 
@@ -5956,7 +5960,7 @@ mod tests {
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
-                curve: None,
+                curve: None, arch_port_from: None, arch_port_to: None,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let a = layout.nodes.get("A").unwrap();
@@ -5985,7 +5989,7 @@ mod tests {
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
-                curve: None,
+                curve: None, arch_port_from: None, arch_port_to: None,
         });
 
         graph.edge_style_default = Some(crate::ir::EdgeStyleOverride {
@@ -6081,7 +6085,7 @@ mod tests {
             style,
             markdown_label: false,
             id: None,
-            curve: None,
+            curve: None, arch_port_from: None, arch_port_to: None,
         }
     }
 

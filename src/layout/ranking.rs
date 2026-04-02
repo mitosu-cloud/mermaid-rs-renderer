@@ -354,7 +354,7 @@ mod tests {
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
-                curve: None,
+                curve: None, arch_port_from: None, arch_port_to: None,
         }
     }
 

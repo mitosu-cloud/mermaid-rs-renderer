@@ -565,6 +565,8 @@ fn add_flowchart_edge(line: &str, graph: &mut Graph, subgraph_stack: &[usize]) -
                 markdown_label: edge_md,
                 id: edge_id.clone(),
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
             });
         }
     }
@@ -1427,6 +1429,8 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
             });
             continue;
         }
@@ -1762,6 +1766,8 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
             });
             continue;
         }
@@ -2217,6 +2223,8 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
             });
         } else {
             stack.clear();
@@ -2383,6 +2391,8 @@ fn parse_journey_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
                 });
             }
             last_task = Some(node_id);
@@ -2485,6 +2495,14 @@ fn parse_timeline_diagram(input: &str) -> Result<ParseOutput> {
                 pending_time = Some(time_part.to_string());
 
                 // Parse events (can be multiple separated by :)
+                for event in events_part.split(':') {
+                    let event = event.trim();
+                    if !event.is_empty() {
+                        pending_events.push(event.to_string());
+                    }
+                }
+            } else {
+                // Continuation line (": event") — add to current time period
                 for event in events_part.split(':') {
                     let event = event.trim();
                     if !event.is_empty() {
@@ -2615,6 +2633,8 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
                 });
             } else if let Some(prev) = last_task.take() {
                 graph.edges.push(crate::ir::Edge {
@@ -2634,6 +2654,8 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
                 });
             }
 
@@ -2834,6 +2856,8 @@ fn parse_requirement_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
             });
             continue;
         }
@@ -3813,6 +3837,8 @@ fn parse_sankey_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
         });
     }
 
@@ -3950,6 +3976,8 @@ fn parse_zenuml_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
             });
         }
     }
@@ -4069,6 +4097,8 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
                     });
                 }
             }
@@ -4175,6 +4205,8 @@ fn parse_packet_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
                 });
             }
             last_node = Some(node_id);
@@ -4261,6 +4293,23 @@ fn parse_architecture_diagram(input: &str) -> Result<ParseOutput> {
         if lower.starts_with("architecture") {
             continue;
         }
+        if lower.starts_with("junction ") {
+            // Junction is an invisible routing point — no icon, no label.
+            let id = line.split_whitespace().nth(1).unwrap_or("").to_string();
+            if !id.is_empty() {
+                graph.ensure_node(&id, Some(String::new()), Some(crate::ir::NodeShape::Rectangle));
+                if let Some(node) = graph.nodes.get_mut(&id) {
+                    node.label = String::new();
+                }
+                // Mark as junction via a special class
+                graph
+                    .node_classes
+                    .entry(id)
+                    .or_default()
+                    .push("__junction__".to_string());
+            }
+            continue;
+        }
         if lower.starts_with("group ") || lower.starts_with("service ") {
             if let Some((kind, id, label, parent, icon)) = parse_architecture_node(line) {
                 if kind == "group" {
@@ -4290,7 +4339,7 @@ fn parse_architecture_diagram(input: &str) -> Result<ParseOutput> {
             }
             continue;
         }
-        if let Some((from, to)) = parse_architecture_edge(line) {
+        if let Some((from, to, port_from, port_to)) = parse_architecture_edge(line) {
             graph.ensure_node(&from, None, Some(crate::ir::NodeShape::Rectangle));
             graph.ensure_node(&to, None, Some(crate::ir::NodeShape::Rectangle));
             graph.edges.push(crate::ir::Edge {
@@ -4310,6 +4359,8 @@ fn parse_architecture_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: port_from,
+                arch_port_to: port_to,
             });
         }
     }
@@ -4360,33 +4411,59 @@ fn parse_architecture_node(
     Some((kind, id, label, parent, icon))
 }
 
-fn parse_architecture_edge(line: &str) -> Option<(String, String)> {
+fn parse_architecture_edge(
+    line: &str,
+) -> Option<(String, String, Option<crate::ir::ArchPort>, Option<crate::ir::ArchPort>)> {
     let arrows = ["-->", "--", "->"];
     for arrow in &arrows {
         if let Some(idx) = line.find(arrow) {
             let left = line[..idx].trim();
             let right = line[idx + arrow.len()..].trim();
             // Left side format: ID:Port (e.g., "gateway:R")
-            let from = strip_arch_port_left(left);
+            let (from, port_from) = strip_arch_port_left(left);
             // Right side format: Port:ID (e.g., "L:app")
-            let to = strip_arch_port_right(right);
+            let (to, port_to) = strip_arch_port_right(right);
             if from.is_empty() || to.is_empty() {
                 return None;
             }
-            return Some((from.to_string(), to.to_string()));
+            return Some((from.to_string(), to.to_string(), port_from, port_to));
         }
     }
     None
 }
 
-fn strip_arch_port_left(token: &str) -> &str {
-    // "gateway:R" -> "gateway" (take the first part before ':')
-    token.split(':').next().unwrap_or(token).trim()
+fn parse_arch_port(s: &str) -> Option<crate::ir::ArchPort> {
+    match s.trim() {
+        "L" => Some(crate::ir::ArchPort::Left),
+        "R" => Some(crate::ir::ArchPort::Right),
+        "T" => Some(crate::ir::ArchPort::Top),
+        "B" => Some(crate::ir::ArchPort::Bottom),
+        _ => None,
+    }
 }
 
-fn strip_arch_port_right(token: &str) -> &str {
-    // "L:app" -> "app" (take the last part after ':')
-    token.split(':').next_back().unwrap_or(token).trim()
+fn strip_arch_port_left(token: &str) -> (&str, Option<crate::ir::ArchPort>) {
+    // "gateway:R" -> ("gateway", Some(Right))
+    if let Some(idx) = token.rfind(':') {
+        let id = token[..idx].trim();
+        let port = parse_arch_port(&token[idx + 1..]);
+        if port.is_some() {
+            return (id, port);
+        }
+    }
+    (token.trim(), None)
+}
+
+fn strip_arch_port_right(token: &str) -> (&str, Option<crate::ir::ArchPort>) {
+    // "L:app" -> ("app", Some(Left))
+    if let Some(idx) = token.find(':') {
+        let port = parse_arch_port(&token[..idx]);
+        let id = token[idx + 1..].trim();
+        if port.is_some() {
+            return (id, port);
+        }
+    }
+    (token.trim(), None)
 }
 
 fn parse_radar_diagram(input: &str) -> Result<ParseOutput> {
@@ -4525,6 +4602,8 @@ fn parse_treemap_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
                 });
             }
         } else {
@@ -4978,6 +5057,8 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
                 });
                 continue;
             }
@@ -5350,6 +5431,8 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 markdown_label: false,
                 id: None,
                 curve: None,
+                arch_port_from: None,
+                arch_port_to: None,
             });
             if let Some(kind) = activation
                 && let Some(last) = graph.edges.len().checked_sub(1)
