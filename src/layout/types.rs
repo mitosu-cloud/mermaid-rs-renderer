@@ -570,6 +570,9 @@ pub enum DiagramData {
     Timeline(TimelineLayout),
     Journey(JourneyLayout),
     Venn(VennLayout),
+    TreeView(TreeViewLayout),
+    Ishikawa(IshikawaLayout),
+    Wardley(WardleyLayout),
     Error(ErrorLayout),
 }
 
@@ -730,4 +733,132 @@ pub struct GanttTaskLayout {
 pub struct GanttTick {
     pub x: f32,
     pub label: String,
+}
+
+// ── TreeView layout ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct TreeViewNodeLayout {
+    pub name: String,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct TreeViewLineLayout {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct TreeViewLayout {
+    pub title: Option<String>,
+    pub nodes: Vec<TreeViewNodeLayout>,
+    pub lines: Vec<TreeViewLineLayout>,
+    pub width: f32,
+    pub height: f32,
+}
+
+// ── Ishikawa layout ─────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct IshikawaLineLayout {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+    pub stroke_width: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct IshikawaLabelLayout {
+    pub text: String,
+    pub x: f32,
+    pub y: f32,
+    pub anchor: String,    // "middle", "end", "start"
+    pub font_weight: String,
+    pub has_box: bool,
+    pub box_x: f32,
+    pub box_y: f32,
+    pub box_w: f32,
+    pub box_h: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct IshikawaLayout {
+    pub head_path: String,  // SVG path for fish head
+    pub head_x: f32,
+    pub head_y: f32,
+    pub spine: IshikawaLineLayout,
+    pub branches: Vec<IshikawaLineLayout>,
+    pub labels: Vec<IshikawaLabelLayout>,
+    pub width: f32,
+    pub height: f32,
+}
+
+// ── Wardley layout ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct WardleyNodeLayout {
+    pub id: String,
+    pub label: String,
+    pub cx: f32,
+    pub cy: f32,
+    pub radius: f32,
+    pub is_anchor: bool,
+    pub label_x: f32,
+    pub label_y: f32,
+    pub strategy: Option<crate::ir::WardleyStrategy>,
+    pub inertia: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyLinkLayout {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+    pub dashed: bool,
+    pub label: Option<String>,
+    pub flow: Option<crate::ir::WardleyFlow>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyTrendLayout {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyStageLayout {
+    pub label: String,
+    pub divider_x: f32,
+    pub label_x: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyLayout {
+    pub title: Option<String>,
+    pub canvas_width: f32,
+    pub canvas_height: f32,
+    pub padding: f32,
+    pub chart_x: f32,
+    pub chart_y: f32,
+    pub chart_width: f32,
+    pub chart_height: f32,
+    pub nodes: Vec<WardleyNodeLayout>,
+    pub links: Vec<WardleyLinkLayout>,
+    pub trends: Vec<WardleyTrendLayout>,
+    pub stages: Vec<WardleyStageLayout>,
+    pub x_label: String,
+    pub y_label: String,
+    pub notes: Vec<(String, f32, f32)>,
+    pub width: f32,
+    pub height: f32,
 }

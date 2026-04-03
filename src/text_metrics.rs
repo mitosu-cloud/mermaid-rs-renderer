@@ -17,6 +17,76 @@ pub fn measure_text_width(text: &str, font_size: f32, font_family: &str) -> Opti
     guard.measure(text, font_size, font_family)
 }
 
+/// Compute the rendered width of a text string in pixels, mirroring the
+/// browser's `SVGTextContentElement.getComputedTextLength()` API.
+///
+/// Uses the same font measurement pipeline as the rest of the renderer.
+/// Falls back to a per-character width estimate when exact metrics are
+/// unavailable.
+pub fn get_computed_text_length(text: &str, font_size: f32, font_family: &str) -> f32 {
+    if text.is_empty() || font_size <= 0.0 {
+        return 0.0;
+    }
+    measure_text_width(text, font_size, font_family)
+        .unwrap_or_else(|| fallback_text_width(text, font_size))
+}
+
+/// Word-wrap `text` so that no line exceeds `max_width` pixels.
+///
+/// Uses [`get_computed_text_length`] for measurement.  Returns the
+/// resulting lines; a single-word line that exceeds `max_width` is
+/// kept intact (never broken mid-word).
+pub fn wrap_text(
+    text: &str,
+    max_width: f32,
+    font_size: f32,
+    font_family: &str,
+) -> Vec<String> {
+    if get_computed_text_length(text, font_size, font_family) <= max_width {
+        return vec![text.to_string()];
+    }
+
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        let candidate = if current.is_empty() {
+            word.to_string()
+        } else {
+            format!("{} {}", current, word)
+        };
+        if get_computed_text_length(&candidate, font_size, font_family) > max_width
+            && !current.is_empty()
+        {
+            lines.push(current);
+            current = word.to_string();
+        } else {
+            current = candidate;
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+/// Fast fallback: sum per-character width factors × font_size.
+fn fallback_text_width(text: &str, font_size: f32) -> f32 {
+    text.chars()
+        .map(|c| {
+            if c.is_ascii_uppercase() {
+                0.75
+            } else if c.is_ascii_lowercase() {
+                0.55
+            } else if c == ' ' {
+                0.3
+            } else {
+                0.6
+            }
+        })
+        .sum::<f32>()
+        * font_size
+}
+
 pub fn average_char_width(font_family: &str, font_size: f32) -> Option<f32> {
     if font_size <= 0.0 {
         return None;

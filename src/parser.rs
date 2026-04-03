@@ -81,6 +81,9 @@ pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
         DiagramKind::Treemap => parse_treemap_diagram(input),
         DiagramKind::XYChart => parse_xy_chart_diagram(input),
         DiagramKind::Venn => parse_venn_diagram(input),
+        DiagramKind::TreeView => parse_tree_view_diagram(input),
+        DiagramKind::Ishikawa => parse_ishikawa_diagram(input),
+        DiagramKind::Wardley => parse_wardley_diagram(input),
         DiagramKind::Flowchart => parse_flowchart(input),
     }
 }
@@ -172,6 +175,15 @@ fn detect_diagram_kind(input: &str) -> DiagramKind {
         }
         if lower.starts_with("venn") {
             return DiagramKind::Venn;
+        }
+        if lower.starts_with("treeview") {
+            return DiagramKind::TreeView;
+        }
+        if lower.starts_with("ishikawa") {
+            return DiagramKind::Ishikawa;
+        }
+        if lower.starts_with("wardley") {
+            return DiagramKind::Wardley;
         }
         if lower.starts_with("flowchart") || lower.starts_with("graph") {
             return DiagramKind::Flowchart;
@@ -6620,6 +6632,464 @@ fn count_indent(line: &str) -> usize {
         }
     }
     count
+}
+
+// ── TreeView parser ─────────────────────────────────────────────────────
+
+fn parse_tree_view_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::TreeView;
+    let (lines, init_config) = preprocess_input(input)?;
+
+    // Stack: (indent_level, node_index_in_parent_children)
+    // We build a flat list and then convert to tree.
+    let mut stack: Vec<(usize, usize)> = Vec::new(); // (indent, index into nodes vec)
+    let mut nodes: Vec<(usize, crate::ir::TreeViewNode)> = Vec::new(); // (parent_idx, node)
+    let mut base_indent: Option<usize> = None;
+
+    for line in &lines {
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("treeview") {
+            continue;
+        }
+        if lower.starts_with("title") {
+            let rest = line.get(5..).unwrap_or("").trim();
+            if !rest.is_empty() {
+                graph.tree_view.title = Some(rest.to_string());
+            }
+            continue;
+        }
+        if lower.starts_with("acctitle") || lower.starts_with("accdescr") {
+            continue;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        // Calculate indentation
+        let indent = line.len() - line.trim_start().len();
+        let name = line.trim();
+        // Strip quotes
+        let name = name
+            .strip_prefix('"')
+            .and_then(|s| s.strip_suffix('"'))
+            .or_else(|| name.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
+            .unwrap_or(name)
+            .to_string();
+
+        if name.is_empty() {
+            continue;
+        }
+
+        if base_indent.is_none() {
+            base_indent = Some(indent);
+        }
+        let level = if indent >= base_indent.unwrap_or(0) {
+            (indent - base_indent.unwrap_or(0)) / 4 // normalize to levels
+        } else {
+            0
+        };
+
+        let node = crate::ir::TreeViewNode {
+            name,
+            children: Vec::new(),
+        };
+
+        // Pop stack until we find the parent
+        while stack.len() > level {
+            stack.pop();
+        }
+
+        let node_idx = nodes.len();
+        let parent_idx = stack.last().map(|(_, idx)| *idx);
+        nodes.push((parent_idx.unwrap_or(usize::MAX), node));
+        stack.push((level, node_idx));
+    }
+
+    // Build tree from flat list
+    // Process in reverse to build children bottom-up
+    let mut built: Vec<crate::ir::TreeViewNode> = nodes.iter().map(|(_, n)| n.clone()).collect();
+    for i in (0..built.len()).rev() {
+        let parent_idx = nodes[i].0;
+        if parent_idx < built.len() {
+            let child = built[i].clone();
+            built[parent_idx].children.push(child);
+        }
+    }
+    // Fix child ordering (reverse was built backwards)
+    for node in &mut built {
+        node.children.reverse();
+    }
+
+    // Collect top-level nodes (those with parent_idx == MAX)
+    graph.tree_view.root = built
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| nodes[*i].0 == usize::MAX)
+        .map(|(_, n)| n.clone())
+        .collect();
+
+    Ok(ParseOutput {
+        graph,
+        init_config,
+    })
+}
+
+// ── Ishikawa parser ─────────────────────────────────────────────────────
+
+fn parse_ishikawa_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::Ishikawa;
+    let (lines, init_config) = preprocess_input_keep_indent(input)?;
+
+    // Same indentation-based tree as treeView, but first node = root (effect)
+    let mut all_nodes: Vec<(usize, String)> = Vec::new(); // (indent_level, text)
+    let mut base_indent: Option<usize> = None;
+
+    for line in &lines {
+        let lower = line.to_ascii_lowercase();
+        if lower.starts_with("ishikawa") {
+            continue;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let indent = line.len() - line.trim_start().len();
+        let text = line.trim().to_string();
+        if text.is_empty() {
+            continue;
+        }
+
+        if base_indent.is_none() {
+            base_indent = Some(indent);
+        }
+        all_nodes.push((indent, text));
+    }
+
+    if all_nodes.is_empty() {
+        return Ok(ParseOutput {
+            graph,
+            init_config,
+        });
+    }
+
+    // Build tree: first node = root (effect), rest = causes.
+    // JS sets baseLevel from the FIRST CAUSE (second node), not the root.
+    // This handles the case where root and causes have the same indentation.
+    fn build_ishikawa_tree(nodes: &[(usize, String)]) -> crate::ir::IshikawaNode {
+        let mut root = crate::ir::IshikawaNode {
+            text: nodes[0].1.clone(),
+            children: Vec::new(),
+        };
+
+        if nodes.len() <= 1 {
+            return root;
+        }
+
+        // baseLevel = indent of first cause (second node)
+        let base_level = nodes[1].0;
+
+        // Stack-based tree building for causes (nodes[1..])
+        // Level 0 = root's direct children (primary causes)
+        // Level 1+ = sub-causes
+        let mut stack: Vec<(usize, *mut crate::ir::IshikawaNode)> = Vec::new();
+        // Push root at level -1 (below all causes)
+        stack.push((usize::MAX, &mut root as *mut _)); // sentinel level
+
+        for &(indent, ref text) in &nodes[1..] {
+            let level = if indent >= base_level {
+                indent - base_level
+            } else {
+                0
+            };
+
+            // Pop until we find a parent with strictly lower level
+            while stack.len() > 1 {
+                let top_level = stack.last().map(|(l, _)| *l).unwrap_or(usize::MAX);
+                if top_level != usize::MAX && top_level >= level {
+                    stack.pop();
+                } else {
+                    break;
+                }
+            }
+
+            let new_node = crate::ir::IshikawaNode {
+                text: text.clone(),
+                children: Vec::new(),
+            };
+
+            let parent = stack.last().unwrap().1;
+            unsafe {
+                (*parent).children.push(new_node);
+                let last_child = (*parent).children.last_mut().unwrap() as *mut _;
+                stack.push((level, last_child));
+            }
+        }
+
+        root
+    }
+
+    graph.ishikawa.root = Some(build_ishikawa_tree(&all_nodes));
+
+    Ok(ParseOutput {
+        graph,
+        init_config,
+    })
+}
+
+// ── Wardley parser ──────────────────────────────────────────────────────
+
+fn parse_wardley_diagram(input: &str) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::Wardley;
+    let (lines, init_config) = preprocess_input(input)?;
+
+    for line in &lines {
+        let trimmed = line.trim();
+        let lower = trimmed.to_ascii_lowercase();
+
+        if lower.starts_with("wardley") {
+            continue;
+        }
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Title
+        if lower.starts_with("title") {
+            let rest = trimmed.get(5..).unwrap_or("").trim();
+            if !rest.is_empty() {
+                graph.wardley.title = Some(strip_quotes(rest));
+            }
+            continue;
+        }
+
+        // Size: size [width, height]
+        if lower.starts_with("size") {
+            if let Some(coords) = extract_bracket_coords(trimmed.get(4..).unwrap_or("")) {
+                graph.wardley.size = Some(coords);
+            }
+            continue;
+        }
+
+        // Evolution stages: evolution S1 -> S2 -> S3 -> S4
+        if lower.starts_with("evolution ") {
+            let rest = trimmed.get(10..).unwrap_or("").trim();
+            let stages: Vec<String> = rest
+                .split("->")
+                .map(|s| {
+                    let s = s.trim();
+                    // Strip @boundary notation
+                    if let Some(idx) = s.find('@') {
+                        s[..idx].trim().to_string()
+                    } else {
+                        s.to_string()
+                    }
+                })
+                .filter(|s| !s.is_empty())
+                .collect();
+            if !stages.is_empty() {
+                graph.wardley.stages = stages;
+            }
+            continue;
+        }
+
+        // Evolve: evolve ComponentName targetValue
+        if lower.starts_with("evolve ") {
+            let rest = trimmed.get(7..).unwrap_or("").trim();
+            let parts: Vec<&str> = rest.rsplitn(2, ' ').collect();
+            if parts.len() == 2 {
+                if let Ok(val) = parts[0].parse::<f32>() {
+                    let target = wardley_to_percent(val);
+                    graph.wardley.trends.push(crate::ir::WardleyTrend {
+                        node_id: parts[1].to_string(),
+                        target_evolution: target,
+                    });
+                }
+            }
+            continue;
+        }
+
+        // Note: note "text" [vis, evo]
+        if lower.starts_with("note ") {
+            let rest = trimmed.get(5..).unwrap_or("").trim();
+            if let Some(start) = rest.find('"') {
+                if let Some(end) = rest[start + 1..].find('"') {
+                    let text = rest[start + 1..start + 1 + end].to_string();
+                    let after = rest[start + 1 + end + 1..].trim();
+                    if let Some((vis, evo)) = extract_bracket_coords(after) {
+                        graph.wardley.notes.push(crate::ir::WardleyNote {
+                            text,
+                            x: wardley_to_percent(evo),
+                            y: wardley_to_percent(vis),
+                        });
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Anchor: anchor Name [vis, evo]
+        if lower.starts_with("anchor ") {
+            let rest = trimmed.get(7..).unwrap_or("").trim();
+            if let Some((name, coords_str)) = rest.split_once('[') {
+                let name = name.trim().to_string();
+                if let Some((vis, evo)) =
+                    extract_bracket_coords(&format!("[{}", coords_str))
+                {
+                    graph.wardley.nodes.push(crate::ir::WardleyNode {
+                        id: name.clone(),
+                        label: name,
+                        visibility: wardley_to_percent(vis),
+                        evolution: wardley_to_percent(evo),
+                        is_anchor: true,
+                        label_offset: None,
+                        strategy: None,
+                        inertia: false,
+                    });
+                }
+            }
+            continue;
+        }
+
+        // Component: component Name [vis, evo] (optional decorators)
+        if lower.starts_with("component ") {
+            let rest = trimmed.get(10..).unwrap_or("").trim();
+            if let Some(bracket_start) = rest.find('[') {
+                let name = rest[..bracket_start].trim().to_string();
+                if let Some((vis, evo)) =
+                    extract_bracket_coords(&rest[bracket_start..])
+                {
+                    let after_bracket = rest
+                        .find(']')
+                        .map(|i| rest[i + 1..].trim())
+                        .unwrap_or("");
+
+                    // Parse optional label offset: label [dx, dy]
+                    let label_offset = if let Some(li) = after_bracket.find("label") {
+                        let label_rest = after_bracket[li + 5..].trim();
+                        extract_bracket_coords(label_rest)
+                    } else {
+                        None
+                    };
+
+                    // Parse decorators
+                    let strategy = if after_bracket.contains("(build)") {
+                        Some(crate::ir::WardleyStrategy::Build)
+                    } else if after_bracket.contains("(buy)") {
+                        Some(crate::ir::WardleyStrategy::Buy)
+                    } else if after_bracket.contains("(outsource)") {
+                        Some(crate::ir::WardleyStrategy::Outsource)
+                    } else if after_bracket.contains("(market)") {
+                        Some(crate::ir::WardleyStrategy::Market)
+                    } else {
+                        None
+                    };
+                    let inertia = after_bracket.contains("(inertia)");
+
+                    graph.wardley.nodes.push(crate::ir::WardleyNode {
+                        id: name.clone(),
+                        label: name,
+                        visibility: wardley_to_percent(vis),
+                        evolution: wardley_to_percent(evo),
+                        is_anchor: false,
+                        label_offset,
+                        strategy,
+                        inertia,
+                    });
+                }
+            }
+            continue;
+        }
+
+        // Links: A -> B, A +> B, A -.-> B, A -> B; label
+        if trimmed.contains("->") || trimmed.contains("+>") || trimmed.contains("+<") {
+            let (line_part, label) = if let Some(idx) = trimmed.find(';') {
+                (trimmed[..idx].trim(), Some(trimmed[idx + 1..].trim().to_string()))
+            } else {
+                (trimmed, None)
+            };
+
+            let dashed = line_part.contains("-.->");
+            let flow = if line_part.contains("+<>") {
+                Some(crate::ir::WardleyFlow::Bidirectional)
+            } else if line_part.contains("+>") {
+                Some(crate::ir::WardleyFlow::Forward)
+            } else if line_part.contains("+<") {
+                Some(crate::ir::WardleyFlow::Backward)
+            } else {
+                None
+            };
+
+            // Extract source and target
+            let separator = if dashed {
+                "-.->"
+            } else if line_part.contains("+<>") {
+                "+<>"
+            } else if line_part.contains("+>") {
+                "+>"
+            } else if line_part.contains("+<") {
+                "+<"
+            } else {
+                "->"
+            };
+
+            let parts: Vec<&str> = line_part.splitn(2, separator).collect();
+            if parts.len() == 2 {
+                let source = parts[0].trim().to_string();
+                let target = parts[1].trim().to_string();
+                if !source.is_empty() && !target.is_empty() {
+                    graph.wardley.links.push(crate::ir::WardleyLink {
+                        source,
+                        target,
+                        dashed,
+                        label,
+                        flow,
+                    });
+                }
+            }
+            continue;
+        }
+    }
+
+    // Default stages if none specified
+    if graph.wardley.stages.is_empty() {
+        graph.wardley.stages = vec![
+            "Genesis".to_string(),
+            "Custom Built".to_string(),
+            "Product".to_string(),
+            "Commodity".to_string(),
+        ];
+    }
+
+    Ok(ParseOutput {
+        graph,
+        init_config,
+    })
+}
+
+fn wardley_to_percent(val: f32) -> f32 {
+    if val <= 1.0 {
+        val * 100.0
+    } else {
+        val.clamp(0.0, 100.0)
+    }
+}
+
+fn extract_bracket_coords(s: &str) -> Option<(f32, f32)> {
+    let s = s.trim();
+    let start = s.find('[')?;
+    let end = s.find(']')?;
+    let inner = &s[start + 1..end];
+    let parts: Vec<&str> = inner.split(',').collect();
+    if parts.len() == 2 {
+        let a = parts[0].trim().parse::<f32>().ok()?;
+        let b = parts[1].trim().parse::<f32>().ok()?;
+        Some((a, b))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

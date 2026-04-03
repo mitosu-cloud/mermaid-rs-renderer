@@ -18,9 +18,12 @@ mod sankey;
 mod sequence;
 mod text;
 mod timeline;
+mod tree_view;
 mod treemap;
 pub(crate) mod types;
 mod venn;
+mod wardley;
+mod ishikawa;
 mod xychart;
 use architecture::*;
 use block::*;
@@ -226,6 +229,9 @@ pub fn compute_layout_with_metrics(
         crate::ir::DiagramKind::Timeline => compute_timeline_layout(graph, theme, config),
         crate::ir::DiagramKind::Journey => compute_journey_layout(graph, theme, config),
         crate::ir::DiagramKind::Venn => compute_venn_layout(graph, theme, config),
+        crate::ir::DiagramKind::TreeView => tree_view::compute_tree_view_layout(graph, theme, config),
+        crate::ir::DiagramKind::Ishikawa => ishikawa::compute_ishikawa_layout(graph, theme, config),
+        crate::ir::DiagramKind::Wardley => wardley::compute_wardley_layout(graph, theme, config),
         crate::ir::DiagramKind::Class
         | crate::ir::DiagramKind::State
         | crate::ir::DiagramKind::Er

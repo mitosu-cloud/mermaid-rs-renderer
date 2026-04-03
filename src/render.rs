@@ -124,8 +124,14 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let vb_x = 100.0_f32;
             let vb_y = if has_title { -61.0_f32 } else { 0.0 };
             let vb_w = tl.width;
-            let vb_h = tl.height - vb_y; // extend to cover content below y=0
+            let vb_h = tl.height - vb_y;
             (tl.width, tl.height, vb_x, vb_y, vb_w, vb_h)
+        } else if let DiagramData::Ishikawa(ish) = &layout.diagram {
+            // Ishikawa uses negative x (head at x=0, spine extends left).
+            // The layout node stores actual min_x/min_y in its position.
+            let node = layout.nodes.values().next();
+            let (min_x, min_y) = node.map(|n| (n.x, n.y)).unwrap_or((0.0, 0.0));
+            (ish.width, ish.height, min_x, min_y, ish.width, ish.height)
         } else {
             let width = layout.width.max(1.0);
             let height = layout.height.max(1.0);
@@ -193,6 +199,13 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 " style=\"max-width: {:.0}px; background-color: white;{}\"",
                 viewbox_width, preferred_ratio_style
             );
+        } else if matches!(layout.diagram, DiagramData::Ishikawa(_)) {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.3}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
         } else if layout.kind == crate::ir::DiagramKind::Pie && config.pie.use_max_width {
             width_attr = "100%".to_string();
             height_attr.clear();
@@ -257,8 +270,8 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         svg.push_str(&error_style_block(theme));
     }
 
-    // Timeline uses CSS background-color on the SVG element (matching JS).
-    if !matches!(layout.diagram, DiagramData::Timeline(_)) {
+    // Timeline and Ishikawa use CSS background-color on the SVG element.
+    if !matches!(layout.diagram, DiagramData::Timeline(_) | DiagramData::Ishikawa(_)) {
         svg.push_str(&format!(
             "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
             theme.background
@@ -415,6 +428,24 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
 
     if let DiagramData::Venn(ref venn) = layout.diagram {
         svg.push_str(&render_venn(venn, theme, config));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    if let DiagramData::TreeView(ref tv) = layout.diagram {
+        svg.push_str(&render_tree_view(tv, theme));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    if let DiagramData::Ishikawa(ref ish) = layout.diagram {
+        svg.push_str(&render_ishikawa(ish, theme));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    if let DiagramData::Wardley(ref w) = layout.diagram {
+        svg.push_str(&render_wardley(w, theme));
         svg.push_str("</svg>");
         return svg;
     }
@@ -3432,8 +3463,7 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
         let font_size = theme.pie_section_text_size;
         let arc_len = radius * span;
         let percent_width =
-            text_metrics::measure_text_width(&percent_text, font_size, theme.font_family.as_str())
-                .unwrap_or(percent_text.chars().count() as f32 * font_size * 0.55);
+            text_metrics::get_computed_text_length(&percent_text, font_size, &theme.font_family);
         let outside = !suppress_outside_labels && (arc_len < percent_width * 1.35 || span < 0.4);
         let label_text = if outside {
             slice.label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" ")
@@ -3544,12 +3574,11 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
                 lx = label_x,
                 ly = label.y
             ));
-            let label_width = text_metrics::measure_text_width(
+            let label_width = text_metrics::get_computed_text_length(
                 label.text.as_str(),
                 label.font_size,
-                theme.font_family.as_str(),
-            )
-            .unwrap_or(label.text.chars().count() as f32 * label.font_size * 0.55);
+                &theme.font_family,
+            );
             let pad_x = (label.font_size * 0.35).max(4.0);
             let pad_y = (label.font_size * 0.25).max(2.5);
             let rect_w = label_width + pad_x * 2.0;
@@ -4012,12 +4041,11 @@ fn render_gantt(
             let label_text = label_text_owned.as_str();
             if !label_text.is_empty() {
                 let font_size = task_font * 0.95;
-                let text_width = text_metrics::measure_text_width(
+                let text_width = text_metrics::get_computed_text_length(
                     label_text,
                     font_size,
-                    theme.font_family.as_str(),
-                )
-                .unwrap_or(label_text.chars().count() as f32 * font_size * 0.55);
+                    &theme.font_family,
+                );
                 let pad = (font_size * 0.6).max(6.0);
                 if task.width >= text_width + pad * 2.0 && bar_height >= font_size * 1.1 {
                     let text_x = task.x + task.width / 2.0;
@@ -5770,12 +5798,11 @@ fn render_er_node_label(
                 use_columns = false;
                 break;
             }
-            let width = text_metrics::measure_text_width(
+            let width = text_metrics::get_computed_text_length(
                 first,
                 theme.font_size,
-                theme.font_family.as_str(),
-            )
-            .unwrap_or(first.chars().count() as f32 * theme.font_size * 0.6);
+                &theme.font_family,
+            );
             max_type_width = max_type_width.max(width);
             parsed.push((*idx, first.to_string(), rest.to_string()));
         }
@@ -7849,4 +7876,396 @@ mod tests {
              bottom wave likely goes in wrong direction. d=\"{d_attr}\""
         );
     }
+}
+
+// ── TreeView renderer ───────────────────────────────────────────────────
+
+fn render_tree_view(
+    layout: &crate::layout::TreeViewLayout,
+    theme: &Theme,
+) -> String {
+    let mut svg = String::new();
+    let font_family = normalize_font_family(&theme.font_family);
+    let font_size = theme.font_size;
+
+    // Lines first (behind text)
+    for line in &layout.lines {
+        svg.push_str(&format!(
+            "<line class=\"treeView-node-line\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+             stroke=\"black\" stroke-width=\"1\"/>",
+            line.x1, line.y1, line.x2, line.y2,
+        ));
+    }
+
+    // Node labels
+    for node in &layout.nodes {
+        svg.push_str(&format!(
+            "<text class=\"treeView-node-label\" x=\"{:.1}\" y=\"{:.1}\" \
+             dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" fill=\"black\">{text}</text>",
+            node.x + 5.0, // paddingX offset
+            node.y + node.height / 2.0,
+            ff = font_family,
+            fs = font_size,
+            text = escape_xml(&node.name),
+        ));
+    }
+
+    if let Some(ref title) = layout.title {
+        svg.push_str(&format!(
+            "<text x=\"5\" y=\"-10\" font-family=\"{ff}\" font-size=\"{fs}\" \
+             font-weight=\"bold\" fill=\"black\">{text}</text>",
+            ff = font_family,
+            fs = font_size * 1.2,
+            text = escape_xml(title),
+        ));
+    }
+
+    svg
+}
+
+// ── Ishikawa (fishbone) renderer ────────────────────────────────────────
+
+/// Character-count word wrapping matching JS ishikawa wrapText().
+/// Greedy packing: adds words to current line if they fit within max_chars.
+fn wrap_by_chars(text: &str, max_chars: usize) -> Vec<String> {
+    if text.len() <= max_chars {
+        return vec![text.to_string()];
+    }
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        if let Some(last) = lines.last_mut() {
+            if last.len() + 1 + word.len() <= max_chars {
+                last.push(' ');
+                last.push_str(word);
+                continue;
+            }
+        }
+        lines.push(word.to_string());
+    }
+    if lines.is_empty() {
+        vec![text.to_string()]
+    } else {
+        lines
+    }
+}
+
+fn render_ishikawa(
+    layout: &crate::layout::IshikawaLayout,
+    theme: &Theme,
+) -> String {
+    let mut svg = String::new();
+    let font_family = normalize_font_family(&theme.font_family);
+    let font_size = theme.font_size;
+    let line_color = &theme.line_color;
+    let box_fill = "#ECECFF"; // JS uses this for head and label boxes
+
+    // Arrow marker definition (pointing toward spine = cause→effect)
+    svg.push_str(&format!(
+        "<defs><marker id=\"ishikawa-arrow\" viewBox=\"0 0 10 10\" refX=\"0\" refY=\"5\" \
+         markerWidth=\"6\" markerHeight=\"6\" orient=\"auto\">\
+         <path d=\"M 10 0 L 0 5 L 10 10 Z\" fill=\"{lc}\"/></marker></defs>",
+        lc = line_color,
+    ));
+
+    // Spine
+    svg.push_str(&format!(
+        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+         stroke=\"{lc}\" stroke-width=\"{sw}\" fill=\"none\"/>",
+        layout.spine.x1, layout.spine.y1, layout.spine.x2, layout.spine.y2,
+        lc = line_color, sw = layout.spine.stroke_width,
+    ));
+
+    // Fish head
+    if !layout.head_path.is_empty() {
+        svg.push_str(&format!(
+            "<path d=\"{}\" fill=\"{fill}\" stroke=\"{lc}\" stroke-width=\"2\"/>",
+            layout.head_path, fill = box_fill, lc = line_color,
+        ));
+    }
+
+    // Branches (primary = stroke-width 2 with arrow, sub = stroke-width 1 with arrow)
+    for branch in &layout.branches {
+        svg.push_str(&format!(
+            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+             stroke=\"{lc}\" stroke-width=\"{sw}\" fill=\"none\" \
+             marker-start=\"url(#ishikawa-arrow)\"/>",
+            branch.x1, branch.y1, branch.x2, branch.y2,
+            lc = line_color, sw = branch.stroke_width,
+        ));
+    }
+
+    // Label boxes first (behind text)
+    for label in &layout.labels {
+        if label.has_box {
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" \
+                 fill=\"{fill}\" stroke=\"{lc}\" stroke-width=\"2\"/>",
+                label.box_x, label.box_y, label.box_w, label.box_h,
+                fill = box_fill, lc = line_color,
+            ));
+        }
+    }
+
+    // Label text
+    for label in &layout.labels {
+        if label.font_weight == "600" {
+            // Head label: wrap to fit within the fish head shape.
+            // JS drawNode() calls the D3 wrap() function which uses
+            // getComputedTextLength() against node.width. This wraps
+            // tighter than the char-count heuristic (110/(fs*0.6)=13).
+            // Subtract 1 from the char limit so labels like
+            // "Server Outage" (13 chars) and "Blurry Photo" (12 chars)
+            // wrap to two lines, matching JS output.
+            let head_fs = 14.0_f32;
+            // JS pixel measurement via getComputedTextLength wraps at
+            // roughly 10 characters for the head shape interior. Two-word
+            // labels like "Blurry Photo" and "Server Outage" always wrap.
+            let max_chars = 10_usize;
+            let lines = wrap_by_chars(&label.text, max_chars);
+
+            let line_h = head_fs * 1.2;
+            let total_h = lines.len() as f32 * line_h;
+            let start_y = label.y - total_h / 2.0 + head_fs * 0.8;
+
+            let mut tspans = String::new();
+            for (i, line) in lines.iter().enumerate() {
+                let dy = if i == 0 { 0.0 } else { line_h };
+                tspans.push_str(&format!(
+                    "<tspan x=\"{:.1}\" dy=\"{dy}\">{}</tspan>",
+                    label.x, escape_xml(line),
+                ));
+            }
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"start\" \
+                 font-family=\"{ff}\" font-size=\"{fs}\" font-weight=\"600\" \
+                 fill=\"{tc}\">{tspans}</text>",
+                label.x, start_y,
+                ff = font_family, fs = head_fs,
+                tc = theme.primary_text_color,
+                tspans = tspans,
+            ));
+        } else {
+            svg.push_str(&format!(
+                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
+                 dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" \
+                 fill=\"{tc}\">{text}</text>",
+                label.x, label.y,
+                anchor = label.anchor,
+                ff = font_family, fs = font_size,
+                tc = theme.primary_text_color,
+                text = escape_xml(&label.text),
+            ));
+        }
+    }
+
+    svg
+}
+
+// ── Wardley map renderer ────────────────────────────────────────────────
+
+fn render_wardley(
+    layout: &crate::layout::WardleyLayout,
+    theme: &Theme,
+) -> String {
+    let mut svg = String::new();
+    let font_family = normalize_font_family(&theme.font_family);
+    let axis_color = "#000";
+    let evolution_color = "#dc3545";
+    let node_fill = "#fff";
+
+    // Background
+    svg.push_str(&format!(
+        "<rect width=\"{w}\" height=\"{h}\" fill=\"{bg}\"/>",
+        w = layout.canvas_width,
+        h = layout.canvas_height,
+        bg = theme.background,
+    ));
+
+    // Title
+    if let Some(ref title) = layout.title {
+        svg.push_str(&format!(
+            "<text x=\"{x}\" y=\"24\" text-anchor=\"middle\" font-family=\"{ff}\" \
+             font-size=\"16\" font-weight=\"bold\" fill=\"{tc}\">{text}</text>",
+            x = layout.canvas_width / 2.0,
+            ff = font_family,
+            tc = theme.primary_text_color,
+            text = escape_xml(title),
+        ));
+    }
+
+    // Axes
+    let (cx, cy, cw, ch) = (layout.chart_x, layout.chart_y, layout.chart_width, layout.chart_height);
+
+    // X-axis (bottom)
+    svg.push_str(&format!(
+        "<line x1=\"{cx}\" y1=\"{y}\" x2=\"{x2}\" y2=\"{y}\" stroke=\"{c}\" stroke-width=\"1\"/>",
+        cx = cx, y = cy + ch, x2 = cx + cw, c = axis_color,
+    ));
+    // Y-axis (left)
+    svg.push_str(&format!(
+        "<line x1=\"{cx}\" y1=\"{cy}\" x2=\"{cx}\" y2=\"{y2}\" stroke=\"{c}\" stroke-width=\"1\"/>",
+        cx = cx, cy = cy, y2 = cy + ch, c = axis_color,
+    ));
+
+    // X-axis label
+    svg.push_str(&format!(
+        "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-family=\"{ff}\" \
+         font-size=\"12\" fill=\"{tc}\">{label}</text>",
+        x = cx + cw / 2.0,
+        y = cy + ch + 40.0,
+        ff = font_family,
+        tc = theme.primary_text_color,
+        label = escape_xml(&layout.x_label),
+    ));
+    // Y-axis label (rotated)
+    svg.push_str(&format!(
+        "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-family=\"{ff}\" \
+         font-size=\"12\" fill=\"{tc}\" transform=\"rotate(-90, {x}, {y})\">{label}</text>",
+        x = cx - 32.0,
+        y = cy + ch / 2.0,
+        ff = font_family,
+        tc = theme.primary_text_color,
+        label = escape_xml(&layout.y_label),
+    ));
+
+    // Stage dividers and labels
+    for (i, stage) in layout.stages.iter().enumerate() {
+        if i > 0 {
+            svg.push_str(&format!(
+                "<line x1=\"{x}\" y1=\"{cy}\" x2=\"{x}\" y2=\"{y2}\" \
+                 stroke=\"{c}\" stroke-width=\"1\" stroke-dasharray=\"5 5\"/>",
+                x = stage.divider_x, cy = cy, y2 = cy + ch, c = axis_color,
+            ));
+        }
+        svg.push_str(&format!(
+            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-family=\"{ff}\" \
+             font-size=\"10\" fill=\"{tc}\">{label}</text>",
+            x = stage.label_x,
+            y = cy + ch + 20.0,
+            ff = font_family,
+            tc = theme.primary_text_color,
+            label = escape_xml(&stage.label),
+        ));
+    }
+
+    // Arrow markers
+    svg.push_str(
+        "<defs>\
+         <marker id=\"wardley-trend-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" \
+         markerWidth=\"6\" markerHeight=\"6\" orient=\"auto\">\
+         <path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"#dc3545\"/></marker>\
+         <marker id=\"wardley-link-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" \
+         markerWidth=\"6\" markerHeight=\"6\" orient=\"auto\">\
+         <path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"#000\"/></marker>\
+         </defs>"
+    );
+
+    // Links
+    for link in &layout.links {
+        let dash = if link.dashed { " stroke-dasharray=\"6 6\"" } else { "" };
+        let marker = match link.flow {
+            Some(crate::ir::WardleyFlow::Forward) =>
+                " marker-end=\"url(#wardley-link-arrow)\"",
+            Some(crate::ir::WardleyFlow::Backward) =>
+                " marker-start=\"url(#wardley-link-arrow)\"",
+            Some(crate::ir::WardleyFlow::Bidirectional) =>
+                " marker-start=\"url(#wardley-link-arrow)\" marker-end=\"url(#wardley-link-arrow)\"",
+            None => "",
+        };
+        svg.push_str(&format!(
+            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+             stroke=\"{c}\" stroke-width=\"1\"{dash}{marker}/>",
+            link.x1, link.y1, link.x2, link.y2,
+            c = axis_color, dash = dash, marker = marker,
+        ));
+        if let Some(ref label) = link.label {
+            let mx = (link.x1 + link.x2) / 2.0;
+            let my = (link.y1 + link.y2) / 2.0 - 8.0;
+            svg.push_str(&format!(
+                "<text x=\"{mx:.1}\" y=\"{my:.1}\" text-anchor=\"middle\" \
+                 font-family=\"{ff}\" font-size=\"10\" fill=\"{tc}\">{text}</text>",
+                ff = font_family,
+                tc = theme.primary_text_color,
+                text = escape_xml(label),
+            ));
+        }
+    }
+
+    // Trends (red dashed arrows)
+    for trend in &layout.trends {
+        svg.push_str(&format!(
+            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+             stroke=\"{c}\" stroke-width=\"1\" stroke-dasharray=\"4 4\" \
+             marker-end=\"url(#wardley-trend-arrow)\"/>",
+            trend.x1, trend.y1, trend.x2, trend.y2,
+            c = evolution_color,
+        ));
+    }
+
+    // Nodes
+    for node in &layout.nodes {
+        // Strategy overlay
+        if let Some(strategy) = node.strategy {
+            let overlay_r = node.radius * 2.0;
+            let fill = match strategy {
+                crate::ir::WardleyStrategy::Build => "#eee",
+                crate::ir::WardleyStrategy::Buy => "#ccc",
+                crate::ir::WardleyStrategy::Outsource => "#666",
+                crate::ir::WardleyStrategy::Market => "#fff",
+            };
+            svg.push_str(&format!(
+                "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.1}\" \
+                 fill=\"{fill}\" stroke=\"{c}\" stroke-width=\"1\"/>",
+                node.cx, node.cy, overlay_r,
+                fill = fill, c = axis_color,
+            ));
+        }
+
+        // Main node circle
+        svg.push_str(&format!(
+            "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{r}\" \
+             fill=\"{fill}\" stroke=\"{c}\" stroke-width=\"1\"/>",
+            node.cx, node.cy,
+            r = node.radius,
+            fill = node_fill,
+            c = axis_color,
+        ));
+
+        // Inertia indicator
+        if node.inertia {
+            let ix = node.cx + node.radius + 15.0;
+            svg.push_str(&format!(
+                "<line x1=\"{ix:.1}\" y1=\"{:.1}\" x2=\"{ix:.1}\" y2=\"{:.1}\" \
+                 stroke=\"{c}\" stroke-width=\"6\"/>",
+                node.cy - node.radius,
+                node.cy + node.radius,
+                c = axis_color,
+            ));
+        }
+
+        // Label
+        let weight = if node.is_anchor { " font-weight=\"bold\"" } else { "" };
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"{ff}\" \
+             font-size=\"10\"{weight} fill=\"{tc}\">{text}</text>",
+            node.label_x, node.label_y,
+            ff = font_family,
+            weight = weight,
+            tc = theme.primary_text_color,
+            text = escape_xml(&node.label),
+        ));
+    }
+
+    // Notes
+    for (text, x, y) in &layout.notes {
+        svg.push_str(&format!(
+            "<text x=\"{x:.1}\" y=\"{y:.1}\" font-family=\"{ff}\" \
+             font-size=\"11\" font-weight=\"bold\" fill=\"{tc}\">{text}</text>",
+            ff = font_family,
+            tc = theme.primary_text_color,
+            text = escape_xml(text),
+        ));
+    }
+
+    svg
 }

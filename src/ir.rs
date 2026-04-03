@@ -43,6 +43,9 @@ pub enum DiagramKind {
     Treemap,
     XYChart,
     Venn,
+    TreeView,
+    Ishikawa,
+    Wardley,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -467,6 +470,93 @@ pub struct Subgraph {
     pub markdown_label: bool,
 }
 
+// ── TreeView ────────────────────────────────────────────────────────────
+#[derive(Debug, Clone)]
+pub struct TreeViewNode {
+    pub name: String,
+    pub children: Vec<TreeViewNode>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TreeViewData {
+    pub root: Vec<TreeViewNode>, // top-level nodes (virtual root's children)
+    pub title: Option<String>,
+}
+
+// ── Ishikawa (fishbone) ─────────────────────────────────────────────────
+#[derive(Debug, Clone)]
+pub struct IshikawaNode {
+    pub text: String,
+    pub children: Vec<IshikawaNode>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct IshikawaData {
+    pub root: Option<IshikawaNode>, // the effect (fish head)
+}
+
+// ── Wardley map ─────────────────────────────────────────────────────────
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WardleyStrategy {
+    Build,
+    Buy,
+    Outsource,
+    Market,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WardleyFlow {
+    Forward,
+    Backward,
+    Bidirectional,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyNode {
+    pub id: String,
+    pub label: String,
+    pub visibility: f32,
+    pub evolution: f32,
+    pub is_anchor: bool,
+    pub label_offset: Option<(f32, f32)>,
+    pub strategy: Option<WardleyStrategy>,
+    pub inertia: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyLink {
+    pub source: String,
+    pub target: String,
+    pub dashed: bool,
+    pub label: Option<String>,
+    pub flow: Option<WardleyFlow>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyTrend {
+    pub node_id: String,
+    pub target_evolution: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct WardleyNote {
+    pub text: String,
+    pub x: f32,
+    pub y: f32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WardleyData {
+    pub title: Option<String>,
+    pub size: Option<(f32, f32)>,
+    pub nodes: Vec<WardleyNode>,
+    pub links: Vec<WardleyLink>,
+    pub trends: Vec<WardleyTrend>,
+    pub notes: Vec<WardleyNote>,
+    pub stages: Vec<String>,
+    pub stage_boundaries: Vec<f32>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Graph {
     pub kind: DiagramKind,
@@ -508,6 +598,9 @@ pub struct Graph {
     pub block: Option<BlockDiagram>,
     pub venn: VennData,
     pub look: DiagramLook,
+    pub tree_view: TreeViewData,
+    pub ishikawa: IshikawaData,
+    pub wardley: WardleyData,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -729,6 +822,9 @@ impl Graph {
             block: None,
             venn: VennData::default(),
             look: DiagramLook::default(),
+            tree_view: TreeViewData::default(),
+            ishikawa: IshikawaData::default(),
+            wardley: WardleyData::default(),
         }
     }
 
