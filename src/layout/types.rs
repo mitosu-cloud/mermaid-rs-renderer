@@ -78,6 +78,10 @@ pub struct NodeLayout {
     pub sub_label: Option<TextBlock>,
     /// Whether this treemap node is a leaf (no children) — affects label centering.
     pub is_treemap_leaf: bool,
+    /// Kanban card metadata
+    pub kanban_ticket: Option<String>,
+    pub kanban_assigned: Option<String>,
+    pub kanban_priority: Option<String>,
 }
 
 #[derive(Debug, Clone)]

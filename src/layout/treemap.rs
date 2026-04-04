@@ -205,6 +205,9 @@ fn layout_treemap_nodes(
                     img_h: None,
                     sub_label,
                     is_treemap_leaf: is_leaf,
+                    kanban_ticket: None,
+                    kanban_assigned: None,
+                    kanban_priority: None,
                 },
             );
         }

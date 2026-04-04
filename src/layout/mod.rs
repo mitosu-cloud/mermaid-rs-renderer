@@ -1865,6 +1865,9 @@ fn assign_positions_manual(
                     img_h: None,
                     sub_label: None,
                     is_treemap_leaf: false,
+                    kanban_ticket: None,
+                    kanban_assigned: None,
+                    kanban_priority: None,
                 },
             );
 
@@ -1985,6 +1988,9 @@ fn assign_positions_manual(
                         img_h: None,
                         sub_label: None,
                         is_treemap_leaf: false,
+                        kanban_ticket: None,
+                        kanban_assigned: None,
+                        kanban_priority: None,
                     },
                 );
                 id
@@ -4320,6 +4326,9 @@ fn build_node_layout(
         img_h: node.img_h,
         sub_label: None,
         is_treemap_leaf: false,
+        kanban_ticket: node.kanban_ticket.clone(),
+        kanban_assigned: node.kanban_assigned.clone(),
+        kanban_priority: node.kanban_priority.clone(),
     }
 }
 
@@ -6071,6 +6080,9 @@ mod tests {
             img_h: None,
             sub_label: None,
             is_treemap_leaf: false,
+            kanban_ticket: None,
+            kanban_assigned: None,
+            kanban_priority: None,
         }
     }
 

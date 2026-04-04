@@ -348,6 +348,10 @@ pub struct Node {
     pub img_h: Option<f32>,
     pub img_pos: Option<String>,
     pub constraint: Option<String>,
+    /// Kanban card metadata
+    pub kanban_ticket: Option<String>,
+    pub kanban_assigned: Option<String>,
+    pub kanban_priority: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -852,6 +856,9 @@ impl Graph {
             img_h: None,
             img_pos: None,
             constraint: None,
+            kanban_ticket: None,
+            kanban_assigned: None,
+            kanban_priority: None,
         });
         if is_new {
             let order = self.node_order.len();

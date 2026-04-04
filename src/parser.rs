@@ -4248,8 +4248,7 @@ fn parse_kanban_diagram(input: &str) -> Result<ParseOutput> {
         let indent = count_indent(&raw_line);
         let base = *base_indent.get_or_insert(indent);
         if indent <= base {
-            let (id, label, _shape, _classes, _node_md) = parse_node_token(trimmed);
-            let col_label = label.unwrap_or_else(|| id.clone());
+            let (id, col_label) = kanban_extract_id_label(trimmed);
             graph.subgraphs.push(Subgraph {
                 id: Some(id),
                 label: col_label,
@@ -4268,17 +4267,22 @@ fn parse_kanban_diagram(input: &str) -> Result<ParseOutput> {
         } else {
             (trimmed, None)
         };
-        let (mut id, label, _shape, _classes, _md) = parse_node_token(task_part);
+        let (mut id, node_label) = kanban_extract_id_label(task_part);
         if graph.nodes.contains_key(&id) {
             id = format!("{}_{}", id, graph.nodes.len());
         }
-        let mut node_label = label.unwrap_or_else(|| id.clone());
-        if let Some(meta) = meta
-            && !meta.is_empty()
-        {
-            node_label.push_str(&format!("\n{}", meta));
-        }
+        // Parse metadata into structured fields
+        let (ticket, assigned, priority) = if let Some(ref meta) = meta {
+            kanban_parse_metadata(meta)
+        } else {
+            (None, None, None)
+        };
         graph.ensure_node(&id, Some(node_label), Some(crate::ir::NodeShape::Rectangle));
+        if let Some(node) = graph.nodes.get_mut(&id) {
+            node.kanban_ticket = ticket;
+            node.kanban_assigned = assigned;
+            node.kanban_priority = priority;
+        }
         if let Some(idx) = current_section
             && let Some(subgraph) = graph.subgraphs.get_mut(idx)
         {
@@ -4287,6 +4291,66 @@ fn parse_kanban_diagram(input: &str) -> Result<ParseOutput> {
     }
 
     Ok(ParseOutput { graph, init_config })
+}
+
+/// Extract id and label from a kanban token. Handles:
+/// - `id[Label text]` → (id, "Label text")
+/// - `[Label text]`   → (auto-id, "Label text")
+/// - `Plain text`     → (text, text)
+fn kanban_extract_id_label(token: &str) -> (String, String) {
+    let (id, label, _shape, _classes, _md) = parse_node_token(token);
+    if let Some(lbl) = label {
+        return (id, lbl);
+    }
+    // parse_node_token failed to parse brackets — check for bare [Label] pattern
+    if let Some(start) = token.find('[') {
+        if let Some(end) = token.rfind(']') {
+            if end > start {
+                let label = token[start + 1..end].to_string();
+                let prefix = token[..start].trim();
+                let id = if prefix.is_empty() {
+                    // Auto-generate id from label (sanitize spaces)
+                    label
+                        .chars()
+                        .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                        .collect::<String>()
+                } else {
+                    prefix.to_string()
+                };
+                return (id, label);
+            }
+        }
+    }
+    (id.clone(), id)
+}
+
+/// Parse kanban metadata string (from `@{ ... }`) into structured fields.
+fn kanban_parse_metadata(meta: &str) -> (Option<String>, Option<String>, Option<String>) {
+    let mut ticket = None;
+    let mut assigned = None;
+    let mut priority = None;
+
+    for pair in meta.split(',') {
+        let pair = pair.trim();
+        if pair.is_empty() {
+            continue;
+        }
+        if let Some(colon) = pair.find(':') {
+            let key = pair[..colon].trim().to_ascii_lowercase();
+            let val = pair[colon + 1..]
+                .trim()
+                .trim_matches('\'')
+                .trim_matches('"');
+            match key.as_str() {
+                "ticket" => ticket = Some(val.to_string()),
+                "assigned" => assigned = Some(val.to_string()),
+                "priority" => priority = Some(val.to_string()),
+                _ => {}
+            }
+        }
+    }
+
+    (ticket, assigned, priority)
 }
 
 fn parse_architecture_diagram(input: &str) -> Result<ParseOutput> {

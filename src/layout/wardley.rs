@@ -116,6 +116,7 @@ pub(super) fn compute_wardley_layout(
             style: crate::ir::NodeStyle::default(),
             link: None, anchor_subgraph: None, hidden: false,
             icon: None, img: None, img_w: None, img_h: None, sub_label: None, is_treemap_leaf: false,
+            kanban_ticket: None, kanban_assigned: None, kanban_priority: None,
         },
     );
 

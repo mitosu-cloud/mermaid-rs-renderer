@@ -1401,7 +1401,18 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 }
                 continue;
             }
-            svg.push_str(&shape_svg(node, theme, config));
+            svg.push_str(&shape_svg(node, theme, config, layout.kind));
+            // Kanban priority color bar on left edge of card
+            if layout.kind == crate::ir::DiagramKind::Kanban {
+                if let Some(color) = kanban_priority_color(node) {
+                    let lx = node.x + 2.0;
+                    let y1 = node.y + 2.0;
+                    let y2 = node.y + node.height - 2.0;
+                    svg.push_str(&format!(
+                        "<line x1=\"{lx:.2}\" y1=\"{y1:.2}\" x2=\"{lx:.2}\" y2=\"{y2:.2}\" stroke=\"{color}\" stroke-width=\"4\"/>"
+                    ));
+                }
+            }
             if layout.kind != crate::ir::DiagramKind::Er {
                 let divider_line_height = if layout.kind == crate::ir::DiagramKind::Class {
                     theme.font_size * config.class_label_line_height()
@@ -1488,6 +1499,8 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     })
                 } else if node.label.lines.iter().any(|line| is_divider_text_line(line)) {
                     text_block_svg_class(node, theme, config, node.style.text_color.as_deref())
+                } else if layout.kind == crate::ir::DiagramKind::Kanban {
+                    render_kanban_card_label(node, theme, config)
                 } else if layout.kind == crate::ir::DiagramKind::State {
                     text_block_svg_with_font_size(
                         center_x,
@@ -1537,7 +1550,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
                 }
             }
-            svg.push_str(&shape_svg(footbox, theme, config));
+            svg.push_str(&shape_svg(footbox, theme, config, layout.kind));
             let divider_line_height = theme.font_size * config.label_line_height;
             svg.push_str(&divider_lines_svg(footbox, theme, divider_line_height));
             let center_x = footbox.x + footbox.width / 2.0;
@@ -6716,8 +6729,8 @@ fn primary_font(fonts: &str) -> String {
         .to_string()
 }
 
-fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutConfig) -> String {
-    let mut raw = shape_svg_inner(node, theme, config);
+fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutConfig, kind: crate::ir::DiagramKind) -> String {
+    let mut raw = shape_svg_inner(node, theme, config, kind);
     // If the node has an icon, render it inside the shape
     if let Some(icon_name) = &node.icon {
         let icon_size = node.height.min(node.width) * 0.5;
@@ -6748,7 +6761,7 @@ fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutCon
     }
 }
 
-fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutConfig) -> String {
+fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutConfig, kind: crate::ir::DiagramKind) -> String {
     let stroke = node
         .style
         .stroke
@@ -6767,16 +6780,13 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
     let w = node.width;
     let h = node.height;
     match node.shape {
-        crate::ir::NodeShape::Rectangle => format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
-            x,
-            y,
-            w,
-            h,
-            fill,
-            stroke,
-            node.style.stroke_width.unwrap_or(1.0)
-        ),
+        crate::ir::NodeShape::Rectangle => {
+            let (rx, ry) = if kind == crate::ir::DiagramKind::Kanban { (5, 5) } else { (0, 0) };
+            format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{}\" ry=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+                x, y, w, h, rx, ry, fill, stroke, node.style.stroke_width.unwrap_or(1.0)
+            )
+        },
         crate::ir::NodeShape::ForkJoin => format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"2\" ry=\"2\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
@@ -7654,6 +7664,87 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             node.style.stroke_width.unwrap_or(1.0)
         ),
     }
+}
+
+/// Return the priority color for a kanban card from its structured metadata.
+/// Matches mermaid-js kanbanItem.ts priority color mapping.
+fn kanban_priority_color(node: &crate::layout::NodeLayout) -> Option<&'static str> {
+    let priority = node.kanban_priority.as_deref()?;
+    match priority.to_ascii_lowercase().as_str() {
+        "very high" => Some("red"),
+        "high" => Some("orange"),
+        "low" => Some("blue"),
+        "very low" => Some("lightblue"),
+        _ => None, // "medium" or unknown = no bar
+    }
+}
+
+/// Render kanban card label with left-aligned title, and ticket/assigned on a
+/// bottom row (ticket left, assigned right). Matches JS kanbanItem.ts layout.
+fn render_kanban_card_label(
+    node: &crate::layout::NodeLayout,
+    theme: &Theme,
+    config: &LayoutConfig,
+) -> String {
+    let font_size = theme.font_size.max(16.0);
+    let line_height = font_size * config.label_line_height;
+    let padding = 10.0;
+    let fill = node
+        .style
+        .text_color
+        .as_deref()
+        .unwrap_or(&theme.primary_text_color);
+    let font_family = normalize_font_family(&theme.font_family);
+
+    let has_meta = node.kanban_ticket.is_some() || node.kanban_assigned.is_some();
+    let meta_row_height = if has_meta { line_height } else { 0.0 };
+
+    // Title: left-aligned, vertically centered in the space above the meta row
+    let title_area_height = node.height - meta_row_height;
+    let title_total_height = node.label.lines.len() as f32 * line_height;
+    let title_start_y =
+        node.y + (title_area_height - title_total_height) / 2.0 + font_size;
+    let title_x = node.x + padding;
+
+    let mut out = String::new();
+
+    // Render title text (left-aligned)
+    out.push_str(&format!(
+        "<text x=\"{title_x:.2}\" y=\"{title_start_y:.2}\" text-anchor=\"start\" font-family=\"{font_family}\" font-size=\"{font_size}\" fill=\"{fill}\">"
+    ));
+    for (idx, line) in node.label.lines.iter().enumerate() {
+        let dy = if idx == 0 { 0.0 } else { line_height };
+        let text = line.text();
+        out.push_str(&format!(
+            "<tspan x=\"{title_x:.2}\" dy=\"{dy:.2}\">{}</tspan>",
+            escape_xml(&text)
+        ));
+    }
+    out.push_str("</text>");
+
+    // Render metadata row (ticket left, assigned right)
+    if has_meta {
+        let meta_y = node.y + node.height - padding;
+        let meta_font_size = font_size * 0.85;
+
+        if let Some(ref ticket) = node.kanban_ticket {
+            let ticket_x = node.x + padding;
+            out.push_str(&format!(
+                "<text x=\"{ticket_x:.2}\" y=\"{meta_y:.2}\" text-anchor=\"start\" font-family=\"{font_family}\" font-size=\"{meta_font_size}\" fill=\"{fill}\"><tspan>{}</tspan></text>",
+                escape_xml(ticket)
+            ));
+        }
+
+        if let Some(ref assigned) = node.kanban_assigned {
+            let assigned_x = node.x + node.width - padding;
+            out.push_str(&format!(
+                "<text x=\"{assigned_x:.2}\" y=\"{meta_y:.2}\" text-anchor=\"end\" font-family=\"{font_family}\" font-size=\"{meta_font_size}\" fill=\"{fill}\"><tspan>{}</tspan></text>",
+                escape_xml(assigned)
+            ));
+        }
+    }
+
+    out
 }
 
 #[cfg(test)]

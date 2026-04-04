@@ -143,6 +143,9 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
                 img_h: None,
                 sub_label: None,
                 is_treemap_leaf: false,
+                kanban_ticket: None,
+                kanban_assigned: None,
+                kanban_priority: None,
             },
         );
     }

@@ -147,6 +147,46 @@ pub(super) fn measure_label_with_font_size(
     }
 }
 
+/// Measure a label with text wrapping constrained to a specific pixel width.
+/// Used by kanban layout where card width is fixed.
+pub(super) fn measure_label_wrapped_to_px_width(
+    text: &str,
+    font_size: f32,
+    max_width_px: f32,
+    config: &LayoutConfig,
+    font_family: &str,
+) -> TextBlock {
+    let raw_lines = split_lines(text);
+    let mut lines = Vec::new();
+    let fast_metrics = config.fast_text_metrics;
+    for line in raw_lines {
+        let wrapped = wrap_line(&line, max_width_px, font_size, font_family, fast_metrics);
+        lines.extend(wrapped);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    let max_width = lines
+        .iter()
+        .map(|line| text_width(line, font_size, font_family, fast_metrics))
+        .fold(0.0, f32::max);
+    let width = if fast_metrics {
+        max_width
+    } else {
+        let max_len = lines.iter().map(|l| l.chars().count()).max().unwrap_or(1);
+        let avg_char = average_char_width(font_family, font_size, fast_metrics);
+        let guard_width = max_len as f32 * avg_char;
+        max_width.max(guard_width)
+    };
+    let height = lines.len() as f32 * font_size * config.label_line_height;
+
+    TextBlock {
+        lines: lines.into_iter().map(TextLine::plain).collect(),
+        width,
+        height,
+    }
+}
+
 pub(super) fn char_width_factor(ch: char) -> f32 {
     // Calibrated per-character widths against mermaid-cli output using the
     // default font stack and a 16px measurement baseline.
