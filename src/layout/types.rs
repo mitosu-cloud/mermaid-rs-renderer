@@ -777,6 +777,7 @@ pub struct IshikawaLineLayout {
 #[derive(Debug, Clone)]
 pub struct IshikawaLabelLayout {
     pub text: String,
+    pub lines: Vec<String>, // pre-wrapped lines (only used for head label)
     pub x: f32,
     pub y: f32,
     pub anchor: String,    // "middle", "end", "start"

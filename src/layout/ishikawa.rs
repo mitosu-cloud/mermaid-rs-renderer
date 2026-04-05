@@ -84,10 +84,12 @@ pub(super) fn compute_ishikawa_layout(
         .fold(0.0_f32, f32::max);
     let head_text_h = num_head_lines * font_size * 1.2;
     // JS: w = max(60, tb.width + 6), h = max(40, tb.height * 2 + 40)
-    let head_w = (head_text_w + 6.0).max(60.0);
+    // The Q curve's max x = Q_extent/2 = w*1.2. Text starts at Q*0.23 = w*0.55.
+    // So text must fit in w*1.2 - w*0.55 = w*0.65. Ensure w >= text_w/0.65.
+    let head_w = (head_text_w / 0.65).max((head_text_w + 6.0).max(60.0));
     let head_h = (head_text_h * 2.0 + 40.0).max(40.0);
     let head_half_h = head_h / 2.0;
-    let head_q_extent = head_w * 2.4; // JS: Q control point at w * 2.4
+    let head_q_extent = head_w * 2.4;
 
     // Spine center Y — the vertical midpoint of the diagram
     let spine_y = head_half_h + 260.0; // enough room for branches above
@@ -124,6 +126,7 @@ pub(super) fn compute_ishikawa_layout(
             let label_w = crate::text_metrics::get_computed_text_length(&cause.text, font_size, font_family);
             labels.push(IshikawaLabelLayout {
                 text: cause.text.clone(),
+                lines: Vec::new(),
                 x: end_x, y: end_y - 12.0,
                 anchor: "middle".to_string(),
                 font_weight: "normal".to_string(),
@@ -150,6 +153,7 @@ pub(super) fn compute_ishikawa_layout(
 
                 labels.push(IshikawaLabelLayout {
                     text: sub.text.clone(),
+                    lines: Vec::new(),
                     x: sub_x - sub_len - 4.0, y: sub_y,
                     anchor: "end".to_string(),
                     font_weight: "normal".to_string(),
@@ -177,6 +181,7 @@ pub(super) fn compute_ishikawa_layout(
             let label_w = crate::text_metrics::get_computed_text_length(&cause.text, font_size, font_family);
             labels.push(IshikawaLabelLayout {
                 text: cause.text.clone(),
+                lines: Vec::new(),
                 x: end_x, y: end_y + 12.0,
                 anchor: "middle".to_string(),
                 font_weight: "normal".to_string(),
@@ -203,6 +208,7 @@ pub(super) fn compute_ishikawa_layout(
 
                 labels.push(IshikawaLabelLayout {
                     text: sub.text.clone(),
+                    lines: Vec::new(),
                     x: sub_x - sub_len - 4.0, y: sub_y,
                     anchor: "end".to_string(),
                     font_weight: "normal".to_string(),
@@ -213,23 +219,28 @@ pub(super) fn compute_ishikawa_layout(
         }
     }
 
-    // Head label (at the fish head, right of spine)
+    // Head label: center text within the logical head width.
+    // JS: tx = (w - tb.width) / 2 - tb.x + 3
+    // tb.x ≈ 0 for text-anchor start, so tx ≈ (w - text_w) / 2 + 3
+    let head_label_x = (head_w - head_text_w) / 2.0 + 3.0;
     labels.push(IshikawaLabelLayout {
         text: root.text.clone(),
-        x: 33.0, y: spine_y,
+        lines: head_lines,
+        x: head_label_x, y: spine_y,
         anchor: "start".to_string(),
         font_weight: "600".to_string(),
         has_box: false,
         box_x: 0.0, box_y: 0.0, box_w: 0.0, box_h: 0.0,
     });
 
-    // Fish head path: at x=0, centered on spine_y
+    // Fish head path: local coordinates centered at y=0 (spine center).
+    // The renderer wraps this in a <g transform="translate(0, spine_y)">.
     let head_path = format!(
-        "M 0 {} L 0 {} Q {} {} 0 {} Z",
-        spine_y - head_half_h,
-        spine_y + head_half_h,
-        head_q_extent, spine_y,
-        spine_y - head_half_h,
+        "M 0 {} L 0 {} Q {} 0 0 {} Z",
+        -head_half_h,
+        head_half_h,
+        head_q_extent,
+        -head_half_h,
     );
 
     // Spine line
