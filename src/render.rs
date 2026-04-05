@@ -7975,11 +7975,15 @@ fn render_ishikawa(
         lc = line_color, sw = layout.spine.stroke_width,
     ));
 
-    // Fish head
+    // Fish head path — in a group translated to spine center (matching JS).
     if !layout.head_path.is_empty() {
         svg.push_str(&format!(
-            "<path d=\"{}\" fill=\"{fill}\" stroke=\"{lc}\" stroke-width=\"2\"/>",
-            layout.head_path, fill = box_fill, lc = line_color,
+            "<g transform=\"translate(0,{hy})\">\
+             <path d=\"{path}\" fill=\"{fill}\" stroke=\"{lc}\" stroke-width=\"2\"/>\
+             </g>",
+            hy = layout.head_y,
+            path = layout.head_path,
+            fill = box_fill, lc = line_color,
         ));
     }
 
@@ -8009,52 +8013,97 @@ fn render_ishikawa(
     // Label text
     for label in &layout.labels {
         if label.font_weight == "600" {
-            // Head label: wrap to fit within the fish head shape.
-            // JS drawNode() calls the D3 wrap() function which uses
-            // getComputedTextLength() against node.width. This wraps
-            // tighter than the char-count heuristic (110/(fs*0.6)=13).
-            // Subtract 1 from the char limit so labels like
-            // "Server Outage" (13 chars) and "Blurry Photo" (12 chars)
-            // wrap to two lines, matching JS output.
+            // Head label: rendered inside the <g> group centered on spine.
+            // Use local coordinates (y=0 = spine center).
+            // JS: text at x=0, y=-8.4, transform="translate(tx, ty)"
+            //   tx = (w - textWidth)/2 - textBBox.x + 3
+            //   ty = -textBBox.y - textHeight/2
             let head_fs = 14.0_f32;
-            // JS pixel measurement via getComputedTextLength wraps at
-            // roughly 10 characters for the head shape interior. Two-word
-            // labels like "Blurry Photo" and "Server Outage" always wrap.
-            let max_chars = 10_usize;
-            let lines = wrap_by_chars(&label.text, max_chars);
+            let lines = if label.lines.is_empty() {
+                vec![label.text.clone()]
+            } else {
+                label.lines.clone()
+            };
 
-            let line_h = head_fs * 1.2;
+            let line_h = head_fs * 1.2; // 16.8 at 14px
+
+            // Match JS exactly:
+            // <text x="0" y="-8.4" transform="translate(tx, ty)">
+            //   <tspan x="0" dy="0">Line1</tspan>
+            //   <tspan x="0" dy="16.8">Line2</tspan>
+            // y = -fontSize * 0.6 = -8.4
+            // ty ≈ small positive value to nudge center down
+            // tx = label.x (from layout, ≈ head_q_extent * 0.23 ≈ 33)
+            let text_y = -head_fs * 0.6; // -8.4
             let total_h = lines.len() as f32 * line_h;
-            let start_y = label.y - total_h / 2.0 + head_fs * 0.8;
+            // JS: ty = -tb.y - tb.height/2
+            // tb.y ≈ text_y - ascent. Approximate ascent ≈ fontSize.
+            // This centers the total text block at y=0.
+            let approx_bbox_y = text_y - head_fs; // top of bbox
+            let approx_bbox_h = total_h + head_fs * 0.3; // bbox height
+            let ty = -approx_bbox_y - approx_bbox_h / 2.0;
 
             let mut tspans = String::new();
             for (i, line) in lines.iter().enumerate() {
                 let dy = if i == 0 { 0.0 } else { line_h };
                 tspans.push_str(&format!(
-                    "<tspan x=\"{:.1}\" dy=\"{dy}\">{}</tspan>",
-                    label.x, escape_xml(line),
+                    "<tspan x=\"0\" dy=\"{dy}\">{}</tspan>",
+                    escape_xml(line),
                 ));
             }
+            // Render head label in its own group at spine center
             svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"start\" \
+                "<g transform=\"translate(0,{hy})\">\
+                 <text text-anchor=\"start\" x=\"0\" y=\"{text_y:.1}\" \
+                 transform=\"translate({tx:.1},{ty:.1})\" \
                  font-family=\"{ff}\" font-size=\"{fs}\" font-weight=\"600\" \
-                 fill=\"{tc}\">{tspans}</text>",
-                label.x, start_y,
+                 fill=\"{tc}\">{tspans}</text></g>",
+                hy = layout.head_y,
+                text_y = text_y,
+                tx = label.x, ty = ty,
                 ff = font_family, fs = head_fs,
                 tc = theme.primary_text_color,
                 tspans = tspans,
             ));
         } else {
-            svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
-                 dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" \
-                 fill=\"{tc}\">{text}</text>",
-                label.x, label.y,
-                anchor = label.anchor,
-                ff = font_family, fs = font_size,
-                tc = theme.primary_text_color,
-                text = escape_xml(&label.text),
-            ));
+            // Bone labels: wrap long text using character count (JS maxChars=15 for bones)
+            let max_bone_chars = 15_usize;
+            let wrapped = wrap_by_chars(&label.text, max_bone_chars);
+            if wrapped.len() <= 1 {
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
+                     dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" \
+                     fill=\"{tc}\">{text}</text>",
+                    label.x, label.y,
+                    anchor = label.anchor,
+                    ff = font_family, fs = font_size,
+                    tc = theme.primary_text_color,
+                    text = escape_xml(&label.text),
+                ));
+            } else {
+                // Multi-line bone label with tspans
+                let line_h = font_size * 1.2;
+                let mut tspans = String::new();
+                for (i, line) in wrapped.iter().enumerate() {
+                    let dy = if i == 0 { 0.0 } else { line_h };
+                    tspans.push_str(&format!(
+                        "<tspan x=\"{:.1}\" dy=\"{dy}\">{}</tspan>",
+                        label.x, escape_xml(line),
+                    ));
+                }
+                // Shift up by half the extra lines to keep vertically centered
+                let shift_y = -((wrapped.len() as f32 - 1.0) * line_h) / 2.0;
+                svg.push_str(&format!(
+                    "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
+                     dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" \
+                     fill=\"{tc}\">{tspans}</text>",
+                    label.x, label.y + shift_y,
+                    anchor = label.anchor,
+                    ff = font_family, fs = font_size,
+                    tc = theme.primary_text_color,
+                    tspans = tspans,
+                ));
+            }
         }
     }
 
