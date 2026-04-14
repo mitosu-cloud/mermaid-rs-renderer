@@ -1,7 +1,7 @@
 uniffi::setup_scaffolding!();
 
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -233,12 +233,13 @@ pub fn cleanup_stale_mermaid_files(
     let note_folder = Path::new(&note_folder_path);
     let mut meta = read_metadata(note_folder);
     let mut deleted: Vec<String> = Vec::new();
+    let valid_set: HashSet<&str> = valid_checksums.iter().map(|s| s.as_str()).collect();
 
     // Collect checksums to remove from metadata
     let stale_checksums: Vec<String> = meta
         .mermaid_diagrams
         .keys()
-        .filter(|cs| !valid_checksums.contains(cs))
+        .filter(|cs| !valid_set.contains(cs.as_str()))
         .cloned()
         .collect();
 
@@ -264,7 +265,7 @@ pub fn cleanup_stale_mermaid_files(
                     .strip_prefix("mermaid_")
                     .and_then(|rest| rest.split('_').next())
                 {
-                    if !valid_checksums.contains(&cs.to_string()) && !deleted.contains(&name) {
+                    if !valid_set.contains(cs) && !deleted.contains(&name) {
                         let path = entry.path();
                         if path.exists() {
                             let _ = fs::remove_file(&path);
