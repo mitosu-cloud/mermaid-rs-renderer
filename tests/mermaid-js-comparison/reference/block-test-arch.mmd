@@ -1,0 +1,23 @@
+graph TB
+    subgraph primary["primary :443"]
+        mp[myriplane]
+        vc1[vc1]
+        vc2[demo-vc1]
+        mp --- vc1
+        mp --- vc2
+        etcdA[(etcd :2379)]
+        mp --- etcdA
+    end
+
+    subgraph fed1["fed1 :23660"]
+        mf[myriplane]
+        vc1f[vc1 - foreign]
+        vc2f[demo-vc1 - foreign]
+        mf -.- vc1f
+        mf -.- vc2f
+        etcdB[(etcd :12379)]
+        mf --- etcdB
+    end
+
+    mp <-- "Raft\n(membership)" --> mf
+    mp <-- "Gossip\n(CRDT sync)" --> mf

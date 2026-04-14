@@ -573,6 +573,8 @@ fn add_flowchart_edge(line: &str, graph: &mut Graph, subgraph_stack: &[usize]) -
                 arrow_end_kind: edge_meta.arrow_end_kind,
                 start_decoration: edge_meta.start_decoration,
                 end_decoration: edge_meta.end_decoration,
+                sequence_arrow_end: None,
+                sequence_arrow_start: None,
                 style: edge_meta.style,
                 markdown_label: edge_md,
                 id: edge_id.clone(),
@@ -1230,9 +1232,25 @@ fn parse_sequence_message(
     Option<String>,
     crate::ir::EdgeStyle,
     Option<crate::ir::SequenceActivationKind>,
+    crate::ir::SequenceArrowHead,
+    Option<crate::ir::SequenceArrowHead>,
 )> {
     let tokens = [
-        "-->>+", "->>+", "-->+", "->+", "-->>-", "->>-", "-->-", "->-", "<--+", "<-+", "<--", "<-",
+        // Bidirectional arrows (longest first)
+        "<<-->>", "<<->>",
+        // Cross/open with activation
+        "--x+", "-x+", "--)+", "-)+",
+        "--x-", "-x-", "--)-", "-)-",
+        // Existing activation variants
+        "-->>+", "->>+", "-->+", "->+",
+        "-->>-", "->>-", "-->-", "->-",
+        // Reverse cross/open
+        "<--x", "<-x", "<--)", "<-)",
+        // Existing reverse
+        "<--+", "<-+", "<--", "<-",
+        // Cross and open arrows
+        "--x", "-x", "--)", "-)",
+        // Existing arrows
         "-->>", "->>", "-->", "->",
     ];
     for token in tokens {
@@ -1245,7 +1263,8 @@ fn parse_sequence_message(
             let (right, label) = split_label(right_part);
             let mut from = left.to_string();
             let mut to = right.to_string();
-            if token.starts_with('<') {
+            let is_bidirectional = token.starts_with("<<");
+            if token.starts_with('<') && !is_bidirectional {
                 std::mem::swap(&mut from, &mut to);
             }
             let trimmed = token.trim_start_matches('<').trim_end_matches(['+', '-']);
@@ -1261,7 +1280,21 @@ fn parse_sequence_message(
             } else {
                 None
             };
-            return Some((from, to, label, style, activation));
+            let arrow_head = if trimmed.ends_with('x') {
+                crate::ir::SequenceArrowHead::Cross
+            } else if trimmed.ends_with(')') {
+                crate::ir::SequenceArrowHead::Open
+            } else if trimmed.contains(">>") {
+                crate::ir::SequenceArrowHead::Filled
+            } else {
+                crate::ir::SequenceArrowHead::None
+            };
+            let start_arrow = if is_bidirectional {
+                Some(crate::ir::SequenceArrowHead::Filled)
+            } else {
+                None
+            };
+            return Some((from, to, label, style, activation, arrow_head, start_arrow));
         }
     }
     None
@@ -1437,6 +1470,8 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
                 arrow_end_kind: meta.arrow_end_kind,
                 start_decoration: meta.start_decoration,
                 end_decoration: meta.end_decoration,
+                sequence_arrow_end: None,
+                sequence_arrow_start: None,
                 style: meta.style,
                 markdown_label: false,
                 id: None,
@@ -1774,6 +1809,8 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
                 arrow_end_kind: None,
                 start_decoration: left_decoration,
                 end_decoration: right_decoration,
+                sequence_arrow_end: None,
+                sequence_arrow_start: None,
                 style,
                 markdown_label: false,
                 id: None,
@@ -2231,6 +2268,8 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
                 arrow_end_kind: None,
                 start_decoration: None,
                 end_decoration: None,
+                sequence_arrow_end: None,
+                sequence_arrow_start: None,
                 style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
@@ -2399,6 +2438,8 @@ fn parse_journey_diagram(input: &str) -> Result<ParseOutput> {
                     arrow_end_kind: None,
                     start_decoration: None,
                     end_decoration: None,
+                    sequence_arrow_end: None,
+                    sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
@@ -2641,6 +2682,8 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                     arrow_end_kind: None,
                     start_decoration: None,
                     end_decoration: None,
+                    sequence_arrow_end: None,
+                    sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
@@ -2662,6 +2705,8 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                     arrow_end_kind: None,
                     start_decoration: None,
                     end_decoration: None,
+                    sequence_arrow_end: None,
+                    sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
@@ -2864,6 +2909,8 @@ fn parse_requirement_diagram(input: &str) -> Result<ParseOutput> {
                 arrow_end_kind: None,
                 start_decoration: None,
                 end_decoration: None,
+                sequence_arrow_end: None,
+                sequence_arrow_start: None,
                 style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
@@ -3845,6 +3892,8 @@ fn parse_sankey_diagram(input: &str) -> Result<ParseOutput> {
             arrow_end_kind: None,
             start_decoration: None,
             end_decoration: None,
+            sequence_arrow_end: None,
+            sequence_arrow_start: None,
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
@@ -3984,6 +4033,8 @@ fn parse_zenuml_diagram(input: &str) -> Result<ParseOutput> {
                 arrow_end_kind: None,
                 start_decoration: None,
                 end_decoration: None,
+                sequence_arrow_end: None,
+                sequence_arrow_start: None,
                 style,
                 markdown_label: false,
                 id: None,
@@ -4105,6 +4156,8 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
                         arrow_end_kind: edge_meta.arrow_end_kind,
                         start_decoration: edge_meta.start_decoration,
                         end_decoration: edge_meta.end_decoration,
+                        sequence_arrow_end: None,
+                        sequence_arrow_start: None,
                         style: edge_meta.style,
                 markdown_label: false,
                 id: None,
@@ -4213,6 +4266,8 @@ fn parse_packet_diagram(input: &str) -> Result<ParseOutput> {
                     arrow_end_kind: None,
                     start_decoration: None,
                     end_decoration: None,
+                    sequence_arrow_end: None,
+                    sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
@@ -4367,6 +4422,8 @@ fn parse_architecture_diagram(input: &str) -> Result<ParseOutput> {
                 arrow_end_kind: None,
                 start_decoration: None,
                 end_decoration: None,
+                sequence_arrow_end: None,
+                sequence_arrow_start: None,
                 style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
@@ -4610,6 +4667,8 @@ fn parse_treemap_diagram(input: &str) -> Result<ParseOutput> {
                     arrow_end_kind: None,
                     start_decoration: None,
                     end_decoration: None,
+                    sequence_arrow_end: None,
+                    sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
@@ -5065,6 +5124,8 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     arrow_end_kind: meta.arrow_end_kind,
                     start_decoration: meta.start_decoration,
                     end_decoration: meta.end_decoration,
+                    sequence_arrow_end: None,
+                    sequence_arrow_start: None,
                     style: meta.style,
                 markdown_label: false,
                 id: None,
@@ -5190,6 +5251,39 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
         }
         let lower = line.to_ascii_lowercase();
         if lower.starts_with("sequencediagram") {
+            continue;
+        }
+        // Handle `create participant`/`create actor` and `destroy` keywords.
+        if lower.starts_with("create participant ") || lower.starts_with("create actor ") {
+            let is_actor = lower.starts_with("create actor");
+            let offset = if is_actor { 13 } else { 19 };
+            let rest = line[offset..].trim();
+            let prefix = if is_actor { "actor" } else { "participant" };
+            let synthetic = format!("{prefix} {rest}");
+            if let Some((id, label, shape)) = parse_sequence_participant(&synthetic) {
+                if !order.contains(&id) {
+                    order.push(id.clone());
+                }
+                if let Some(label) = label.clone() {
+                    labels.insert(id.clone(), label);
+                }
+                ensure_sequence_node(&mut graph, &labels, &id, Some(shape));
+                if let Some(box_ctx) = open_boxes.last_mut()
+                    && !box_ctx.participants.contains(&id)
+                {
+                    box_ctx.participants.push(id.clone());
+                }
+            }
+            continue;
+        }
+        if lower.starts_with("destroy ") {
+            let id = strip_quotes(line[8..].trim());
+            if !id.is_empty() {
+                if !order.contains(&id) {
+                    order.push(id.clone());
+                }
+                ensure_sequence_node(&mut graph, &labels, &id, None);
+            }
             continue;
         }
         if let Some((id, label, shape)) = parse_sequence_participant(line) {
@@ -5417,7 +5511,7 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
-        if let Some((from, to, label, style, activation)) = parse_sequence_message(line) {
+        if let Some((from, to, label, style, activation, arrow_head, start_arrow)) = parse_sequence_message(line) {
             if !order.contains(&from) {
                 order.push(from.clone());
             }
@@ -5426,19 +5520,23 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
             }
             ensure_sequence_node(&mut graph, &labels, &from, None);
             ensure_sequence_node(&mut graph, &labels, &to, None);
+            let has_arrow = arrow_head != crate::ir::SequenceArrowHead::None;
+            let has_start_arrow = start_arrow.is_some();
             graph.edges.push(crate::ir::Edge {
                 from,
                 to,
                 label,
                 start_label: None,
                 end_label: None,
-                directed: true,
-                arrow_start: false,
-                arrow_end: true,
+                directed: has_arrow || has_start_arrow,
+                arrow_start: has_start_arrow,
+                arrow_end: has_arrow,
                 arrow_start_kind: None,
                 arrow_end_kind: None,
                 start_decoration: None,
                 end_decoration: None,
+                sequence_arrow_end: Some(arrow_head),
+                sequence_arrow_start: start_arrow,
                 style,
                 markdown_label: false,
                 id: None,

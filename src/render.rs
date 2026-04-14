@@ -325,6 +325,16 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 color,
                 color
             ));
+            // Cross marker for -x / --x arrows
+            svg.push_str(&format!(
+                "<marker id=\"cross-seq-{idx}\" markerWidth=\"15\" markerHeight=\"8\" orient=\"auto\" refX=\"4\" refY=\"4.5\"><path fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\" d=\"M 1,2 L 6,7 M 6,2 L 1,7\" style=\"stroke-dasharray: 0, 0;\"/></marker>",
+                color
+            ));
+            // Open (async) arrow marker for -) / --) arrows
+            svg.push_str(&format!(
+                "<marker id=\"open-seq-{idx}\" refX=\"15.5\" refY=\"7\" markerWidth=\"20\" markerHeight=\"28\" orient=\"auto\"><path d=\"M 18,7 L9,13 L14,7 L9,1 Z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/></marker>",
+                color, color
+            ));
         }
         if is_state {
             svg.push_str(&format!(
@@ -785,15 +795,25 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let (center_pad_x, center_pad_y) = edge_label_padding(layout.kind, config);
             let (endpoint_pad_x, endpoint_pad_y) = endpoint_label_padding(layout.kind);
             let marker_id = color_ids.get(&stroke).copied().unwrap_or(0);
-            let marker_end = if edge.arrow_end {
-                format!("marker-end=\"url(#arrow-seq-{marker_id})\"")
-            } else {
-                String::new()
+            let marker_end = match edge.sequence_arrow_end {
+                Some(crate::ir::SequenceArrowHead::Filled) => format!("marker-end=\"url(#arrow-seq-{marker_id})\""),
+                Some(crate::ir::SequenceArrowHead::Cross) => format!("marker-end=\"url(#cross-seq-{marker_id})\""),
+                Some(crate::ir::SequenceArrowHead::Open) => format!("marker-end=\"url(#open-seq-{marker_id})\""),
+                _ => if edge.arrow_end {
+                    format!("marker-end=\"url(#arrow-seq-{marker_id})\"")
+                } else {
+                    String::new()
+                },
             };
-            let marker_start = if edge.arrow_start {
-                format!("marker-start=\"url(#arrow-start-seq-{marker_id})\"")
-            } else {
-                String::new()
+            let marker_start = match edge.sequence_arrow_start {
+                Some(crate::ir::SequenceArrowHead::Filled) => format!("marker-start=\"url(#arrow-start-seq-{marker_id})\""),
+                Some(crate::ir::SequenceArrowHead::Cross) => format!("marker-start=\"url(#cross-seq-{marker_id})\""),
+                Some(crate::ir::SequenceArrowHead::Open) => format!("marker-start=\"url(#open-seq-{marker_id})\""),
+                _ => if edge.arrow_start {
+                    format!("marker-start=\"url(#arrow-start-seq-{marker_id})\"")
+                } else {
+                    String::new()
+                },
             };
 
             let mut dash = String::new();
@@ -803,7 +823,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             if let Some(dash_override) = &edge.override_style.dasharray {
                 dash = format!("stroke-dasharray=\"{}\"", dash_override);
             }
-            let stroke_width = edge.override_style.stroke_width.unwrap_or(1.5);
+            let stroke_width = edge.override_style.stroke_width.unwrap_or(2.0);
             svg.push_str(&format!(
                 "<path id=\"{edge_id}\" class=\"edgePath\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" {} {} {} stroke-linecap=\"round\" stroke-linejoin=\"round\" />",
                 d, stroke, stroke_width, marker_end, marker_start, dash
@@ -6552,7 +6572,7 @@ fn render_sequence_actor_shape(
             } else {
                 // Rectangle (participant, ActorBox)
                 svg.push_str(&format!(
-                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
+                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
                     node.x, node.y, node.width, node.height,
                     theme.sequence_actor_fill, theme.sequence_actor_border
                 ));
@@ -6788,7 +6808,7 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             node.style.stroke_width.unwrap_or(1.0)
         ),
         crate::ir::NodeShape::ActorBox => format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
             y,
             w,
@@ -7690,6 +7710,8 @@ mod tests {
             arrow_end_kind: None,
             start_decoration: None,
             end_decoration: None,
+            sequence_arrow_end: None,
+            sequence_arrow_start: None,
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,

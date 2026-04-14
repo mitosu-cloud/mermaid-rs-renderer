@@ -98,6 +98,8 @@ pub struct EdgeLayout {
     pub arrow_end_kind: Option<crate::ir::EdgeArrowhead>,
     pub start_decoration: Option<crate::ir::EdgeDecoration>,
     pub end_decoration: Option<crate::ir::EdgeDecoration>,
+    pub sequence_arrow_end: Option<crate::ir::SequenceArrowHead>,
+    pub sequence_arrow_start: Option<crate::ir::SequenceArrowHead>,
     pub style: crate::ir::EdgeStyle,
     pub override_style: crate::ir::EdgeStyleOverride,
     pub curve: Option<crate::ir::CurveType>,

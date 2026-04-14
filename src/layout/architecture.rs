@@ -278,6 +278,8 @@ pub(super) fn compute_architecture_layout(
             arrow_end_kind: None,
             start_decoration: None,
             end_decoration: None,
+            sequence_arrow_end: None,
+            sequence_arrow_start: None,
             style: edge.style,
             override_style,
             curve: None,
