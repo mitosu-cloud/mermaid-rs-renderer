@@ -40,28 +40,28 @@ pub(super) fn compute_sequence_layout(
 
     let mut label_blocks: HashMap<String, TextBlock> = HashMap::new();
     let mut max_label_height: f32 = 0.0;
-    let min_actor_width = (theme.font_size * 4.0).max(80.0);
+    let min_actor_width = (theme.font_size * 9.0).max(150.0);
     let mut participant_widths: HashMap<String, f32> = HashMap::new();
     let mut width_total = 0.0f32;
     for id in &participants {
         let node = graph.nodes.get(id).expect("participant missing");
         let label = measure_label(&node.label, theme, config);
         max_label_height = max_label_height.max(label.height);
-        let width = (label.width + theme.font_size * 1.2).max(min_actor_width);
+        let width = (label.width + theme.font_size * 2.5).max(min_actor_width);
         participant_widths.insert(id.clone(), width);
         width_total += width;
         label_blocks.insert(id.clone(), label);
     }
 
     let participant_count = participants.len();
-    let actor_height = (max_label_height + theme.font_size * 1.6).max(48.0);
+    let actor_height = (max_label_height + theme.font_size * 2.5).max(65.0);
     let avg_actor_width = if participant_count > 0 {
         width_total / participant_count as f32
     } else {
         min_actor_width
     };
-    let mut actor_gap = (theme.font_size * 1.0).max(12.0);
-    if avg_actor_width > 140.0 {
+    let mut actor_gap = (theme.font_size * 5.0).max(50.0);
+    if avg_actor_width > 200.0 {
         actor_gap *= 0.85;
     }
     if participant_count >= 7 {
@@ -257,6 +257,8 @@ pub(super) fn compute_sequence_layout(
             arrow_end_kind: edge.arrow_end_kind,
             start_decoration: edge.start_decoration,
             end_decoration: edge.end_decoration,
+            sequence_arrow_end: edge.sequence_arrow_end,
+            sequence_arrow_start: edge.sequence_arrow_start,
             style: edge.style,
             override_style,
             curve: None,

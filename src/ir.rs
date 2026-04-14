@@ -371,6 +371,8 @@ pub struct Edge {
     pub arrow_end_kind: Option<EdgeArrowhead>,
     pub start_decoration: Option<EdgeDecoration>,
     pub end_decoration: Option<EdgeDecoration>,
+    pub sequence_arrow_end: Option<SequenceArrowHead>,
+    pub sequence_arrow_start: Option<SequenceArrowHead>,
     pub style: EdgeStyle,
     pub markdown_label: bool,
     pub id: Option<String>,
@@ -414,6 +416,19 @@ pub enum EdgeDecoration {
 pub enum EdgeArrowhead {
     OpenTriangle,
     ClassDependency,
+}
+
+/// Sequence-diagram-specific arrowhead styles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SequenceArrowHead {
+    /// `->` / `-->`: Plain line, no arrowhead.
+    None,
+    /// `->>` / `-->>`: Filled triangle arrowhead.
+    Filled,
+    /// `-x` / `--x`: Cross (X) at end.
+    Cross,
+    /// `-)` / `--)`: Open/async arrow at end.
+    Open,
 }
 
 /// Curve interpolation types for edge paths, matching official Mermaid v11.

@@ -168,6 +168,8 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             arrow_end_kind: edge.arrow_end_kind,
             start_decoration: edge.start_decoration,
             end_decoration: edge.end_decoration,
+            sequence_arrow_end: edge.sequence_arrow_end,
+            sequence_arrow_start: edge.sequence_arrow_start,
             style: edge.style,
             override_style,
             curve: None,

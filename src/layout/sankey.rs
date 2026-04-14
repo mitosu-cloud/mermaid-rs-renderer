@@ -316,6 +316,8 @@ pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &Layou
             arrow_end_kind: None,
             start_decoration: None,
             end_decoration: None,
+            sequence_arrow_end: None,
+            sequence_arrow_start: None,
             style: crate::ir::EdgeStyle::Solid,
             override_style: crate::ir::EdgeStyleOverride {
                 stroke: Some(color_start.clone()),

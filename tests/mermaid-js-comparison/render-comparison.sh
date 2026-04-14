@@ -1,12 +1,12 @@
 #!/bin/bash
 # Render comparison: mermaid-rs vs mermaid-js
-# Usage:
-#   bash render-comparison.sh                              # all files
+# Different: 
+#   bas render-comparison.sh                              # all files
 #   bash render-comparison.sh flowchart-k3s-cluster-wireguard  # one file (no .mmd extension)
 #   bash render-comparison.sh flowchart-k3s-cluster-wireguard.mmd  # also works
-
+#
 set -e
-
+# test
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REF_DIR="$SCRIPT_DIR/reference"
@@ -20,7 +20,6 @@ mkdir -p "$OUT_DIR"
 echo "Building mermaid-rs..."
 cd "$REPO_DIR"
 cargo build --release 2>/dev/null
-
 # Determine which files to process
 if [ -n "$1" ]; then
     # Single file mode — strip .mmd if provided

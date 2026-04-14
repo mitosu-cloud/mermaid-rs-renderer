@@ -165,6 +165,8 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
             arrow_end_kind: None,
             start_decoration: None,
             end_decoration: None,
+            sequence_arrow_end: None,
+            sequence_arrow_start: None,
             style: crate::ir::EdgeStyle::Solid,
             override_style: crate::ir::EdgeStyleOverride::default(),
             curve: None,
