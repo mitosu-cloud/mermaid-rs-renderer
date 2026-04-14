@@ -42,6 +42,7 @@ fn render_all_fixtures() {
         "flowchart/cycles.mmd",
         "flowchart/markdown.mmd",
         "gantt/basic.mmd",
+        "ishikawa/basic.mmd",
         "gitgraph/basic.mmd",
         "journey/basic.mmd",
         "kanban/basic.mmd",
@@ -58,6 +59,8 @@ fn render_all_fixtures() {
         "state/note.mmd",
         "timeline/basic.mmd",
         "treemap/basic.mmd",
+        "venn/basic.mmd",
+        "wardley/basic.mmd",
         "xychart/basic.mmd",
         "zenuml/basic.mmd",
     ];
