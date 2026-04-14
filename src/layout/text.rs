@@ -11,6 +11,14 @@ use super::{TextBlock, TextLine};
 static HTML_TAG_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"</?[a-zA-Z][a-zA-Z0-9]*[^>]*>").unwrap());
 
+static BR_TAG_RE: LazyLock<Regex> =
+    LazyLock::new(|| {
+        regex::RegexBuilder::new(r"<br\s*/?>")
+            .case_insensitive(true)
+            .build()
+            .unwrap()
+    });
+
 /// Check whether a label string contains HTML formatting tags (not just `<br>`).
 pub(super) fn has_html_formatting(text: &str) -> bool {
     // Quick pre-check before hitting the regex.
@@ -33,12 +41,7 @@ pub(super) fn has_html_formatting(text: &str) -> bool {
 pub(super) fn normalize_html_label(text: &str) -> String {
     let mut s = text.to_string();
     // Line-break tags → newline (case-insensitive).
-    s = regex::RegexBuilder::new(r"<br\s*/?>")
-        .case_insensitive(true)
-        .build()
-        .unwrap()
-        .replace_all(&s, "\n")
-        .into_owned();
+    s = BR_TAG_RE.replace_all(&s, "\n").into_owned();
     // Bold tags → markdown bold.
     for tag in &["<b>", "</b>", "<strong>", "</strong>"] {
         s = replace_tag_ci(&s, tag, "**");
