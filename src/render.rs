@@ -327,7 +327,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             ));
             // Cross marker for -x / --x arrows
             svg.push_str(&format!(
-                "<marker id=\"cross-seq-{idx}\" markerWidth=\"15\" markerHeight=\"8\" orient=\"auto\" refX=\"4\" refY=\"4.5\"><path fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\" d=\"M 1,2 L 6,7 M 6,2 L 1,7\" style=\"stroke-dasharray: 0, 0;\"/></marker>",
+                "<marker id=\"cross-seq-{idx}\" viewBox=\"0 0 8 9\" refX=\"4\" refY=\"4.5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"15\" markerHeight=\"8\" orient=\"auto\"><path fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\" d=\"M 1,2 L 6,7 M 6,2 L 1,7\" style=\"stroke-dasharray: 0, 0;\"/></marker>",
                 color
             ));
             // Open (async) arrow marker for -) / --) arrows
@@ -760,6 +760,23 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let y2 = note.y + note.height;
             let fold_x = x2 - fold;
             let fold_y = y + fold;
+            // Draw dashed connector from note to its target state first so
+            // the note shape paints over the connector ends.
+            if let Some(target) = layout.nodes.get(&note.target) {
+                let (note_anchor_x, target_anchor_x) = match note.position {
+                    crate::ir::StateNotePosition::LeftOf => {
+                        (note.x + note.width, target.x)
+                    }
+                    crate::ir::StateNotePosition::RightOf => {
+                        (note.x, target.x + target.width)
+                    }
+                };
+                let note_anchor_y = note.y + note.height / 2.0;
+                let target_anchor_y = target.y + target.height / 2.0;
+                svg.push_str(&format!(
+                    "<line x1=\"{note_anchor_x:.2}\" y1=\"{note_anchor_y:.2}\" x2=\"{target_anchor_x:.2}\" y2=\"{target_anchor_y:.2}\" stroke=\"{stroke}\" stroke-width=\"1\" stroke-dasharray=\"5 3\" fill=\"none\"/>"
+                ));
+            }
             svg.push_str(&format!(
                 "<path d=\"M {x:.2} {y:.2} L {fold_x:.2} {y:.2} L {x2:.2} {fold_y:.2} L {x2:.2} {y2:.2} L {x:.2} {y2:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.1\"/>"
             ));

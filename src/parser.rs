@@ -968,6 +968,36 @@ fn parse_state_note(line: &str) -> Option<(crate::ir::StateNotePosition, String,
     Some((position, target.to_string(), label.to_string()))
 }
 
+/// Parse the header of a multi-line `note` block. Returns Some when the line
+/// is `note right of X` or `note left of X` *without* a trailing `:` (which
+/// would indicate the inline form, handled by `parse_state_note`).
+///
+/// The body lines that follow until `end note` are collected by the caller
+/// and joined into a single label.
+fn parse_state_note_block_header(line: &str) -> Option<(crate::ir::StateNotePosition, String)> {
+    let trimmed = line.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("note ") {
+        return None;
+    }
+    let rest = trimmed[4..].trim();
+    let lower_rest = rest.to_ascii_lowercase();
+    let (position, target_raw) = if lower_rest.starts_with("right of ") {
+        (crate::ir::StateNotePosition::RightOf, rest[9..].trim())
+    } else if lower_rest.starts_with("left of ") {
+        (crate::ir::StateNotePosition::LeftOf, rest[8..].trim())
+    } else {
+        return None;
+    };
+    if target_raw.contains(':') {
+        return None;
+    }
+    if target_raw.is_empty() {
+        return None;
+    }
+    Some((position, target_raw.to_string()))
+}
+
 fn parse_state_transition(line: &str) -> Option<(String, EdgeMeta, String, Option<String>)> {
     let tokens = ["<-->", "<--", "-->", "<->", "->", "<-", "..>", "<.."];
     for token in tokens {
@@ -5147,6 +5177,48 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                 apply_node_classes(&mut graph, &id, &classes);
                 add_node_to_subgraphs(&mut graph, &subgraph_stack, &id);
                 record_region_node(&mut composite_stack, &id);
+                continue;
+            }
+
+            if let Some((position, target_raw)) = parse_state_note_block_header(line) {
+                let (target, classes) = parse_state_id_with_classes(&target_raw);
+                if !target.is_empty() {
+                    let shape = if graph.nodes.contains_key(&target) {
+                        None
+                    } else {
+                        Some(crate::ir::NodeShape::RoundRect)
+                    };
+                    graph.ensure_node(&target, labels.get(&target).cloned(), shape);
+                    apply_node_classes(&mut graph, &target, &classes);
+                    add_node_to_subgraphs(&mut graph, &subgraph_stack, &target);
+                    record_region_node(&mut composite_stack, &target);
+                }
+                let mut body_lines: Vec<String> = Vec::new();
+                while let Some(next_raw) = pending.pop_front() {
+                    let mut consumed = false;
+                    for next_stmt in split_statements(&next_raw) {
+                        let next_trim = next_stmt.trim();
+                        if next_trim.is_empty() {
+                            continue;
+                        }
+                        if next_trim.eq_ignore_ascii_case("end note") {
+                            consumed = true;
+                            break;
+                        }
+                        body_lines.push(next_trim.to_string());
+                    }
+                    if consumed {
+                        break;
+                    }
+                }
+                let label = body_lines.join("\n");
+                if !target.is_empty() && !label.is_empty() {
+                    graph.state_notes.push(crate::ir::StateNote {
+                        position,
+                        target,
+                        label,
+                    });
+                }
                 continue;
             }
 
