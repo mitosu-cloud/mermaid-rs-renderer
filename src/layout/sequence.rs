@@ -505,14 +505,65 @@ pub(super) fn compute_sequence_layout(
     }
     let footbox_gap = (theme.font_size * 1.25).max(16.0);
     let lifeline_end = last_message_y + footbox_gap;
+
+    // Resolve `create`/`destroy` lifecycle events into per-participant
+    // y-coordinates. The convention (matches mermaid.js):
+    //   - `create X` before message N → X first appears at message_ys[N];
+    //     the top actor box is centered on that y, the lifeline starts at
+    //     the bottom of that box.
+    //   - `destroy X` before message N → X's lifeline ends at message_ys[N];
+    //     the bottom actor box top sits at that y, an X-cross is drawn at
+    //     the same y on the lifeline.
+    let mut lifecycle_create: HashMap<String, f32> = HashMap::new();
+    let mut lifecycle_destroy: HashMap<String, f32> = HashMap::new();
+    for event in &graph.sequence_lifecycle {
+        let y = message_ys
+            .get(event.index)
+            .copied()
+            .unwrap_or(if matches!(event.kind, crate::ir::SequenceLifecycleKind::Create) {
+                lifeline_start
+            } else {
+                lifeline_end
+            });
+        match event.kind {
+            crate::ir::SequenceLifecycleKind::Create => {
+                lifecycle_create.insert(event.participant.clone(), y);
+            }
+            crate::ir::SequenceLifecycleKind::Destroy => {
+                lifecycle_destroy.insert(event.participant.clone(), y);
+            }
+        }
+    }
+
+    // Re-position the top actor box for created participants so it sits
+    // centered on its create-message y.
+    for (id, &create_y) in &lifecycle_create {
+        if let Some(node) = nodes.get_mut(id) {
+            let new_y = (create_y - node.height / 2.0).max(margin);
+            node.y = new_y;
+        }
+    }
+
     let mut lifelines = participants
         .iter()
         .filter_map(|id| nodes.get(id))
-        .map(|node| Lifeline {
-            id: node.id.clone(),
-            x: node.x + node.width / 2.0,
-            y1: lifeline_start,
-            y2: lifeline_end,
+        .map(|node| {
+            let y1 = if let Some(&cy) = lifecycle_create.get(&node.id) {
+                // Lifeline starts just below the (repositioned) top actor box.
+                node.y + node.height
+            } else {
+                lifeline_start
+            };
+            let y2 = lifecycle_destroy
+                .get(&node.id)
+                .copied()
+                .unwrap_or(lifeline_end);
+            Lifeline {
+                id: node.id.clone(),
+                x: node.x + node.width / 2.0,
+                y1,
+                y2,
+            }
         })
         .collect::<Vec<_>>();
 
@@ -521,10 +572,23 @@ pub(super) fn compute_sequence_layout(
         .filter_map(|id| nodes.get(id))
         .map(|node| {
             let mut foot = node.clone();
-            foot.y = lifeline_end;
+            foot.y = lifecycle_destroy
+                .get(&node.id)
+                .copied()
+                .unwrap_or(lifeline_end);
             foot
         })
         .collect::<Vec<_>>();
+
+    // X-cross markers at each destroy y on the participant's lifeline x.
+    let destroy_markers: Vec<(f32, f32)> = participants
+        .iter()
+        .filter_map(|id| {
+            let y = lifecycle_destroy.get(id).copied()?;
+            let node = nodes.get(id)?;
+            Some((node.x + node.width / 2.0, y))
+        })
+        .collect();
 
     let mut sequence_boxes = Vec::new();
     if !graph.sequence_boxes.is_empty() {
@@ -900,6 +964,7 @@ pub(super) fn compute_sequence_layout(
             notes: sequence_notes,
             activations: sequence_activations,
             numbers: sequence_numbers,
+            destroy_markers,
         }),
     }
 }

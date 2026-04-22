@@ -5401,6 +5401,15 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 {
                     box_ctx.participants.push(id.clone());
                 }
+                // The actor becomes visible at the next message (the one
+                // that follows the `create` statement).
+                graph
+                    .sequence_lifecycle
+                    .push(crate::ir::SequenceLifecycle {
+                        participant: id,
+                        index: graph.edges.len(),
+                        kind: crate::ir::SequenceLifecycleKind::Create,
+                    });
             }
             continue;
         }
@@ -5411,6 +5420,15 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                     order.push(id.clone());
                 }
                 ensure_sequence_node(&mut graph, &labels, &id, None);
+                // The actor's lifeline ends at the next message (the one
+                // that follows the `destroy` statement).
+                graph
+                    .sequence_lifecycle
+                    .push(crate::ir::SequenceLifecycle {
+                        participant: id.to_string(),
+                        index: graph.edges.len(),
+                        kind: crate::ir::SequenceLifecycleKind::Destroy,
+                    });
             }
             continue;
         }

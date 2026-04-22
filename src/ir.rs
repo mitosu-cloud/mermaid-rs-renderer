@@ -85,6 +85,27 @@ pub struct SequenceActivation {
     pub kind: SequenceActivationKind,
 }
 
+/// Lifecycle event for a sequence-diagram participant: an actor that is
+/// `create`d mid-diagram appears starting at the row of the first message
+/// after the create statement; an actor that is `destroy`ed has its lifeline
+/// truncated at the row of the destroy event and gets an X-cross drawn there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SequenceLifecycleKind {
+    Create,
+    Destroy,
+}
+
+#[derive(Debug, Clone)]
+pub struct SequenceLifecycle {
+    pub participant: String,
+    /// Index of the message at which the lifecycle event takes effect.
+    /// For `create`, the actor first becomes visible at this message's y.
+    /// For `destroy`, the actor's lifeline ends at this message's y and the
+    /// X-cross is drawn there.
+    pub index: usize,
+    pub kind: SequenceLifecycleKind,
+}
+
 #[derive(Debug, Clone)]
 pub struct SequenceNote {
     pub position: SequenceNotePosition,
@@ -584,6 +605,7 @@ pub struct Graph {
     pub sequence_frames: Vec<SequenceFrame>,
     pub sequence_notes: Vec<SequenceNote>,
     pub sequence_activations: Vec<SequenceActivation>,
+    pub sequence_lifecycle: Vec<SequenceLifecycle>,
     pub sequence_autonumber: Option<usize>,
     pub sequence_boxes: Vec<SequenceBox>,
     pub state_notes: Vec<StateNote>,
@@ -808,6 +830,7 @@ impl Graph {
             sequence_frames: Vec::new(),
             sequence_notes: Vec::new(),
             sequence_activations: Vec::new(),
+            sequence_lifecycle: Vec::new(),
             sequence_autonumber: None,
             sequence_boxes: Vec::new(),
             state_notes: Vec::new(),
