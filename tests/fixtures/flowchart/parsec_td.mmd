@@ -1,0 +1,52 @@
+flowchart TD
+
+    subgraph PSVC["Parsec Service"]
+        direction TB
+        PP["Parsec<br/>Provider"]
+    end
+
+    TPM["TPM"]
+
+    subgraph RIGHT[" "]
+        direction TB
+
+        subgraph EDGE[" "]
+            direction TB
+            EC["Edge Core"]
+            PDMC["Pelion Device<br/>Management Client"]
+        end
+
+        PSA["Platform Security Architecture<br/>Crypto API"]
+
+        subgraph LOWER[" "]
+            direction LR
+            subgraph SED["Secure Element Driver"]
+                direction TB
+                PC["Parsec Client"]
+            end
+
+            EKS[("Encryptfs<br/>keystore")]
+        end
+    end
+
+    TPM <--> PP
+    PP <--> |Wire protocol| PC
+    PDMC <--> PSA
+    PSA <--> PC
+    PSA <--> EKS
+
+    EC --- PDMC
+
+    classDef blackBox fill:#f5f5f5,stroke:#000000,stroke-width:2px,color:#000000;
+    classDef blueBox fill:#f5f5f5,stroke:#0b93bd,stroke-width:2px,color:#0b93bd;
+    classDef blueHeader fill:#0b93bd,stroke:#0b93bd,stroke-width:2px,color:#ffffff;
+    classDef db fill:#f5f5f5,stroke:#0b93bd,stroke-width:2px,color:#0b93bd;
+
+    class PSVC,PP,TPM blackBox;
+    class EC,PSA,SED,PC blueBox;
+    class PDMC blueHeader;
+    class EKS db;
+
+    style RIGHT fill:none,stroke:none
+    style EDGE fill:none,stroke:none
+    style LOWER fill:none,stroke:none
