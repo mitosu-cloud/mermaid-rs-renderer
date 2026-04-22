@@ -43,9 +43,15 @@ pub(super) fn compute_sequence_layout(
     let min_actor_width = (theme.font_size * 9.0).max(150.0);
     let mut participant_widths: HashMap<String, f32> = HashMap::new();
     let mut width_total = 0.0f32;
+    // Sequence actor labels honor explicit <br/> line breaks but should not
+    // be auto-wrapped by the global character cap; upstream mermaid sizes
+    // each actor box to fit the user-provided lines on their own.
+    let measure_actor_label = |text: &str| -> TextBlock {
+        super::text::measure_label_no_wrap(text, theme, config)
+    };
     for id in &participants {
         let node = graph.nodes.get(id).expect("participant missing");
-        let label = measure_label(&node.label, theme, config);
+        let label = measure_actor_label(&node.label);
         max_label_height = max_label_height.max(label.height);
         let width = (label.width + theme.font_size * 2.5).max(min_actor_width);
         participant_widths.insert(id.clone(), width);
@@ -54,26 +60,77 @@ pub(super) fn compute_sequence_layout(
     }
 
     let participant_count = participants.len();
-    let actor_height = (max_label_height + theme.font_size * 2.5).max(65.0);
+    // Match upstream mermaid: 65px actor box height for 1- or 2-line labels,
+    // expanding only when labels actually need more vertical room.
+    let actor_height = (max_label_height + theme.font_size * 1.0).max(65.0);
     let avg_actor_width = if participant_count > 0 {
         width_total / participant_count as f32
     } else {
         min_actor_width
     };
-    let mut actor_gap = (theme.font_size * 5.0).max(50.0);
+    let mut default_actor_gap = (theme.font_size * 5.0).max(50.0);
     if avg_actor_width > 200.0 {
-        actor_gap *= 0.85;
+        default_actor_gap *= 0.85;
     }
     if participant_count >= 7 {
-        actor_gap *= 0.72;
+        default_actor_gap *= 0.72;
     } else if participant_count >= 5 {
-        actor_gap *= 0.8;
+        default_actor_gap *= 0.8;
+    }
+
+    // Pre-compute the gap required between each adjacent actor pair so that
+    // every message label between any two actors fits on a single line.
+    // Each message contributes a per-gap requirement of label_width /
+    // gaps_spanned + actor_gap_padding; gaps_spanned is at least 1.
+    let actor_index: HashMap<&str, usize> = participants
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
+    let mut gap_widths: Vec<f32> = vec![default_actor_gap; participant_count.saturating_sub(1)];
+    let label_padding = theme.font_size * 1.0; // mirrors mermaid.js wrapPadding-ish
+    for edge in &graph.edges {
+        let Some(&from_idx) = actor_index.get(edge.from.as_str()) else {
+            continue;
+        };
+        let Some(&to_idx) = actor_index.get(edge.to.as_str()) else {
+            continue;
+        };
+        if from_idx == to_idx {
+            continue;
+        }
+        let lo = from_idx.min(to_idx);
+        let hi = from_idx.max(to_idx);
+        let mut max_label_w = 0.0f32;
+        for label in [
+            edge.label.as_ref(),
+            edge.start_label.as_ref(),
+            edge.end_label.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let measured = super::text::measure_label_no_wrap(label, theme, config);
+            max_label_w = max_label_w.max(measured.width);
+        }
+        if max_label_w <= 0.0 {
+            continue;
+        }
+        let spans = (hi - lo) as f32;
+        let required_per_gap = (max_label_w + label_padding * 2.0) / spans;
+        for g in lo..hi {
+            if let Some(slot) = gap_widths.get_mut(g) {
+                if *slot < required_per_gap {
+                    *slot = required_per_gap;
+                }
+            }
+        }
     }
 
     // Add consistent margins to center the diagram
     let margin = 8.0;
     let mut cursor_x = margin;
-    for id in &participants {
+    for (idx, id) in participants.iter().enumerate() {
         let node = graph.nodes.get(id).expect("participant missing");
         let actor_width = participant_widths
             .get(id)
@@ -106,7 +163,10 @@ pub(super) fn compute_sequence_layout(
                 is_treemap_leaf: false,
             },
         );
-        cursor_x += actor_width + actor_gap;
+        cursor_x += actor_width;
+        if let Some(gap) = gap_widths.get(idx) {
+            cursor_x += *gap;
+        }
     }
 
     let base_spacing = (theme.font_size * 2.1).max(18.0);
@@ -216,15 +276,21 @@ pub(super) fn compute_sequence_layout(
         let from = nodes.get(&edge.from).expect("from node missing");
         let to = nodes.get(&edge.to).expect("to node missing");
         let y = message_ys.get(idx).copied().unwrap_or(message_cursor);
-        let label = edge.label.as_ref().map(|l| measure_label(l, theme, config));
+        // Sequence message labels honor only explicit <br/> breaks; never
+        // auto-wrap. Actor spacing was sized to fit each label on a single
+        // physical line.
+        let label = edge
+            .label
+            .as_ref()
+            .map(|l| super::text::measure_label_no_wrap(l, theme, config));
         let start_label = edge
             .start_label
             .as_ref()
-            .map(|l| measure_label(l, theme, config));
+            .map(|l| super::text::measure_label_no_wrap(l, theme, config));
         let end_label = edge
             .end_label
             .as_ref()
-            .map(|l| measure_label(l, theme, config));
+            .map(|l| super::text::measure_label_no_wrap(l, theme, config));
 
         let points = if edge.from == edge.to {
             let pad = config.node_spacing.max(20.0) * 0.6;
