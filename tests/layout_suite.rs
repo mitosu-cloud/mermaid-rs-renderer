@@ -41,6 +41,7 @@ fn render_all_fixtures() {
         "flowchart/subgraph_direction.mmd",
         "flowchart/cycles.mmd",
         "flowchart/markdown.mmd",
+        "flowchart/parsec_td.mmd",
         "gantt/basic.mmd",
         "ishikawa/basic.mmd",
         "gitgraph/basic.mmd",

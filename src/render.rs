@@ -6923,38 +6923,22 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
         ),
         crate::ir::NodeShape::Cylinder => {
             let stroke_width = node.style.stroke_width.unwrap_or(1.0);
-            let cx = x + w / 2.0;
             let ry = (h * 0.12).clamp(6.0, 14.0);
             let rx = w / 2.0;
-            let mut svg = String::new();
+            let y_top = y + ry;
+            let y_bot = y + h - ry;
+            let x_right = x + w;
+            let body_d = format!(
+                "M {x:.2},{y_top:.2} A {rx:.2},{ry:.2} 0 0,0 {x_right:.2},{y_top:.2} L {x_right:.2},{y_bot:.2} A {rx:.2},{ry:.2} 0 0,1 {x:.2},{y_bot:.2} Z"
+            );
+            let lid_d = format!(
+                "M {x:.2},{y_top:.2} A {rx:.2},{ry:.2} 0 0,1 {x_right:.2},{y_top:.2}"
+            );
+            let mut svg = format!(
+                "<path d=\"{body_d}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}{join}/>"
+            );
             svg.push_str(&format!(
-                "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
-                cx,
-                y + ry,
-                rx,
-                ry,
-                fill,
-                stroke,
-                stroke_width
-            ));
-            svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
-                x,
-                y + ry,
-                w,
-                (h - 2.0 * ry).max(0.0),
-                fill,
-                stroke,
-                stroke_width
-            ));
-            svg.push_str(&format!(
-                "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
-                cx,
-                y + h - ry,
-                rx,
-                ry,
-                stroke,
-                stroke_width
+                "<path d=\"{lid_d}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}{join}/>"
             ));
             svg
         }
