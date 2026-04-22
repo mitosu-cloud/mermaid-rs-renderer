@@ -468,6 +468,18 @@ pub(super) fn compute_sequence_layout(
                 }
             }
 
+            // For `rect <color>` background-highlight blocks, the first
+            // section's label is the literal color expression. Capture it
+            // for the renderer.
+            let fill_color = if matches!(frame.kind, crate::ir::SequenceFrameKind::Rect) {
+                frame
+                    .sections
+                    .first()
+                    .and_then(|s| s.label.as_ref())
+                    .map(|s| s.clone())
+            } else {
+                None
+            };
             sequence_frames.push(SequenceFrameLayout {
                 kind: frame.kind,
                 x: frame_x,
@@ -478,6 +490,7 @@ pub(super) fn compute_sequence_layout(
                 label,
                 section_labels,
                 dividers,
+                fill_color,
             });
         }
     }
