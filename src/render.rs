@@ -887,35 +887,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     .label_color
                     .as_deref()
                     .unwrap_or(theme.primary_text_color.as_str());
-                if edge_label_fill != "none" {
-                    let rect = LabelRect::from_center(
-                        mid_x,
-                        label_y,
-                        label.width,
-                        label.height,
-                        center_pad_x,
-                        center_pad_y,
-                    );
-                    let visible = edge_label_background_visible(
-                        layout.kind,
-                        EdgeLabelKind::Center,
-                        &edge.points,
-                        rect,
-                    );
-                    let fill_opacity = if visible { 0.90 } else { 0.0 };
-                    let stroke_opacity = if visible { 0.30 } else { 0.0 };
-                    svg.push_str(&format!(
-                        "<rect class=\"edgeLabel sequenceEdgeLabel\" data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"2\" ry=\"2\" fill=\"{}\" fill-opacity=\"{:.2}\" stroke=\"{}\" stroke-opacity=\"{:.2}\" stroke-width=\"0.8\"/>",
-                        rect.x,
-                        rect.y,
-                        rect.width,
-                        rect.height,
-                        edge_label_fill,
-                        fill_opacity,
-                        edge_label_stroke,
-                        stroke_opacity
-                    ));
-                }
+                // Upstream mermaid renders sequence message labels directly
+                // above the line with no background rect.
+                let _ = (center_pad_x, center_pad_y);
                 svg.push_str(&format!(
                     "<g class=\"edgeLabel\" data-edge-id=\"{edge_id}\" data-label-kind=\"center\">"
                 ));
@@ -1036,7 +1010,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         }
 
         for number in seq_data.map(|s| s.numbers.as_slice()).unwrap_or_default() {
-            let r = (theme.font_size * 0.45).max(6.0);
+            // Match upstream mermaid: small circle (r ≈ 6) drawn behind a 12px
+            // sans-serif numeral, regardless of the diagram font size.
+            let r = 8.0;
             svg.push_str(&format!(
                 "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
                 number.x,
@@ -1046,13 +1022,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 theme.sequence_activation_border
             ));
             let label = number.value.to_string();
-            svg.push_str(&text_line_svg(
+            svg.push_str(&format!(
+                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"trebuchet ms,verdana,arial,sans-serif\" font-size=\"12\" fill=\"{}\">{}</text>",
                 number.x,
-                number.y + theme.font_size * 0.35,
-                label.as_str(),
-                theme,
-                theme.primary_text_color.as_str(),
-                "middle",
+                number.y + 4.0,
+                theme.primary_text_color,
+                label
             ));
         }
     } else {

@@ -64,6 +64,31 @@ fn replace_tag_ci(text: &str, tag: &str, replacement: &str) -> String {
     re.replace_all(text, replacement).into_owned()
 }
 
+/// Measure a label honoring only explicit `<br/>` / `\n` line breaks; never
+/// auto-wraps based on the configured character width cap. Used by callers
+/// (e.g. sequence actor boxes) that size containers to fit the user's
+/// pre-formatted lines verbatim.
+pub(super) fn measure_label_no_wrap(
+    text: &str,
+    theme: &Theme,
+    config: &LayoutConfig,
+) -> TextBlock {
+    if has_html_formatting(text) {
+        // The HTML/markdown path already produces one line per <br/> and does
+        // its own character handling; no extra normalization needed.
+        let normalized = normalize_html_label(text);
+        return measure_markdown_label(&normalized, theme, config);
+    }
+    let measure_font_size = theme.font_size.max(16.0);
+    measure_label_with_font_size(
+        text,
+        measure_font_size,
+        config,
+        false,
+        theme.font_family.as_str(),
+    )
+}
+
 pub(super) fn measure_label(text: &str, theme: &Theme, config: &LayoutConfig) -> TextBlock {
     // Intercept HTML-formatted labels and route them through the
     // markdown measurement path so <b>, <i>, <br/> etc. are honoured.
