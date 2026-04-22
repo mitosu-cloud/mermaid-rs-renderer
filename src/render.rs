@@ -711,6 +711,30 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         ));
     }
 
+    // X-cross markers for `destroy`d participants. Draw two crossing strokes
+    // centered on the lifeline at the destroy y. Length scales with font.
+    for &(x, y) in seq_data
+        .map(|s| s.destroy_markers.as_slice())
+        .unwrap_or_default()
+    {
+        let r = (theme.font_size * 0.5).max(8.0);
+        let stroke = theme.primary_text_color.as_str();
+        svg.push_str(&format!(
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"2\"/>",
+            x - r,
+            y - r,
+            x + r,
+            y + r
+        ));
+        svg.push_str(&format!(
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"2\"/>",
+            x - r,
+            y + r,
+            x + r,
+            y - r
+        ));
+    }
+
     for activation in seq_data
         .map(|s| s.activations.as_slice())
         .unwrap_or_default()

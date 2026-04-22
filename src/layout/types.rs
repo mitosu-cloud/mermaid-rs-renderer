@@ -519,6 +519,8 @@ pub struct SequenceData {
     pub notes: Vec<SequenceNoteLayout>,
     pub activations: Vec<SequenceActivationLayout>,
     pub numbers: Vec<SequenceNumberLayout>,
+    /// X-cross markers drawn on the lifelines of `destroy`d participants.
+    pub destroy_markers: Vec<(f32, f32)>,
 }
 
 #[derive(Debug, Clone)]

@@ -268,3 +268,44 @@ Most material bugs:
   rect. Bob renders as plain actor box. Two distinct actor shapes — matches JS structure.
 - Theme/CSS divergence persists.
 
+
+## Implementation: sequence-diagram lifecycle (create/destroy) — 2026-04-22T17:16:07Z
+
+**Goal:** Address the unimplemented features flagged for
+`sequenceDiagram-actor-creation-and-destruction` in the batch.
+
+**Changes:**
+
+- `src/ir.rs` — Added `SequenceLifecycleKind` enum (Create/Destroy) and
+  `SequenceLifecycle` struct `{ participant, index, kind }`. New
+  `Graph::sequence_lifecycle: Vec<SequenceLifecycle>` populated by parser.
+- `src/parser.rs` — `create participant X` / `create actor X` and
+  `destroy X` keywords now push a SequenceLifecycle event with
+  `index = graph.edges.len()` (the message that the lifecycle event takes
+  effect on).
+- `src/layout/sequence.rs` — After `message_ys` is computed, resolve
+  lifecycle events into `lifecycle_create: HashMap<id, y>` and
+  `lifecycle_destroy: HashMap<id, y>`. Reposition the top actor box for
+  created participants (centered on create-message y). Per-actor
+  `Lifeline { y1, y2 }`: y1 starts at create-y for created actors,
+  y2 ends at destroy-y for destroyed actors. Bottom actor (footbox) for
+  destroyed actors sits at destroy-y instead of universal lifeline_end.
+  New `destroy_markers: Vec<(f32, f32)>` collecting (lifeline_x, destroy_y)
+  for X-cross rendering.
+- `src/layout/types.rs` — Added `destroy_markers: Vec<(f32, f32)>` to
+  `SequenceData`.
+- `src/render.rs` — Iterate `destroy_markers` and emit two crossing
+  `<line>` strokes at each (x, y) to draw the X.
+
+**Verification on actor-creation-and-destruction fixture:**
+- Carl (`create participant Carl`) top actor box now at y=152.5 (centered
+  on his create message at y=185), not y=8.
+- Carl's lifeline runs only from y=217.5 to y=261.8 (create→destroy).
+- Bob's lifeline truncates at y=300.2 (his destroy message) instead of
+  running to the bottom.
+- Bottom actor boxes for Bob and Carl positioned at their destroy y values.
+- X-cross markers at (460.79, 300.2) and (690.79, 261.8).
+- Donald (`create actor D as Donald`) renders as a stick figure mid-diagram.
+- 162 tests pass; no other sequenceDiagram fixtures regress (only this
+  fixture uses `create`/`destroy` keywords).
+
