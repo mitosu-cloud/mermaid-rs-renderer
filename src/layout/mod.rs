@@ -1613,6 +1613,43 @@ fn compute_flowchart_layout(
                 target: note.target.clone(),
             });
         }
+        // Re-normalize so notes that landed at negative x/y after the first
+        // pass (e.g. `note left of` a target at the left boundary) get pulled
+        // back into the diagram along with everything else.
+        let mut extra_min_x = f32::MAX;
+        let mut extra_min_y = f32::MAX;
+        for note in &state_notes {
+            extra_min_x = extra_min_x.min(note.x);
+            extra_min_y = extra_min_y.min(note.y);
+        }
+        if extra_min_x.is_finite() && extra_min_y.is_finite() {
+            let shift_x = (LAYOUT_BOUNDARY_PAD - extra_min_x).max(0.0);
+            let shift_y = (LAYOUT_BOUNDARY_PAD - extra_min_y).max(0.0);
+            if shift_x > 1e-3 || shift_y > 1e-3 {
+                for node in nodes.values_mut() {
+                    node.x += shift_x;
+                    node.y += shift_y;
+                }
+                for edge in edges.iter_mut() {
+                    for point in edge.points.iter_mut() {
+                        point.0 += shift_x;
+                        point.1 += shift_y;
+                    }
+                    if let Some(anchor) = edge.label_anchor.as_mut() {
+                        anchor.0 += shift_x;
+                        anchor.1 += shift_y;
+                    }
+                }
+                for sub in subgraphs.iter_mut() {
+                    sub.x += shift_x;
+                    sub.y += shift_y;
+                }
+                for note in state_notes.iter_mut() {
+                    note.x += shift_x;
+                    note.y += shift_y;
+                }
+            }
+        }
     }
     let (mut max_x, mut max_y) = bounds_with_edges(&nodes, &subgraphs, &edges);
     for note in &state_notes {
