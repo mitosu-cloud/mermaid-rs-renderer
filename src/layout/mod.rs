@@ -635,6 +635,7 @@ fn compute_flowchart_layout(
 
     // Separate overlapping sibling subgraphs
     separate_sibling_subgraphs(graph, &mut nodes, theme, config);
+    enforce_cluster_band_separation(graph, &mut nodes, config);
     align_disconnected_top_level_subgraphs(graph, &mut nodes);
     align_disconnected_components(graph, &mut nodes, config);
     apply_visual_objectives(graph, &layout_edges, &mut nodes, theme, &effective_config);
@@ -4784,6 +4785,322 @@ fn separate_sibling_subgraphs(
                 (idx, min_x + shift, min_y, max_x + shift, max_y)
             };
             placed.push(shifted_bounds);
+        }
+    }
+}
+
+/// Returns true if the line segment a→b intersects the axis-aligned rectangle
+/// (x, y, w, h). Used by `enforce_cluster_band_separation` to detect when an
+/// inter-cluster edge would cross a node belonging to a third cluster.
+fn segment_crosses_aabb(
+    a: (f32, f32),
+    b: (f32, f32),
+    rx: f32,
+    ry: f32,
+    rw: f32,
+    rh: f32,
+) -> bool {
+    let (x1, y1) = a;
+    let (x2, y2) = b;
+    let min_x = x1.min(x2);
+    let max_x = x1.max(x2);
+    let min_y = y1.min(y2);
+    let max_y = y1.max(y2);
+    if max_x < rx || min_x > rx + rw || max_y < ry || min_y > ry + rh {
+        return false;
+    }
+    let inside = |px: f32, py: f32| px >= rx && px <= rx + rw && py >= ry && py <= ry + rh;
+    if inside(x1, y1) || inside(x2, y2) {
+        return true;
+    }
+    // Liang–Barsky-style edge intersection: clip segment against rect.
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let p = [-dx, dx, -dy, dy];
+    let q = [x1 - rx, rx + rw - x1, y1 - ry, ry + rh - y1];
+    let mut t0 = 0.0_f32;
+    let mut t1 = 1.0_f32;
+    for i in 0..4 {
+        if p[i].abs() < f32::EPSILON {
+            if q[i] < 0.0 {
+                return false;
+            }
+        } else {
+            let t = q[i] / p[i];
+            if p[i] < 0.0 {
+                if t > t1 {
+                    return false;
+                }
+                if t > t0 {
+                    t0 = t;
+                }
+            } else {
+                if t < t0 {
+                    return false;
+                }
+                if t < t1 {
+                    t1 = t;
+                }
+            }
+        }
+    }
+    t0 <= t1
+}
+
+/// Enforce cross-axis (X for TD/BT, Y for LR/RL) separation between top-level
+/// clusters when an inter-cluster edge's straight path would cross a node
+/// belonging to a third cluster.
+///
+/// This addresses the case where rank/barycenter assignment places an isolated
+/// node and a cluster member in the same cross-axis column at different
+/// main-axis positions, forcing edges between them to detour around obstacles.
+/// Upstream mermaid (via dagre's compound graph) avoids this by construction;
+/// our pipeline assigns positions cluster-blind, so we patch it post-hoc.
+fn enforce_cluster_band_separation(
+    graph: &Graph,
+    nodes: &mut BTreeMap<String, NodeLayout>,
+    config: &LayoutConfig,
+) {
+    if graph.kind != crate::ir::DiagramKind::Flowchart {
+        return;
+    }
+    let top_level = top_level_subgraph_indices(graph);
+    if top_level.is_empty() {
+        return;
+    }
+
+    // Build groups: each visible top-level subgraph + its members.
+    // Anchor child nodes (visible representations of anchored subgraphs) join
+    // their subgraph's group.
+    let mut group_members: Vec<Vec<String>> = Vec::new();
+    let mut node_to_group: HashMap<String, usize> = HashMap::new();
+
+    for &sg_idx in &top_level {
+        let sub = &graph.subgraphs[sg_idx];
+        if is_region_subgraph(sub) || sub.nodes.is_empty() {
+            continue;
+        }
+        let g_idx = group_members.len();
+        let mut members: Vec<String> = Vec::new();
+        for node_id in &sub.nodes {
+            if let Some(node) = nodes.get(node_id) {
+                if !node.hidden {
+                    node_to_group.insert(node_id.clone(), g_idx);
+                    members.push(node_id.clone());
+                }
+            }
+        }
+        if let Some(anchor_id) = subgraph_anchor_id(sub, nodes) {
+            if let Some(node) = nodes.get(anchor_id) {
+                if !node.hidden && !node_to_group.contains_key(anchor_id) {
+                    node_to_group.insert(anchor_id.to_string(), g_idx);
+                    members.push(anchor_id.to_string());
+                }
+            }
+        }
+        if members.is_empty() {
+            continue;
+        }
+        group_members.push(members);
+    }
+
+    if group_members.len() < 2 {
+        return;
+    }
+
+    // Attach each isolated (non-cluster) node to the cluster it has the most
+    // edges to. Ties break toward the lower group index for determinism.
+    for node_id in graph.nodes.keys() {
+        if node_to_group.contains_key(node_id) {
+            continue;
+        }
+        let Some(node) = nodes.get(node_id) else {
+            continue;
+        };
+        if node.hidden {
+            continue;
+        }
+        let mut counts: Vec<usize> = vec![0; group_members.len()];
+        for edge in &graph.edges {
+            let other = if edge.from == *node_id {
+                Some(&edge.to)
+            } else if edge.to == *node_id {
+                Some(&edge.from)
+            } else {
+                None
+            };
+            if let Some(other_id) = other {
+                if let Some(&g) = node_to_group.get(other_id) {
+                    counts[g] += 1;
+                }
+            }
+        }
+        let max_count = *counts.iter().max().unwrap_or(&0);
+        if max_count == 0 {
+            continue;
+        }
+        let best_g = counts.iter().position(|&c| c == max_count).unwrap();
+        node_to_group.insert(node_id.clone(), best_g);
+        group_members[best_g].push(node_id.clone());
+    }
+
+    // Compute group bounds (axis-aligned bounding boxes from member node rects).
+    let mut bounds: Vec<(f32, f32, f32, f32)> = Vec::with_capacity(group_members.len()); // (min_x, min_y, max_x, max_y)
+    for members in &group_members {
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut max_y = f32::MIN;
+        for node_id in members {
+            if let Some(node) = nodes.get(node_id) {
+                min_x = min_x.min(node.x);
+                min_y = min_y.min(node.y);
+                max_x = max_x.max(node.x + node.width);
+                max_y = max_y.max(node.y + node.height);
+            }
+        }
+        bounds.push((min_x, min_y, max_x, max_y));
+    }
+
+    // Detect edges whose straight line between endpoints crosses a node
+    // belonging to a group different from either endpoint's group. We include
+    // intra-group edges because the bug we're fixing is precisely that an
+    // isolated node merged with its target's cluster (intra-group edge after
+    // grouping) can still be visually offset such that the straight path
+    // crosses a third cluster's node.
+    let mut needs_separation: HashSet<(usize, usize)> = HashSet::new();
+    for edge in &graph.edges {
+        let from_g = node_to_group.get(&edge.from).copied();
+        let to_g = node_to_group.get(&edge.to).copied();
+        let mut edge_groups: HashSet<usize> = HashSet::new();
+        if let Some(g) = from_g {
+            edge_groups.insert(g);
+        }
+        if let Some(g) = to_g {
+            edge_groups.insert(g);
+        }
+        if edge_groups.is_empty() {
+            continue;
+        }
+        let (Some(fnode), Some(tnode)) = (nodes.get(&edge.from), nodes.get(&edge.to)) else {
+            continue;
+        };
+        let fc = (
+            fnode.x + fnode.width / 2.0,
+            fnode.y + fnode.height / 2.0,
+        );
+        let tc = (
+            tnode.x + tnode.width / 2.0,
+            tnode.y + tnode.height / 2.0,
+        );
+        for (other_id, other) in nodes.iter() {
+            if other_id == &edge.from || other_id == &edge.to || other.hidden {
+                continue;
+            }
+            let Some(&og) = node_to_group.get(other_id) else {
+                continue;
+            };
+            if edge_groups.contains(&og) {
+                continue;
+            }
+            let inset = 1.0_f32;
+            let rw = (other.width - inset * 2.0).max(0.0);
+            let rh = (other.height - inset * 2.0).max(0.0);
+            if rw <= 0.0 || rh <= 0.0 {
+                continue;
+            }
+            if segment_crosses_aabb(fc, tc, other.x + inset, other.y + inset, rw, rh) {
+                for &eg in &edge_groups {
+                    let pair = if eg < og { (eg, og) } else { (og, eg) };
+                    needs_separation.insert(pair);
+                }
+                break;
+            }
+        }
+    }
+
+    if needs_separation.is_empty() {
+        return;
+    }
+
+    // For each pair needing separation, push the group with the larger
+    // cross-axis centroid out past the smaller-centroid group's far edge.
+    // Cross-axis is X for TD/BT, Y for LR/RL.
+    let horizontal = is_horizontal(graph.direction);
+    let cross_centroid = |g: usize| -> f32 {
+        let (min, max) = if horizontal {
+            (bounds[g].1, bounds[g].3) // y-axis is cross for horizontal
+        } else {
+            (bounds[g].0, bounds[g].2) // x-axis is cross for vertical
+        };
+        (min + max) * 0.5
+    };
+
+    // For each pair, the smaller-centroid group stays put and the larger-
+    // centroid group shifts past the former's cross-axis extent + gap.
+    let gap = config.node_spacing.max(20.0);
+    let min_cross: Vec<f32> = (0..group_members.len())
+        .map(|g| if horizontal { bounds[g].1 } else { bounds[g].0 })
+        .collect();
+    let max_cross: Vec<f32> = (0..group_members.len())
+        .map(|g| if horizontal { bounds[g].3 } else { bounds[g].2 })
+        .collect();
+
+    // Order groups by current cross centroid (left-to-right or top-to-bottom).
+    let mut order: Vec<usize> = (0..group_members.len()).collect();
+    order.sort_by(|&i, &j| {
+        cross_centroid(i)
+            .partial_cmp(&cross_centroid(j))
+            .unwrap_or(Ordering::Equal)
+            .then(i.cmp(&j))
+    });
+
+    // For each pair in needs_separation, ensure the later-in-order group has
+    // its cross-min ≥ earlier-in-order group's cross-max + gap. Iterate in
+    // sweep order so cascading shifts compose correctly.
+    let order_position: HashMap<usize, usize> = order
+        .iter()
+        .enumerate()
+        .map(|(pos, g)| (*g, pos))
+        .collect();
+    let mut shift: Vec<f32> = vec![0.0; group_members.len()];
+
+    for &g in &order {
+        for (a, b) in &needs_separation {
+            let (lo, hi) = match (
+                order_position.get(a).copied(),
+                order_position.get(b).copied(),
+            ) {
+                (Some(pa), Some(pb)) if pa < pb => (*a, *b),
+                (Some(pa), Some(pb)) if pb < pa => (*b, *a),
+                _ => continue,
+            };
+            if hi != g {
+                continue;
+            }
+            let lo_far = max_cross[lo] + shift[lo];
+            let hi_near = min_cross[hi] + shift[hi];
+            let needed = lo_far + gap - hi_near;
+            if needed > 0.0 {
+                shift[hi] += needed;
+            }
+        }
+    }
+
+    // Apply shifts to all member nodes.
+    for (g_idx, members) in group_members.iter().enumerate() {
+        let s = shift[g_idx];
+        if s.abs() < 1e-3 {
+            continue;
+        }
+        for node_id in members {
+            if let Some(node) = nodes.get_mut(node_id) {
+                if horizontal {
+                    node.y += s;
+                } else {
+                    node.x += s;
+                }
+            }
         }
     }
 }
