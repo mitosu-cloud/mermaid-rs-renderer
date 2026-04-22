@@ -641,6 +641,16 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
 
     for frame in seq_data.map(|s| s.frames.as_slice()).unwrap_or_default() {
         let stroke = theme.primary_border_color.as_str();
+        // `rect <color>` blocks render as a solid filled background with no
+        // dashed border and no label box (matches mermaid.js convention).
+        if matches!(frame.kind, crate::ir::SequenceFrameKind::Rect) {
+            let fill = frame.fill_color.as_deref().unwrap_or("rgba(200,200,200,0.3)");
+            svg.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"none\"/>",
+                frame.x, frame.y, frame.width, frame.height, fill
+            ));
+            continue;
+        }
         svg.push_str(&format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2.0\" stroke-dasharray=\"2 2\"/>",
             frame.x, frame.y, frame.width, frame.height, stroke

@@ -144,6 +144,10 @@ pub struct SequenceFrameLayout {
     pub label: SequenceLabel,
     pub section_labels: Vec<SequenceLabel>,
     pub dividers: Vec<f32>,
+    /// Fill color for `rect <color>` background-highlight frames. None for
+    /// other frame kinds (alt/opt/loop/par/critical/break) which render as
+    /// dashed outlines with a label.
+    pub fill_color: Option<String>,
 }
 
 #[derive(Debug, Clone)]

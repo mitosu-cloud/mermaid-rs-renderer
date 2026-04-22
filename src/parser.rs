@@ -1135,6 +1135,25 @@ fn parse_state_container_header(line: &str) -> Option<(Option<String>, String, S
     Some((Some(id.clone()), id, tail))
 }
 
+/// Extract the value of a `"type" : "..."` key inside a participant
+/// `@{ ... }` block. Lenient — accepts single/double quotes and arbitrary
+/// whitespace.
+fn parse_at_block_type(body: &str) -> Option<String> {
+    let lower = body.to_ascii_lowercase();
+    let key_idx = lower.find("\"type\"").or_else(|| lower.find("'type'"))?;
+    let after_key = &body[key_idx + 6..];
+    let colon_idx = after_key.find(':')?;
+    let after_colon = after_key[colon_idx + 1..].trim_start();
+    let mut chars = after_colon.chars();
+    let quote = chars.next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let rest = chars.as_str();
+    let end = rest.find(quote)?;
+    Some(rest[..end].to_ascii_lowercase())
+}
+
 fn parse_sequence_participant(
     line: &str,
 ) -> Option<(String, Option<String>, crate::ir::NodeShape)> {
@@ -1162,6 +1181,43 @@ fn parse_sequence_participant(
     if rest.is_empty() {
         return None;
     }
+
+    // Strip an optional `@{ ... }` extended-type block so it doesn't end up
+    // baked into the participant id. If the block contains `"type": "<name>"`,
+    // override the shape based on that name. This prevents
+    // `participant Foo@{...} as Bar` from registering an id of `Foo@{...}`
+    // (which would mismatch subsequent message lines and trigger synthetic
+    // participant creation).
+    let rest = match (rest.find("@{"), rest.rfind('}')) {
+        (Some(start), Some(end)) if end > start => {
+            // Extract the body inside the braces.
+            let body = &rest[start + 2..end];
+            // Look for "type" : "<value>" (loose whitespace, single or
+            // double quotes around value). Only override if matched.
+            if let Some(t) = parse_at_block_type(body) {
+                shape = match t.as_str() {
+                    "actor" => crate::ir::NodeShape::StickFigure,
+                    "boundary" => crate::ir::NodeShape::Boundary,
+                    "control" => crate::ir::NodeShape::Control,
+                    "entity" => crate::ir::NodeShape::Entity,
+                    "database" => crate::ir::NodeShape::Cylinder,
+                    "collections" => crate::ir::NodeShape::Collections,
+                    "queue" => crate::ir::NodeShape::Queue,
+                    _ => shape,
+                };
+            }
+            let mut stripped = String::with_capacity(rest.len());
+            stripped.push_str(rest[..start].trim_end());
+            let tail = rest[end + 1..].trim_start();
+            if !tail.is_empty() {
+                stripped.push(' ');
+                stripped.push_str(tail);
+            }
+            stripped
+        }
+        _ => rest.to_string(),
+    };
+    let rest = rest.as_str();
 
     let lower_rest = rest.to_ascii_lowercase();
     if let Some(as_idx) = lower_rest.find(" as ") {
@@ -5542,7 +5598,10 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                     .sequence_activations
                     .push(crate::ir::SequenceActivation {
                         participant: id,
-                        index: graph.edges.len(),
+                        // Standalone `activate X` ties the activation start
+                        // to the most recent message (matches mermaid.js
+                        // behavior). Pre-message activations clamp to 0.
+                        index: graph.edges.len().saturating_sub(1),
                         kind: crate::ir::SequenceActivationKind::Activate,
                     });
             }
@@ -5560,7 +5619,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                     .sequence_activations
                     .push(crate::ir::SequenceActivation {
                         participant: id,
-                        index: graph.edges.len(),
+                        // Standalone `deactivate X` ties the activation end
+                        // to the most recent message.
+                        index: graph.edges.len().saturating_sub(1),
                         kind: crate::ir::SequenceActivationKind::Deactivate,
                     });
             }
@@ -5619,7 +5680,20 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
             if let Some(kind) = activation
                 && let Some(last) = graph.edges.len().checked_sub(1)
             {
-                let participant = graph.edges[last].to.clone();
+                // Upstream mermaid grammar (sequenceDiagram.jison):
+                //   `actor signaltype '+' actor text` → activate destination
+                //   `actor signaltype '-' actor text` → deactivate SOURCE
+                // The previous code always used `to`, which broke stacked
+                // activations like `John-->>-Alice` (which deactivates John,
+                // not Alice).
+                let participant = match kind {
+                    crate::ir::SequenceActivationKind::Activate => {
+                        graph.edges[last].to.clone()
+                    }
+                    crate::ir::SequenceActivationKind::Deactivate => {
+                        graph.edges[last].from.clone()
+                    }
+                };
                 graph
                     .sequence_activations
                     .push(crate::ir::SequenceActivation {
