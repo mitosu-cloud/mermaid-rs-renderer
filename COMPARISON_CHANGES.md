@@ -458,3 +458,17 @@ Adjusted sequence-diagram padding to match mermaid.js's viewBox conventions:
 
 **Aggregate parity:** width 16.9% → 9.1%, height 6.0% → 5.1%. 162 tests pass.
 
+
+## Visual parity pass — first-note vs first-message offset — 2026-04-23T06:05:04Z
+
+When the first item below the actor row is a NOTE (no preceding messages),
+mermaid.js places it ~10px below the actor box; we were applying the full
+44px message-rhythm offset. Refactored `message_cursor` initialization:
+
+- Initial value: `margin + actor_height` (just below actor, no extra padding).
+- First note at idx=0: cursor advances by `note_gap_y` (~9px), giving JS-matching gap.
+- First message: bumps cursor up to `margin + actor_height + base_spacing` if not already past, preserving the 44px rhythm for messages.
+
+**Effect:** note-right-of-participant height 263 → 219 (matches JS=220 exactly).
+**Aggregate parity:** height 5.1% → 4.4%, width unchanged at 9.1%.
+

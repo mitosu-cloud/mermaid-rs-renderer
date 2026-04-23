@@ -235,10 +235,12 @@ pub(super) fn compute_sequence_layout(
         notes_by_index[idx].push(note);
     }
 
-    // Initial offset from the top of the lifeline to the first message —
-    // matches the per-message advance (mermaid.js puts the first message at
-    // the same gap below the actor box as subsequent messages are apart).
-    let mut message_cursor = margin + actor_height + base_spacing;
+    // Cursor starts right below the actor box. The first message gets
+    // base_spacing (44) of clearance; the first note before any message gets
+    // a much smaller note_gap_y (~9). Mermaid.js places a note immediately
+    // below the actor (~10px gap) but a message at +44px.
+    let mut message_cursor = margin + actor_height;
+    let mut applied_initial_message_offset = false;
     let mut message_ys = Vec::new();
     let mut sequence_notes = Vec::new();
     for idx in 0..=graph.edges.len() {
@@ -292,6 +294,15 @@ pub(super) fn compute_sequence_layout(
             }
         }
         if idx < graph.edges.len() {
+            // Add base_spacing offset for the first message only if we
+            // haven't already advanced past the actor (e.g. via notes).
+            if !applied_initial_message_offset {
+                applied_initial_message_offset = true;
+                let target_first_message_y = margin + actor_height + base_spacing;
+                if message_cursor < target_first_message_y {
+                    message_cursor = target_first_message_y;
+                }
+            }
             message_cursor += extra_before[idx];
             message_ys.push(message_cursor);
             message_cursor += message_row_spacing[idx];
