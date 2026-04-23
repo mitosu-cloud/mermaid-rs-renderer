@@ -446,3 +446,15 @@ our Trebuchet MS metrics and mermaid.js's canvas-based
 `utils.calculateTextDimensions` — closing this would require switching
 to a measurement library that matches D3's text measurement.
 
+
+## Visual parity pass — diagram padding — 2026-04-23T05:36:45Z
+
+Adjusted sequence-diagram padding to match mermaid.js's viewBox conventions:
+
+- Horizontal margin: 8 → 25px each side (mermaid.js uses 50px each side via
+  viewBox `-50 -10 W H`, but our content extent is ~13% wider than JS due
+  to text-measurement differences, so 25px keeps the totals close).
+- Vertical margin: 8 → 10px each side (mermaid.js uses 10px via viewBox y-offset `-10`).
+
+**Aggregate parity:** width 16.9% → 9.1%, height 6.0% → 5.1%. 162 tests pass.
+
