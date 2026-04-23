@@ -908,14 +908,21 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             }
 
             if let Some(label) = edge.label.as_ref() {
-                let (mid_x, label_y) = edge.label_anchor.unwrap_or_else(|| {
-                    let start = edge.points.first().copied().unwrap_or((0.0, 0.0));
-                    let end = edge.points.last().copied().unwrap_or(start);
-                    let mid_x = (start.0 + end.0) / 2.0;
-                    let line_y = start.1;
-                    let gap = (theme.font_size * 0.6).max(8.0);
-                    (mid_x, line_y - gap - label.height / 2.0)
-                });
+                // Sequence message labels always sit ABOVE the line with a
+                // consistent gap (matches mermaid.js: text bottom ~5px above
+                // the line, total label center ≈ font_size*0.85 above the line
+                // for a 1-line label). Override the y from any anchor that
+                // would put the text on top of the connector line.
+                let start = edge.points.first().copied().unwrap_or((0.0, 0.0));
+                let end = edge.points.last().copied().unwrap_or(start);
+                let line_y = start.1;
+                let gap = (theme.font_size * 0.4).max(5.0);
+                let anchor_x = edge
+                    .label_anchor
+                    .map(|p| p.0)
+                    .unwrap_or((start.0 + end.0) / 2.0);
+                let mid_x = anchor_x;
+                let label_y = line_y - gap - label.height / 2.0;
                 let label_color = edge
                     .override_style
                     .label_color

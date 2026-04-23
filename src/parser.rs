@@ -1139,9 +1139,17 @@ fn parse_state_container_header(line: &str) -> Option<(Option<String>, String, S
 /// `@{ ... }` block. Lenient — accepts single/double quotes and arbitrary
 /// whitespace.
 fn parse_at_block_type(body: &str) -> Option<String> {
+    parse_at_block_string(body, "type").map(|s| s.to_ascii_lowercase())
+}
+
+/// Generic extractor for `"<key>": "<value>"` from a participant `@{ ... }`
+/// block. Preserves the value's casing.
+fn parse_at_block_string(body: &str, key: &str) -> Option<String> {
+    let needle_d = format!("\"{key}\"");
+    let needle_s = format!("'{key}'");
     let lower = body.to_ascii_lowercase();
-    let key_idx = lower.find("\"type\"").or_else(|| lower.find("'type'"))?;
-    let after_key = &body[key_idx + 6..];
+    let key_idx = lower.find(&needle_d).or_else(|| lower.find(&needle_s))?;
+    let after_key = &body[key_idx + needle_d.len()..];
     let colon_idx = after_key.find(':')?;
     let after_colon = after_key[colon_idx + 1..].trim_start();
     let mut chars = after_colon.chars();
@@ -1151,7 +1159,7 @@ fn parse_at_block_type(body: &str) -> Option<String> {
     }
     let rest = chars.as_str();
     let end = rest.find(quote)?;
-    Some(rest[..end].to_ascii_lowercase())
+    Some(rest[..end].to_string())
 }
 
 fn parse_sequence_participant(
@@ -1182,18 +1190,12 @@ fn parse_sequence_participant(
         return None;
     }
 
-    // Strip an optional `@{ ... }` extended-type block so it doesn't end up
-    // baked into the participant id. If the block contains `"type": "<name>"`,
-    // override the shape based on that name. This prevents
-    // `participant Foo@{...} as Bar` from registering an id of `Foo@{...}`
-    // (which would mismatch subsequent message lines and trigger synthetic
-    // participant creation).
+    // Strip an optional `@{ ... }` extended-type block. Extract `"type"` to
+    // override the shape, and `"alias"` to use as the display label.
+    let mut at_block_alias: Option<String> = None;
     let rest = match (rest.find("@{"), rest.rfind('}')) {
         (Some(start), Some(end)) if end > start => {
-            // Extract the body inside the braces.
             let body = &rest[start + 2..end];
-            // Look for "type" : "<value>" (loose whitespace, single or
-            // double quotes around value). Only override if matched.
             if let Some(t) = parse_at_block_type(body) {
                 shape = match t.as_str() {
                     "actor" => crate::ir::NodeShape::StickFigure,
@@ -1206,6 +1208,7 @@ fn parse_sequence_participant(
                     _ => shape,
                 };
             }
+            at_block_alias = parse_at_block_string(body, "alias");
             let mut stripped = String::with_capacity(rest.len());
             stripped.push_str(rest[..start].trim_end());
             let tail = rest[end + 1..].trim_start();
@@ -1236,7 +1239,10 @@ fn parse_sequence_participant(
         return Some((label.clone(), Some(label), shape));
     }
 
-    Some((strip_quotes(rest), None, shape))
+    // If no `as` was given, prefer the @{} block's alias as the display label.
+    let id = strip_quotes(rest);
+    let label = at_block_alias.or(None);
+    Some((id, label, shape))
 }
 
 fn is_color_token(token: &str) -> bool {
@@ -1247,6 +1253,44 @@ fn is_color_token(token: &str) -> bool {
         || lower.starts_with("rgba(")
         || lower.starts_with("hsl(")
         || lower.starts_with("hsla(")
+        || is_css_named_color(&lower)
+}
+
+fn is_css_named_color(name: &str) -> bool {
+    matches!(
+        name,
+        "aliceblue" | "antiquewhite" | "aqua" | "aquamarine" | "azure" | "beige"
+        | "bisque" | "black" | "blanchedalmond" | "blue" | "blueviolet" | "brown"
+        | "burlywood" | "cadetblue" | "chartreuse" | "chocolate" | "coral"
+        | "cornflowerblue" | "cornsilk" | "crimson" | "cyan" | "darkblue"
+        | "darkcyan" | "darkgoldenrod" | "darkgray" | "darkgreen" | "darkgrey"
+        | "darkkhaki" | "darkmagenta" | "darkolivegreen" | "darkorange"
+        | "darkorchid" | "darkred" | "darksalmon" | "darkseagreen"
+        | "darkslateblue" | "darkslategray" | "darkslategrey" | "darkturquoise"
+        | "darkviolet" | "deeppink" | "deepskyblue" | "dimgray" | "dimgrey"
+        | "dodgerblue" | "firebrick" | "floralwhite" | "forestgreen" | "fuchsia"
+        | "gainsboro" | "ghostwhite" | "gold" | "goldenrod" | "gray" | "green"
+        | "greenyellow" | "grey" | "honeydew" | "hotpink" | "indianred" | "indigo"
+        | "ivory" | "khaki" | "lavender" | "lavenderblush" | "lawngreen"
+        | "lemonchiffon" | "lightblue" | "lightcoral" | "lightcyan"
+        | "lightgoldenrodyellow" | "lightgray" | "lightgreen" | "lightgrey"
+        | "lightpink" | "lightsalmon" | "lightseagreen" | "lightskyblue"
+        | "lightslategray" | "lightslategrey" | "lightsteelblue" | "lightyellow"
+        | "lime" | "limegreen" | "linen" | "magenta" | "maroon"
+        | "mediumaquamarine" | "mediumblue" | "mediumorchid" | "mediumpurple"
+        | "mediumseagreen" | "mediumslateblue" | "mediumspringgreen"
+        | "mediumturquoise" | "mediumvioletred" | "midnightblue" | "mintcream"
+        | "mistyrose" | "moccasin" | "navajowhite" | "navy" | "oldlace" | "olive"
+        | "olivedrab" | "orange" | "orangered" | "orchid" | "palegoldenrod"
+        | "palegreen" | "paleturquoise" | "palevioletred" | "papayawhip"
+        | "peachpuff" | "peru" | "pink" | "plum" | "powderblue" | "purple"
+        | "rebeccapurple" | "red" | "rosybrown" | "royalblue" | "saddlebrown"
+        | "salmon" | "sandybrown" | "seagreen" | "seashell" | "sienna" | "silver"
+        | "skyblue" | "slateblue" | "slategray" | "slategrey" | "snow"
+        | "springgreen" | "steelblue" | "tan" | "teal" | "thistle" | "tomato"
+        | "turquoise" | "violet" | "wheat" | "white" | "whitesmoke" | "yellow"
+        | "yellowgreen"
+    )
 }
 
 fn parse_sequence_box_line(line: &str) -> Option<(Option<String>, Option<String>)> {
@@ -1273,19 +1317,19 @@ fn parse_sequence_box_line(line: &str) -> Option<(Option<String>, Option<String>
         };
         return Some((None, label));
     }
-    let color = if tokens.len() > 1 {
-        Some(first.clone())
-    } else if is_color_token(&first) {
+    // The first token is treated as a color only when it actually is one
+    // (CSS named color, hex, rgb()/rgba()/hsl()/hsla(), or `transparent`).
+    // Otherwise the entire token list is the label.
+    let first_is_color = is_color_token(&first);
+    let color = if first_is_color {
         Some(first.clone())
     } else {
         None
     };
-    let label = if tokens.len() > 1 {
+    let label = if first_is_color && tokens.len() > 1 {
         Some(tokens[1..].join(" "))
-    } else if color.is_none() {
-        Some(first.clone())
     } else {
-        None
+        Some(tokens.join(" "))
     };
     let label = label.filter(|value| !value.trim().is_empty());
     let color = color.filter(|value| !value.eq_ignore_ascii_case("transparent"));
