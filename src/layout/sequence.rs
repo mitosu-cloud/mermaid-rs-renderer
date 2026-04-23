@@ -628,8 +628,10 @@ pub(super) fn compute_sequence_layout(
             });
         }
     }
-    let activation_width = (theme.font_size * 0.75).max(10.0);
-    let activation_offset = (activation_width * 0.6).max(4.0);
+    // Mermaid.js uses a fixed 10px-wide activation rect with 5px stack
+    // offset. Match those dimensions exactly.
+    let activation_width = 10.0_f32;
+    let activation_offset = 5.0_f32;
     let activation_end_default = message_ys
         .last()
         .copied()
@@ -723,10 +725,12 @@ pub(super) fn compute_sequence_layout(
                     .get(&edge.to)
                     .map(|node| node.x + node.width / 2.0)
                     .unwrap_or(from_x);
-                let offset = if to_x >= from_x { 16.0 } else { -16.0 };
-                let number_y = y - (theme.font_size * 0.85).max(10.0);
+                // Mermaid.js places the sequence-number circle exactly at
+                // the source-actor's lifeline x (the line's start point),
+                // not offset along the line.
+                let number_y = y;
                 sequence_numbers.push(SequenceNumberLayout {
-                    x: from_x + offset,
+                    x: from_x,
                     y: number_y,
                     value,
                 });

@@ -114,8 +114,12 @@ impl Theme {
             cluster_border: "#AAAA33".to_string(),
             background: "#FFFFFF".to_string(),
             sequence_actor_fill: "#ECECFF".to_string(),
-            sequence_actor_border: "#9370DB".to_string(),
-            sequence_actor_line: "#9370DB".to_string(),
+            // Light lavender, matching mermaid.js's CSS-resolved
+            // `hsl(259.6, 59.78%, 87.9%)` for `.actor` / `.actor-line`.
+            // Previously #9370DB which is the title color, much darker
+            // than the browser-rendered actor border.
+            sequence_actor_border: "#D2C7E4".to_string(),
+            sequence_actor_line: "#D2C7E4".to_string(),
             sequence_note_fill: "#FFF5AD".to_string(),
             sequence_note_border: "#AAAA33".to_string(),
             sequence_activation_fill: "#F4F4F4".to_string(),
