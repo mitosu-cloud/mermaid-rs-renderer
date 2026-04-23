@@ -416,3 +416,16 @@ Aligned per-message vertical advance with mermaid.js's empirical 44px:
 
 162 tests pass; all 36 sequenceDiagrams re-rendered.
 
+
+## Visual parity pass — note minimum width — 2026-04-23T04:52:21Z
+
+Notes now use 150px minimum width (mermaid.js `conf.width` default), only
+widening past that to fit longer labels. Was: `label.width + 14` (could be
+as small as 30px for short labels). Code path:
+`sequenceRenderer.ts: rect.width = noteModel.width || conf.width`.
+
+Effect on note-right-of-participant: diagram width 213 → 251 (JS=350).
+Remaining gap is the JS layout positioning notes overlapping the actor row
+(y=75-114) vs ours below actor (y=125-164) — different layout strategy,
+substantial restructure to match.
+
