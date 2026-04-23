@@ -179,7 +179,11 @@ pub(super) fn compute_sequence_layout(
         }
     }
 
-    let base_spacing = (theme.font_size * 2.1).max(18.0);
+    // Matches mermaid.js: per-message vertical advance ≈ messageMargin (35)
+    // + boxMargin (10) - small constant ≈ 44px for 1-line labels with the
+    // default 16px font. Computed empirically against the basic-sequence
+    // diagram (line ys 109, 153, 197 = 44px apart).
+    let base_spacing = (theme.font_size * 2.75).max(35.0);
     let message_row_spacing: Vec<f32> = graph
         .edges
         .iter()
@@ -194,9 +198,9 @@ pub(super) fn compute_sequence_layout(
             if let Some(label) = &edge.end_label {
                 row_h = row_h.max(measure_label(label, theme, config).height);
             }
-            // Keep enough vertical clearance so message labels can stay close to
-            // their own edge without immediately colliding with neighboring rows.
-            base_spacing.max(row_h + theme.font_size * 0.9)
+            // Per-message advance: max(default, label_height + boxMargin*2).
+            // For 1-line labels (h=24) this gives max(44, 24+20) = 44.
+            base_spacing.max(row_h + 20.0)
         })
         .collect();
     let note_gap_y = (theme.font_size * 0.55).max(5.0);
@@ -225,7 +229,10 @@ pub(super) fn compute_sequence_layout(
         notes_by_index[idx].push(note);
     }
 
-    let mut message_cursor = margin + actor_height + theme.font_size * 2.2;
+    // Initial offset from the top of the lifeline to the first message —
+    // matches the per-message advance (mermaid.js puts the first message at
+    // the same gap below the actor box as subsequent messages are apart).
+    let mut message_cursor = margin + actor_height + base_spacing;
     let mut message_ys = Vec::new();
     let mut sequence_notes = Vec::new();
     for idx in 0..=graph.edges.len() {
