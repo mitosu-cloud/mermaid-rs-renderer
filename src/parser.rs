@@ -1391,8 +1391,17 @@ fn parse_sequence_message(
                 continue;
             }
             let (right, label) = split_label(right_part);
-            let mut from = left.to_string();
-            let mut to = right.to_string();
+            // Strip `()` central-connection markers from from/to identifiers.
+            // JS treats `Alice->>()John`, `Alice()->>John`, `John()->>()Alice`
+            // as central-connection arrows (drawing a circle marker at the
+            // lifeline center). We render a normal arrow but must avoid
+            // creating phantom actors named `()John`, `Alice()`, etc.
+            fn strip_cc(s: &str) -> &str {
+                let s = s.strip_suffix("()").unwrap_or(s);
+                s.strip_prefix("()").unwrap_or(s).trim()
+            }
+            let mut from = strip_cc(left).to_string();
+            let mut to = strip_cc(right.as_str()).to_string();
             let is_bidirectional = token.starts_with("<<");
             if token.starts_with('<') && !is_bidirectional {
                 std::mem::swap(&mut from, &mut to);
