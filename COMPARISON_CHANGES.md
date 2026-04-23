@@ -379,3 +379,20 @@ User-requested focus on visual parity with browser-rendered JS. Three changes:
 Verified all 415 comparison fixtures still render without error; 162 unit
 tests pass.
 
+
+## Visual parity pass — actor spacing — 2026-04-23T04:33:12Z
+
+Aligned actor margin computation with upstream mermaid.js:
+
+- Studied `/Users/thomashemphill/work/mermaid/packages/mermaid/src/diagrams/sequence/sequenceRenderer.ts:1631-1639` and `schemas/config.schema.yaml` for canonical formula and defaults.
+- Constants: `actorMargin = 50`, `wrapPadding = 10` (mermaid.js defaults).
+- Formula: `actor.margin = max(messageWidth + actorMargin - actor.w/2 - nextActor.w/2, actorMargin)`
+  where `messageWidth = labelWidth + 2*wrapPadding`.
+- Only ADJACENT-pair messages (`hi - lo == 1`) widen a gap. Multi-span messages overflow visually (matches mermaid.js).
+
+**Before:** required_per_gap = (label_w + 32) / spans_crossed. For basic-sequence-diagram our actor centers were at 83 and 456 (gap 373).
+
+**After:** required = max(label_w + 20 + 50 - 75 - 75, 50). For basic-sequence-diagram actor centers now at 83 and 344 (gap 261). JS reference: centers at 75 and 309 (gap 234). Within ~30px of JS — remaining difference is from different text-width measurement implementations (we use Trebuchet MS metrics that may give slightly wider widths than mermaid.js's calculator).
+
+162 tests pass; all 36 sequenceDiagrams re-rendered without error.
+
