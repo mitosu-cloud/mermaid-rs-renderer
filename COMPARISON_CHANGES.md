@@ -396,3 +396,23 @@ Aligned actor margin computation with upstream mermaid.js:
 
 162 tests pass; all 36 sequenceDiagrams re-rendered without error.
 
+
+## Visual parity pass — message vertical spacing — 2026-04-23T04:49:28Z
+
+Aligned per-message vertical advance with mermaid.js's empirical 44px:
+
+- `base_spacing` constant raised from `font_size * 2.1` (= 33.6) to
+  `font_size * 2.75` (= 44) with floor 35 (the schema's `messageMargin`).
+- Per-row formula changed from `max(base, label_h + font_size*0.9)` to
+  `max(base, label_h + 20)` matching mermaid.js's
+  `textHeight + boxMargin*2` for non-self messages (boxMargin default 10).
+- First-message offset from lifeline top now equals `base_spacing`
+  (44px) instead of `font_size * 2.2` (35.2px) — gives the same vertical
+  rhythm throughout the diagram.
+
+**Result on basic-sequence-diagram:**
+- Per-message spacing: was 38.4 → now 44 (matches JS exactly).
+- Lifeline length: was 132 → now 152 (matches JS exactly).
+
+162 tests pass; all 36 sequenceDiagrams re-rendered.
+
