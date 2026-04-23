@@ -354,3 +354,28 @@ Processed remaining sequenceDiagram fixtures. Real bugs fixed in this batch:
 
 162 unit tests pass; no regressions.
 
+
+## Visual parity pass — sequence diagram theme — 2026-04-23T04:26:19Z
+
+User-requested focus on visual parity with browser-rendered JS. Three changes:
+
+1. `src/theme.rs` — Sequence actor border + lifeline color changed from
+   `#9370DB` (dark purple — was actually the title color) to `#D2C7E4`
+   (light lavender). This matches mermaid.js's CSS-resolved
+   `hsl(259.6, 59.78%, 87.9%)` for `.actor` and `.actor-line`. The JS SVG
+   writes inline gray (`#666`, `#999`) but the embedded `<style>` block
+   overrides those in any browser view. We don't emit a `<style>` block so
+   matching the browser-rendered color directly is the right choice.
+
+2. `src/layout/sequence.rs` — Activation rect width pinned to 10px and
+   stack offset to 5px (mermaid.js fixed values). Was 12 / 7.2 derived
+   from font size.
+
+3. `src/layout/sequence.rs` — Sequence-number circle now placed at the
+   source-actor's exact lifeline x (matches JS), not offset by 16px
+   along the line. The text positioning also moved up to align with the
+   line itself.
+
+Verified all 415 comparison fixtures still render without error; 162 unit
+tests pass.
+
