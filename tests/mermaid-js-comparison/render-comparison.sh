@@ -10,7 +10,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REF_DIR="$SCRIPT_DIR/reference"
-OUT_DIR="$SCRIPT_DIR/output"
+OUT_DIR="$SCRIPT_DIR/comparison-output"
 MMDR="$REPO_DIR/target/release/mmdr"
 MMDC="$SCRIPT_DIR/node_modules/.bin/mmdc"
 

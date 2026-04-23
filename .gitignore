@@ -17,4 +17,5 @@ mermaid-rs-ffi/MermaidRenderer.xcframework/ios-arm64/libmermaid_rs_ffi.a
 mermaid-rs-ffi/MermaidRenderer.xcframework/ios-arm64-simulator/libmermaid_rs_ffi.a
 mermaid-rs-ffi/MermaidRenderer.xcframework/macos-arm64_x86_64/libmermaid_rs_ffi.a
 tests/mermaid-js-comparison/output/*
+tests/mermaid-js-comparison/comparison-output/
 .DS_Store
