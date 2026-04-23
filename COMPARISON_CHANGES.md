@@ -309,3 +309,48 @@ Most material bugs:
 - 162 tests pass; no other sequenceDiagram fixtures regress (only this
   fixture uses `create`/`destroy` keywords).
 
+
+## sequenceDiagram-break-statement — Pass 1/2 — 2026-04-23T04:06:41Z
+- All structural elements present (break frame with label "break" + "[when the booking process fails]", 4 messages, 4 actors). Theme/CSS divergence only. **No edit.**
+
+## sequenceDiagram-central-connections — Pass 1/2 — 2026-04-23T04:07:03Z
+- `Alice->>()John` etc. — parser doesn't recognize `()` central-connection markers; treats them as part of the participant id, creating synthetic actors "()John", "Alice()", "()Alice", "John()". Six actors instead of two. Substantial parser+renderer feature (central markers at message midpoint). **No edit (out of scope).**
+
+## Batch /svg-parity sequenceDiagram fixtures 11-36 — 2026-04-23T04:13:48Z
+
+Processed remaining sequenceDiagram fixtures. Real bugs fixed in this batch:
+
+### Fixes applied
+1. **`src/render.rs`** — Sequence message labels now consistently rendered ABOVE the line at a fixed gap (~5-9px), regardless of what `label_anchor` was computed as. Earlier output had labels overlapping the connector line. Affects all sequenceDiagram fixtures.
+2. **`src/parser.rs`** — `parse_at_block_string()` extracts `"alias": "..."` from participant @{} blocks. Combined with the earlier "type" extraction, the alias is now used as the display label when the participant has no explicit `as ...`. Fixes sequenceDiagram-inline-alias-syntax (Public API / Auth Service / User Database) and sequenceDiagram-external-alias-with-stereotypes.
+3. **`src/parser.rs`** — `is_color_token()` now recognizes ~150 CSS named colors. `parse_sequence_box_line()` only treats the first token as a color when it actually IS one. Fixes `box Another Group` being misparsed as color="Another", label="Group". Affects sequenceDiagram-grouping-with-box.
+
+### Per-fixture status (Pass 1+2 combined)
+
+- **break-statement** — structurally correct; theme/CSS only.
+- **central-connections** — `()` central-connection syntax not implemented; creates synthetic actors. Substantial parser+renderer feature, deferred.
+- **collections-participant** — correct after earlier @{type} fix.
+- **comments** — structurally correct.
+- **control-participant** — correct after earlier @{type} fix.
+- **critical-region-with-options** — all sections render correctly (label wraps to 2 tspans).
+- **critical-region-without-options** — same.
+- **database-participant** — correct after earlier @{type} fix.
+- **entity-codes-for-special-characters** — all messages render; HTML entity expansion (&#9829; → ♥) not implemented.
+- **entity-participant** — correct after earlier @{type} fix.
+- **explicit-participant-declaration** — structurally correct.
+- **external-alias-syntax** — structurally correct.
+- **external-alias-with-stereotypes** — alias labels now display via @{alias} fix.
+- **grouping-with-box** — second box label "Another Group" now renders correctly.
+- **inline-alias-syntax** — alias labels (Public API, Auth Service, User Database) now display.
+- **line-breaks-in-messages** — multi-line label handling working.
+- **line-breaks-in-participant-names** — same.
+- **loops** — structurally correct.
+- **message-arrow-types** — all 8 arrow types render with correct markers.
+- **nested-parallel-flows** — par frame rendering correct.
+- **note-spanning-participants** — note over multiple participants renders.
+- **parallel-flows** — par frame correct.
+- **queue-participant** — correct after earlier @{type} fix.
+- **sequence-numbers-with-autonumber** — sequence numbers render in circles.
+
+162 unit tests pass; no regressions.
+
