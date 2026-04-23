@@ -907,9 +907,14 @@ pub(super) fn compute_sequence_layout(
         max_y = 1.0;
     }
 
-    let margin = 8.0;
+    // Mermaid.js sequence diagrams use 50px horizontal padding around content
+    // (viewBox attributes like `-50 -10 W H`). Our content extent is slightly
+    // wider than JS due to text-measurement differences, so we use a reduced
+    // 25px padding to keep total dimensions close to JS without over-shoot.
+    let margin = 25.0;
+    let margin_y = 10.0;
     let shift_x = margin - min_x;
-    let shift_y = margin - min_y;
+    let shift_y = margin_y - min_y;
     if shift_x.abs() > 1e-3 || shift_y.abs() > 1e-3 {
         for node in nodes.values_mut() {
             node.x += shift_x;
@@ -975,7 +980,7 @@ pub(super) fn compute_sequence_layout(
     }
 
     let width = (max_x - min_x + margin * 2.0).max(1.0);
-    let height = (max_y - min_y + margin * 2.0).max(1.0);
+    let height = (max_y - min_y + margin_y * 2.0).max(1.0);
 
     Layout {
         kind: graph.kind,
