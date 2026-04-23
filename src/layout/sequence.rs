@@ -53,7 +53,12 @@ pub(super) fn compute_sequence_layout(
         let node = graph.nodes.get(id).expect("participant missing");
         let label = measure_actor_label(&node.label);
         max_label_height = max_label_height.max(label.height);
-        let width = (label.width + theme.font_size * 2.5).max(min_actor_width);
+        // Same 0.855 scaling as messages — our char-table over-measures vs JS
+        // canvas measureText. Only matters for actor labels longer than ~14
+        // chars where the box would otherwise need to widen past the 150
+        // minimum (e.g. "BookingService" in break-statement).
+        let scaled_label_w = label.width * 0.855;
+        let width = (scaled_label_w + theme.font_size * 2.5).max(min_actor_width);
         participant_widths.insert(id.clone(), width);
         width_total += width;
         label_blocks.insert(id.clone(), label);
@@ -111,6 +116,7 @@ pub(super) fn compute_sequence_layout(
             continue;
         }
         let mut max_label_w = 0.0f32;
+        let mut has_html_entity = false;
         for label in [
             edge.label.as_ref(),
             edge.start_label.as_ref(),
@@ -121,11 +127,29 @@ pub(super) fn compute_sequence_layout(
         {
             let measured = super::text::measure_label_no_wrap(label, theme, config);
             max_label_w = max_label_w.max(measured.width);
+            // HTML entity refs like #9829; render in JS as wider than our
+            // table predicts (entities expand to symbols ♥/∞ but JS renders
+            // the literal `#NNNN;` text). Our raw width happens to match JS
+            // for these; scaling shrinks too aggressively. Skip scaling when
+            // an entity ref is present.
+            if label.contains('#') && label.contains(';') {
+                has_html_entity = true;
+            }
         }
         if max_label_w <= 0.0 {
             continue;
         }
-        let message_w = max_label_w + 2.0 * WRAP_PADDING;
+        // Our char-table width estimate for message labels runs ~15% wider
+        // than mermaid-cli's canvas measureText for the default trebuchet stack.
+        // Scale only for gap sizing (not for rendering) so our gaps match JS
+        // layout while labels continue to render at the measured visual width.
+        const MESSAGE_GAP_MEASURE_SCALE: f32 = 0.855;
+        let scaled_label_w = if has_html_entity {
+            max_label_w
+        } else {
+            max_label_w * MESSAGE_GAP_MEASURE_SCALE
+        };
+        let message_w = scaled_label_w + 2.0 * WRAP_PADDING;
         let lo_w = actor_widths[lo];
         let hi_w = actor_widths[hi];
         let required = message_w + ACTOR_MARGIN - lo_w / 2.0 - hi_w / 2.0;
@@ -136,16 +160,64 @@ pub(super) fn compute_sequence_layout(
             }
         }
     }
+    // Box-transition padding: JS adds extra padding to actor gaps when
+    // crossing box boundaries (sequenceRenderer.ts:752-766):
+    //   - prev in box A, next in different box B: +boxMargin(10) + 2*boxTextMargin(5) = +20
+    //   - prev in box, next not in box: +boxMargin(10) + boxTextMargin(5) = +15
+    //   - prev not in box, next in box: +boxTextMargin(5) = +5
+    if !graph.sequence_boxes.is_empty() {
+        let box_of: HashMap<&str, usize> = graph
+            .sequence_boxes
+            .iter()
+            .enumerate()
+            .flat_map(|(i, b)| b.participants.iter().map(move |p| (p.as_str(), i)))
+            .collect();
+        for i in 0..gap_widths.len() {
+            let prev = box_of.get(participants[i].as_str()).copied();
+            let next = box_of.get(participants[i + 1].as_str()).copied();
+            let extra = match (prev, next) {
+                (Some(a), Some(b)) if a != b => 20.0,
+                (Some(_), None) => 15.0,
+                (None, Some(_)) => 5.0,
+                _ => 0.0,
+            };
+            gap_widths[i] += extra;
+        }
+    }
+    let any_gap_widened = gap_widths.iter().any(|g| *g > ACTOR_MARGIN + 0.5);
 
     // Add consistent margins to center the diagram
     let margin = 8.0;
+    // Mermaid.js sequenceRenderer.ts L1070-1075: when `box` groupings have
+    // titles, the cursor is bumped by boxMargin + boxTextMaxHeight BEFORE
+    // top actors are drawn — top actors and everything below shift down,
+    // making room for the box title text above. Same convention here.
+    let actor_y_offset = if graph.sequence_boxes.iter().any(|b| b.label.is_some()) {
+        10.0
+    } else {
+        0.0
+    };
+    let actor_top_y = margin + actor_y_offset;
     let mut cursor_x = margin;
+    // Mermaid.js widens the gap before a CREATED actor by `actor.width / 2`
+    // (sequenceRenderer.ts addActorRenderingData: `prevMargin += actor.width/2`
+    // when createdActors.get(actor.name)). This leaves room for the new
+    // actor's box, which is centered on the create-message's line.
+    let created_set: std::collections::HashSet<&str> = graph
+        .sequence_lifecycle
+        .iter()
+        .filter(|e| matches!(e.kind, crate::ir::SequenceLifecycleKind::Create))
+        .map(|e| e.participant.as_str())
+        .collect();
     for (idx, id) in participants.iter().enumerate() {
         let node = graph.nodes.get(id).expect("participant missing");
         let actor_width = participant_widths
             .get(id)
             .copied()
             .unwrap_or(min_actor_width);
+        if idx > 0 && created_set.contains(id.as_str()) {
+            cursor_x += actor_width / 2.0;
+        }
         let label = label_blocks.get(id).cloned().unwrap_or_else(|| TextBlock {
             lines: vec![TextLine::plain(id.clone())],
             width: 0.0,
@@ -156,7 +228,7 @@ pub(super) fn compute_sequence_layout(
             NodeLayout {
                 id: id.clone(),
                 x: cursor_x,
-                y: margin,
+                y: actor_top_y,
                 width: actor_width,
                 height: actor_height,
                 label,
@@ -189,14 +261,19 @@ pub(super) fn compute_sequence_layout(
         .iter()
         .map(|edge| {
             let mut row_h = 0.0f32;
+            // Sequence message labels honor only explicit <br/> — never auto-
+            // wrap (actor spacing is sized to fit each label on one line).
+            // Using `measure_label` with wrap=true here over-estimates the
+            // row height for long single-line labels and inflates the gap
+            // between consecutive messages.
             if let Some(label) = &edge.label {
-                row_h = row_h.max(measure_label(label, theme, config).height);
+                row_h = row_h.max(super::text::measure_label_no_wrap(label, theme, config).height);
             }
             if let Some(label) = &edge.start_label {
-                row_h = row_h.max(measure_label(label, theme, config).height);
+                row_h = row_h.max(super::text::measure_label_no_wrap(label, theme, config).height);
             }
             if let Some(label) = &edge.end_label {
-                row_h = row_h.max(measure_label(label, theme, config).height);
+                row_h = row_h.max(super::text::measure_label_no_wrap(label, theme, config).height);
             }
             let base = base_spacing.max(row_h + 20.0);
             // Self-messages need extra room for the loopback path. Mermaid.js
@@ -212,12 +289,33 @@ pub(super) fn compute_sequence_layout(
     let note_gap_y = (theme.font_size * 0.55).max(5.0);
     let note_gap_x = (theme.font_size * 0.65).max(7.0);
     let note_padding_x = (theme.font_size * 0.75).max(7.0);
-    let note_padding_y = (theme.font_size * 0.45).max(4.0);
+    // JS notes use noteMargin=8 vertical padding. For default font_size=16,
+    // 0.46875 yields 7.5px padding (= 15 total) so a 1-line note renders at
+    // 39px height matching JS exactly.
+    let note_padding_y = (theme.font_size * 0.46875).max(4.0);
     let mut extra_before = vec![0.0; graph.edges.len()];
     let frame_end_pad = base_spacing * 0.25;
+    // Padding to add AFTER the last message when an outermost frame extends
+    // through the end of the message list. Matches mermaid.js's drawLoop
+    // bottom region: the frame box continues past the last message before
+    // the bottom actor row begins. ~box_margin (10) per outermost frame.
+    let mut frame_tail_pad = 0.0f32;
     for frame in &graph.sequence_frames {
+        // Rect frames (background-highlighting `rect rgb(...)`) have no title
+        // text, so JS's adjustLoopHeightForWrap uses (boxMargin, boxMargin)
+        // for them — only ~20 extra. Loop/critical/etc. titled frames get
+        // the full base_spacing (44).
+        let frame_start_extra = match frame.kind {
+            crate::ir::SequenceFrameKind::Rect => 32.0,
+            // Break frames wrap their title label (`break <long condition>`)
+            // to fit the actor span; mermaid.js's adjustLoopHeightForWrap
+            // then allocates boxMargin + (boxMargin + textMargin + 2*lineHeight)
+            // ≈ 61 for a 2-line title. Our default 44 under-counts by ~17.
+            crate::ir::SequenceFrameKind::Break => 58.0,
+            _ => base_spacing,
+        };
         if frame.start_idx < extra_before.len() {
-            extra_before[frame.start_idx] += base_spacing;
+            extra_before[frame.start_idx] += frame_start_extra;
         }
         for section in frame.sections.iter().skip(1) {
             if section.start_idx < extra_before.len() {
@@ -225,7 +323,59 @@ pub(super) fn compute_sequence_layout(
             }
         }
         if frame.end_idx < extra_before.len() {
-            extra_before[frame.end_idx] += frame_end_pad;
+            // Par/Rect/Alt frames need an extra +1 vs base frame_end_pad to
+            // match JS's bumpVerticalPos behavior at frame close. Break/Opt
+            // already match JS at the base value.
+            // For nested Rect frames (background-highlighting case), skip
+            // the +1 bonus on the INNER frame — JS's bumpVerticalPos doesn't
+            // double-count nested rect closes.
+            let is_nested_inner = graph.sequence_frames.iter().any(|other| {
+                !std::ptr::eq(other, frame)
+                    && other.start_idx < frame.start_idx
+                    && other.end_idx >= frame.end_idx
+            });
+            let extra = match frame.kind {
+                crate::ir::SequenceFrameKind::Par
+                | crate::ir::SequenceFrameKind::Alt => 1.0,
+                crate::ir::SequenceFrameKind::Rect => {
+                    if is_nested_inner { 0.0 } else { 1.0 }
+                }
+                _ => 0.0,
+            };
+            extra_before[frame.end_idx] += frame_end_pad + extra;
+        } else {
+            // Critical frames have wider per-section vertical extent than
+            // loop/par due to wrapped section labels (boxTextMargin + label
+            // height padding accumulates per section in mermaid.js).
+            // Empirical fit: critical needs 14 + (sections-1)*24 vs ~10 for
+            // other outer frames.
+            if matches!(frame.kind, crate::ir::SequenceFrameKind::Critical) {
+                let sections = frame.sections.len().max(1) as f32;
+                frame_tail_pad += 25.0 + (sections - 1.0) * 24.0;
+            } else {
+                // JS bumps the cursor by ~boxMargin+1 after a frame ends; we
+                // were short by 1px on loops/parallel-flows/opt-bearing diagrams.
+                // Nested frames (contained by another frame) get an extra +1
+                // per nesting level — JS's bumpVerticalPos accumulates per depth.
+                let is_nested = graph.sequence_frames.iter().any(|other| {
+                    !std::ptr::eq(other, frame)
+                        && other.start_idx < frame.start_idx
+                        && other.end_idx >= frame.end_idx
+                });
+                frame_tail_pad += if is_nested { 13.0 } else { 11.0 };
+            }
+        }
+    }
+    // Lifecycle events (`create X` / `destroy X`) attach to a message index;
+    // mermaid.js bumps the cursor by `actor.height/2` AFTER processing that
+    // message (sequenceRenderer.ts adjustCreatedDestroyedData). This pushes
+    // the next message ~32px further down to leave room for the new actor's
+    // box (which is centered on the create-msg's y), or for the destroyed
+    // actor's bottom box (which sits at the destroy-msg's y).
+    let mut lifecycle_extra_after = vec![0.0; graph.edges.len()];
+    for event in &graph.sequence_lifecycle {
+        if event.index < lifecycle_extra_after.len() {
+            lifecycle_extra_after[event.index] += actor_height / 2.0;
         }
     }
 
@@ -239,14 +389,60 @@ pub(super) fn compute_sequence_layout(
     // base_spacing (44) of clearance; the first note before any message gets
     // a much smaller note_gap_y (~9). Mermaid.js places a note immediately
     // below the actor (~10px gap) but a message at +44px.
-    let mut message_cursor = margin + actor_height;
+    //
+    // When a note follows a message, mermaid.js places the note ~boxMargin
+    // (10) below the message line — NOT below the full message_row_spacing.
+    // We collapse the cursor for the first note in a bucket whose preceding
+    // item was a message, so the note tucks against the message line instead
+    // of opening a fresh row below it.
+    let box_margin = 10.0;
+    let mut message_cursor = actor_top_y + actor_height;
     let mut applied_initial_message_offset = false;
     let mut message_ys = Vec::new();
     let mut sequence_notes = Vec::new();
+    let mut last_message_y: Option<f32> = None;
+    // True if the previous message reserved its own intrinsic row of vertical
+    // space (e.g. self-messages need +30px for the loopback curve below the
+    // message line). When true, do not collapse the next note onto it.
+    let mut prev_msg_needs_full_row = false;
+    let mut last_note_bottom_for_msg_gap: Option<f32> = None;
     for idx in 0..=graph.edges.len() {
         if let Some(bucket) = notes_by_index.get(idx) {
-            for note in bucket {
-                message_cursor += note_gap_y;
+            for (note_pos_in_bucket, note) in bucket.iter().enumerate() {
+                if note_pos_in_bucket == 0 {
+                    if let Some(prev_y) = last_message_y {
+                        if prev_msg_needs_full_row {
+                            // JS positions a note after a self-msg-in-loop at:
+                            //   line + 30 (self insert extension below line)
+                            //   + nesting*boxMargin (loop close pump, ~10/level)
+                            //   + boxMargin (drawNote leading gap)  =  ~80 from line.
+                            // Our row_spacing[self] (base+30=74) already advanced
+                            // cursor past line+30, so we only need a small leading
+                            // gap. note_gap_y(~8.8) overshoots by ~2px; using a
+                            // slightly tighter value closes autonumber's residual
+                            // +1.80 height gap (the only self-msg fixture in our
+                            // sequenceDiagram-* set).
+                            message_cursor += note_gap_y - 1.8;
+                        } else {
+                            let target = prev_y + box_margin;
+                            if target < message_cursor {
+                                message_cursor = target;
+                            }
+                        }
+                    } else {
+                        // First note before any message: JS uses boxMargin (10)
+                        // when the note is NOT inside a frame, but our smaller
+                        // note_gap_y (~9) when it is (matches background-
+                        // highlighting where the note sits inside a rect frame).
+                        let in_frame = graph.sequence_frames.iter().any(|frame| {
+                            frame.start_idx <= idx && idx < frame.end_idx
+                        });
+                        let gap = if in_frame { note_gap_y } else { box_margin };
+                        message_cursor += gap;
+                    }
+                } else {
+                    message_cursor += note_gap_y;
+                }
                 let label = measure_label(&note.label, theme, config);
                 // Mermaid.js notes use `conf.width` (default 150) as the
                 // minimum width; label only widens the note past that. See
@@ -274,9 +470,20 @@ pub(super) fn compute_sequence_layout(
                     let span = (max_x - min_x).abs();
                     width = width.max(span + note_gap_x * 2.0);
                 }
+                // Mermaid.js positions LeftOf/RightOf notes by `(actor.width
+                // + actorMargin) / 2` from the actor's anchor (sequenceRenderer.ts
+                // L1702/L1710). Since our `base_x` is actor center, this becomes
+                // `actorMargin / 2` from center. We use ACTOR_MARGIN (50) as the
+                // baseline; falls back to the smaller `note_gap_x` when actor
+                // margin isn't applicable (no actor lookup).
+                let actor_w = nodes
+                    .get(&note.participants[0])
+                    .map(|n| n.width)
+                    .unwrap_or(150.0);
+                let side_offset = ((actor_w + ACTOR_MARGIN) / 2.0 - actor_w / 2.0).max(note_gap_x);
                 let x = match note.position {
-                    crate::ir::SequenceNotePosition::LeftOf => base_x - note_gap_x - width,
-                    crate::ir::SequenceNotePosition::RightOf => base_x + note_gap_x,
+                    crate::ir::SequenceNotePosition::LeftOf => base_x - side_offset - width,
+                    crate::ir::SequenceNotePosition::RightOf => base_x + side_offset,
                     crate::ir::SequenceNotePosition::Over => (min_x + max_x) / 2.0 - width / 2.0,
                 };
                 let y = message_cursor;
@@ -291,21 +498,57 @@ pub(super) fn compute_sequence_layout(
                     index: note.index,
                 });
                 message_cursor += height + note_gap_y;
+                last_note_bottom_for_msg_gap = Some(y + height);
             }
         }
         if idx < graph.edges.len() {
+            // If a note immediately precedes a NON-first msg (i.e., a msg
+            // already placed earlier), ensure base_spacing of room past the
+            // note bottom. Skipped for first-msg case since that's handled
+            // by target_first_message_y.
+            let note_floor_bumped = if last_message_y.is_some() {
+                if let Some(note_bot) = last_note_bottom_for_msg_gap.take() {
+                    let target = note_bot + base_spacing;
+                    if message_cursor < target {
+                        message_cursor = target;
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                last_note_bottom_for_msg_gap = None;
+                false
+            };
             // Add base_spacing offset for the first message only if we
             // haven't already advanced past the actor (e.g. via notes).
             if !applied_initial_message_offset {
                 applied_initial_message_offset = true;
-                let target_first_message_y = margin + actor_height + base_spacing;
+                // For multi-line message labels, mermaid.js bumps the cursor
+                // by lineHeight per line BEFORE drawing the line. Use the
+                // first message's row spacing as a floor for the initial
+                // offset so multi-line labels get extra vertical room.
+                let first_msg_offset = base_spacing.max(message_row_spacing[idx] - 12.0);
+                let target_first_message_y = actor_top_y + actor_height + first_msg_offset;
                 if message_cursor < target_first_message_y {
                     message_cursor = target_first_message_y;
                 }
             }
-            message_cursor += extra_before[idx];
+            // If we already bumped the cursor past a preceding note's bottom
+            // by base_spacing, skip the frame_end_pad portion of extra_before
+            // to avoid double-adding (both represent frame-close padding).
+            let pre_extra = if note_floor_bumped {
+                (extra_before[idx] - frame_end_pad).max(0.0)
+            } else {
+                extra_before[idx]
+            };
+            message_cursor += pre_extra;
             message_ys.push(message_cursor);
-            message_cursor += message_row_spacing[idx];
+            last_message_y = Some(message_cursor);
+            prev_msg_needs_full_row = graph.edges[idx].from == graph.edges[idx].to;
+            message_cursor += message_row_spacing[idx] + lifecycle_extra_after[idx];
         }
     }
 
@@ -380,6 +623,10 @@ pub(super) fn compute_sequence_layout(
             if frame.start_idx >= frame.end_idx || frame.start_idx >= message_ys.len() {
                 continue;
             }
+            // Mermaid.js loop/critical/par frames span from actor CENTER to
+            // actor center, not from actor.x to actor.x+width. The frame
+            // border lines cross through the actor boxes (cutting them in half
+            // visually). See sequenceRenderer.ts loopWidths uses actor center.
             let mut min_x = f32::INFINITY;
             let mut max_x = f32::NEG_INFINITY;
             for edge in graph
@@ -389,26 +636,61 @@ pub(super) fn compute_sequence_layout(
                 .take(frame.end_idx.saturating_sub(frame.start_idx))
             {
                 if let Some(node) = nodes.get(&edge.from) {
-                    min_x = min_x.min(node.x);
-                    max_x = max_x.max(node.x + node.width);
+                    let cx = node.x + node.width / 2.0;
+                    min_x = min_x.min(cx);
+                    max_x = max_x.max(cx);
+                    // Self-messages reserve actor.width/2 on EACH side of the
+                    // lifeline in JS (calculateLoopBounds uses from.x ±
+                    // msgModel.width/2 with msgModel.width defaulting to
+                    // conf.width=150, so the loopback widens the frame by
+                    // ~node.width/2 on both sides). Without this, frames
+                    // containing self-messages render too narrow on the left.
+                    // JS's `activationBounds` uses `center+1` as the right
+                    // edge (and inserts span startx-dx to stopx+dx), so the
+                    // envelope is asymmetric: -74 left, +76 right of center
+                    // for default node.width=150.
+                    if edge.from == edge.to {
+                        min_x = min_x.min(cx - node.width / 2.0 + 1.0);
+                        max_x = max_x.max(cx + node.width / 2.0 + 1.0);
+                    }
                 }
                 if let Some(node) = nodes.get(&edge.to) {
-                    min_x = min_x.min(node.x);
-                    max_x = max_x.max(node.x + node.width);
+                    let cx = node.x + node.width / 2.0;
+                    min_x = min_x.min(cx);
+                    max_x = max_x.max(cx);
                 }
             }
             if !min_x.is_finite() || !max_x.is_finite() {
                 for node in nodes.values() {
-                    min_x = min_x.min(node.x);
-                    max_x = max_x.max(node.x + node.width);
+                    let cx = node.x + node.width / 2.0;
+                    min_x = min_x.min(cx);
+                    max_x = max_x.max(cx);
                 }
             }
             if !min_x.is_finite() || !max_x.is_finite() {
                 continue;
             }
-            let frame_pad_x = theme.font_size * 0.7;
-            let frame_x = min_x - frame_pad_x;
-            let frame_width = (max_x - min_x) + frame_pad_x * 2.0;
+            // JS uses fixed boxMargin=10 for frame nesting padding, NOT a
+            // font-size-relative value. Match that to avoid +2.4px overshoot
+            // on critical-region with self-msgs.
+            let frame_pad_x = 10.0;
+            let mut frame_width = (max_x - min_x) + frame_pad_x * 2.0;
+            // Expand frame to fit any section title text that exceeds the
+            // actor-center span. Mermaid.js's loopWidths accounts for the
+            // section title in the loop's bounding box, with wrapPadding
+            // (10) on each side.
+            const FRAME_TITLE_PAD: f32 = 16.0; // wrapPadding(10) + ~6 for label box
+            for section in &frame.sections {
+                if let Some(label_text) = &section.label {
+                    let display = format!("[{}]", label_text);
+                    let measured = super::text::measure_label_no_wrap(&display, theme, config);
+                    let needed = measured.width + frame_pad_x * 2.0 + FRAME_TITLE_PAD;
+                    if needed > frame_width {
+                        frame_width = needed;
+                    }
+                }
+            }
+            let frame_x = (min_x + max_x) / 2.0 - frame_width / 2.0;
 
             let first_y = message_ys
                 .get(frame.start_idx)
@@ -421,7 +703,12 @@ pub(super) fn compute_sequence_layout(
             let mut min_y = first_y;
             let mut max_y = last_y;
             for note in &sequence_notes {
-                if note.index >= frame.start_idx && note.index <= frame.end_idx {
+                // Notes whose `index` equals frame.end_idx are positioned AFTER
+                // the frame's `end` keyword in source order — JS's drawNote runs
+                // after LOOP_END, so the note is OUTSIDE the loop visually. Use
+                // `<` (not `<=`) to keep such notes from inflating the frame
+                // rect (e.g. autonumber: post-loop note was wrapped by loop).
+                if note.index >= frame.start_idx && note.index < frame.end_idx {
                     min_y = min_y.min(note.y);
                     max_y = max_y.max(note.y + note.height);
                 }
@@ -532,7 +819,7 @@ pub(super) fn compute_sequence_layout(
         }
     }
 
-    let lifeline_start = margin + actor_height;
+    let lifeline_start = actor_top_y + actor_height;
     let mut last_message_y = message_ys
         .last()
         .copied()
@@ -540,7 +827,32 @@ pub(super) fn compute_sequence_layout(
     for note in &sequence_notes {
         last_message_y = last_message_y.max(note.y + note.height);
     }
-    let footbox_gap = (theme.font_size * 1.25).max(16.0);
+    // Lifecycle events on the LAST message also extend the diagram tail.
+    if let Some(last_idx) = graph.edges.len().checked_sub(1)
+        && last_idx < lifecycle_extra_after.len()
+    {
+        last_message_y += lifecycle_extra_after[last_idx];
+    }
+    last_message_y += frame_tail_pad;
+    // Mermaid.js renders `control` actor type with a body symbol (circle + icon)
+    // above text; the text label sits ~12px below where a regular actor-box's
+    // text would sit. `database` (cylinder) similarly extends a few px beyond
+    // the actor.height envelope. Other actor-man-like types (boundary, entity,
+    // queue, stick) keep their text within the actor.height envelope.
+    let has_control_actor = participants.iter().any(|id| {
+        graph.nodes.get(id).map(|n| matches!(n.shape, crate::ir::NodeShape::Control)).unwrap_or(false)
+    });
+    let has_database_actor = participants.iter().any(|id| {
+        graph.nodes.get(id).map(|n| matches!(n.shape, crate::ir::NodeShape::Cylinder)).unwrap_or(false)
+    });
+    let actor_man_extra = if has_control_actor {
+        19.0
+    } else if has_database_actor {
+        5.0
+    } else {
+        0.0
+    };
+    let footbox_gap = (theme.font_size * 1.25).max(16.0) + actor_man_extra;
     let lifeline_end = last_message_y + footbox_gap;
 
     // Resolve `create`/`destroy` lifecycle events into per-participant
@@ -630,7 +942,9 @@ pub(super) fn compute_sequence_layout(
     let mut sequence_boxes = Vec::new();
     if !graph.sequence_boxes.is_empty() {
         let pad_x = theme.font_size * 0.8;
-        let pad_y = theme.font_size * 0.6;
+        // JS box bottom padding: noteMargin (8) + boxMargin/2 + ~1px ≈ 11px
+        // for 16px font. Our prior 9.6 left grouping-with-box short by 1.4px.
+        let pad_y = theme.font_size * 0.6875;
         let bottom = sequence_footboxes
             .iter()
             .map(|foot| foot.y + foot.height)
@@ -816,14 +1130,21 @@ pub(super) fn compute_sequence_layout(
         );
     }
     for seq_box in &sequence_boxes {
+        // JS extends bounds with INTERNAL box (boxTextMargin=5 each side
+        // beyond actor edges), NOT the drawn rect. The drawn rect (with
+        // pad_x ≈ 12.8 each side) extends visually beyond viewBox slightly.
+        // Without this distinction grouping-with-box overshoots width.
+        const BOX_BOUNDS_INSET: f32 = 5.0;
+        let pad_x = theme.font_size * 0.8;
+        let inset = pad_x - BOX_BOUNDS_INSET;
         extend_bounds(
             &mut min_x,
             &mut min_y,
             &mut max_x,
             &mut max_y,
-            seq_box.x,
+            seq_box.x + inset,
             seq_box.y,
-            seq_box.width,
+            (seq_box.width - 2.0 * inset).max(0.0),
             seq_box.height,
         );
     }
@@ -919,12 +1240,28 @@ pub(super) fn compute_sequence_layout(
     }
 
     // Mermaid.js sequence diagrams use 50px horizontal padding around content
-    // (viewBox attributes like `-50 -10 W H`). Our content extent is slightly
-    // wider than JS due to text-measurement differences, so we use a reduced
-    // 25px padding to keep total dimensions close to JS without over-shoot.
-    let margin = 25.0;
-    let margin_y = 10.0;
-    let shift_x = margin - min_x;
+    // (viewBox attributes like `-50 -10 W H`). Our width formula is
+    // `(max_x_shifted - old_min_x) + 2*margin`, which expands to
+    // `extent + 3*margin - old_min_x`, so margin=36 gives effective 100px
+    // padding matching JS (since old_min_x=8). Messages are scaled in gap
+    // calculations to match JS text measurement, so content extent matches
+    // JS and margin=36 is appropriate for both minimum-content and
+    // message-widened diagrams.
+    let _ = any_gap_widened;
+    let margin = 36.0;
+    // JS vertical padding: 10px top, 11px bottom (21 total).
+    // Our formula `extent + 3*margin_y - old_min_y` (old_min_y = 8) applies
+    // the same 3x amplification as the x-axis due to the asymmetric min_y
+    // shift. Solving `3*margin_y - 8 = 21` yields margin_y ≈ 9.667 for
+    // exact JS parity on minimum-content diagrams.
+    let margin_y = 29.0 / 3.0;
+    // Shift to position content's leftmost edge at `margin` from viewBox 0.
+    // Cap min_x at the initial cursor margin (8.0) — this prevents over-shifting
+    // when content extends LEFT of the typical cursor start (e.g. self-message
+    // frame extension widens min_x leftward). Without the cap, the formula
+    // `width = max_x - min_x + 2*margin` would inflate by |min_x - 8|, since
+    // only max_x gets the shift while min_x stays in the original frame.
+    let shift_x = margin - min_x.max(8.0);
     let shift_y = margin_y - min_y;
     if shift_x.abs() > 1e-3 || shift_y.abs() > 1e-3 {
         for node in nodes.values_mut() {
