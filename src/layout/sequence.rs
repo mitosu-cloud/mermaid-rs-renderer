@@ -68,27 +68,32 @@ pub(super) fn compute_sequence_layout(
     } else {
         min_actor_width
     };
-    let mut default_actor_gap = (theme.font_size * 5.0).max(50.0);
-    if avg_actor_width > 200.0 {
-        default_actor_gap *= 0.85;
-    }
-    if participant_count >= 7 {
-        default_actor_gap *= 0.72;
-    } else if participant_count >= 5 {
-        default_actor_gap *= 0.8;
-    }
+    // Mermaid.js sequence-renderer constants (sequenceRenderer.ts:1631-1639,
+    // schemas/config.schema.yaml: actorMargin=50, wrapPadding=10).
+    // Per-pair gap = max(messageWidth + actorMargin - actor.w/2 - next.w/2,
+    //                    actorMargin)
+    // where messageWidth = label_width + 2*wrapPadding.
+    // Only ADJACENT-actor messages contribute; multi-span messages overflow
+    // visually (matches mermaid.js behavior).
+    const ACTOR_MARGIN: f32 = 50.0;
+    const WRAP_PADDING: f32 = 10.0;
+    let _ = avg_actor_width; // formula is per-pair, average no longer needed
 
-    // Pre-compute the gap required between each adjacent actor pair so that
-    // every message label between any two actors fits on a single line.
-    // Each message contributes a per-gap requirement of label_width /
-    // gaps_spanned + actor_gap_padding; gaps_spanned is at least 1.
     let actor_index: HashMap<&str, usize> = participants
         .iter()
         .enumerate()
         .map(|(i, id)| (id.as_str(), i))
         .collect();
-    let mut gap_widths: Vec<f32> = vec![default_actor_gap; participant_count.saturating_sub(1)];
-    let label_padding = theme.font_size * 1.0; // mirrors mermaid.js wrapPadding-ish
+    let actor_widths: Vec<f32> = participants
+        .iter()
+        .map(|id| {
+            participant_widths
+                .get(id)
+                .copied()
+                .unwrap_or(min_actor_width)
+        })
+        .collect();
+    let mut gap_widths: Vec<f32> = vec![ACTOR_MARGIN; participant_count.saturating_sub(1)];
     for edge in &graph.edges {
         let Some(&from_idx) = actor_index.get(edge.from.as_str()) else {
             continue;
@@ -101,6 +106,10 @@ pub(super) fn compute_sequence_layout(
         }
         let lo = from_idx.min(to_idx);
         let hi = from_idx.max(to_idx);
+        // Only adjacent-pair messages widen a gap (mermaid.js convention).
+        if hi - lo != 1 {
+            continue;
+        }
         let mut max_label_w = 0.0f32;
         for label in [
             edge.label.as_ref(),
@@ -116,13 +125,14 @@ pub(super) fn compute_sequence_layout(
         if max_label_w <= 0.0 {
             continue;
         }
-        let spans = (hi - lo) as f32;
-        let required_per_gap = (max_label_w + label_padding * 2.0) / spans;
-        for g in lo..hi {
-            if let Some(slot) = gap_widths.get_mut(g) {
-                if *slot < required_per_gap {
-                    *slot = required_per_gap;
-                }
+        let message_w = max_label_w + 2.0 * WRAP_PADDING;
+        let lo_w = actor_widths[lo];
+        let hi_w = actor_widths[hi];
+        let required = message_w + ACTOR_MARGIN - lo_w / 2.0 - hi_w / 2.0;
+        let required = required.max(ACTOR_MARGIN);
+        if let Some(slot) = gap_widths.get_mut(lo) {
+            if *slot < required {
+                *slot = required;
             }
         }
     }
