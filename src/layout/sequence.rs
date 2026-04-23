@@ -198,9 +198,15 @@ pub(super) fn compute_sequence_layout(
             if let Some(label) = &edge.end_label {
                 row_h = row_h.max(measure_label(label, theme, config).height);
             }
-            // Per-message advance: max(default, label_height + boxMargin*2).
-            // For 1-line labels (h=24) this gives max(44, 24+20) = 44.
-            base_spacing.max(row_h + 20.0)
+            let base = base_spacing.max(row_h + 20.0);
+            // Self-messages need extra room for the loopback path. Mermaid.js
+            // adds ~30px (sequenceRenderer.ts boundMessage: `totalOffset += 30`
+            // when startx === stopx).
+            if edge.from == edge.to {
+                base + 30.0
+            } else {
+                base
+            }
         })
         .collect();
     let note_gap_y = (theme.font_size * 0.55).max(5.0);

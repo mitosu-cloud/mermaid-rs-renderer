@@ -429,3 +429,20 @@ Remaining gap is the JS layout positioning notes overlapping the actor row
 (y=75-114) vs ours below actor (y=125-164) — different layout strategy,
 substantial restructure to match.
 
+
+## Visual parity pass — self-message extra spacing — 2026-04-23T04:55:09Z
+
+Self-messages (`X->>X: ...`) now get +30px of vertical room for the
+loopback rendering, matching mermaid.js's `totalOffset += 30` when
+`startx === stopx` (sequenceRenderer.ts:431). Affects critical-region-*
+and any fixture using self-messages.
+
+**Aggregate parity now (across 36 sequenceDiagram fixtures):**
+- Average width offset from JS:  16.9% (down from 30%+)
+- Average height offset from JS: 6.0% (essentially matches)
+
+Width residual is dominated by text-width measurement differences between
+our Trebuchet MS metrics and mermaid.js's canvas-based
+`utils.calculateTextDimensions` — closing this would require switching
+to a measurement library that matches D3's text measurement.
+
