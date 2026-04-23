@@ -240,7 +240,10 @@ pub(super) fn compute_sequence_layout(
             for note in bucket {
                 message_cursor += note_gap_y;
                 let label = measure_label(&note.label, theme, config);
-                let mut width = label.width + note_padding_x * 2.0;
+                // Mermaid.js notes use `conf.width` (default 150) as the
+                // minimum width; label only widens the note past that. See
+                // sequenceRenderer.ts: `rect.width = noteModel.width || conf.width`.
+                let mut width = (label.width + note_padding_x * 2.0).max(150.0);
                 let height = label.height + note_padding_y * 2.0;
                 let mut lifeline_xs = note
                     .participants
