@@ -1625,3 +1625,26 @@ The residuals come from per-character glyph metric differences (e.g., 'B' vs 'J'
 
 168 tests pass. State stable: w=0.09%, h=0.00%, 35/36 exact h, 17/36 exact w.
 Cron `0eab4fab` continues firing every 5 minutes.
+
+## sequenceDiagram-* — Pass: integer rounding for text widths — 2026-04-23T20:05:00Z
+
+**Insight:** 9 fixtures all showed *identical* width shortfall of 0.15466px (rs=483.84534 vs js=484), driven by the shared message string "Hello John, how are you?". Not per-glyph noise — a deterministic computation. Tracing the JS code path: `mermaid/packages/mermaid/src/utils.ts:731` rounds text dimensions via `dim.width = Math.round(Math.max(dim.width, bBox.width))` in `calculateTextDimensions`. Our `measure_label*` returns the raw float from the char-table; the 0.855 sequence-message scale was applied without rounding, leaving fractional residuals that flow through to actor-margin → lifeline gap → viewBox width.
+
+**Change:** `src/layout/sequence.rs`
+- Line 60: `let scaled_label_w = (label.width * 0.855).round();` (actor label width sizing)
+- Line 146-151: `(max_label_w * MESSAGE_GAP_MEASURE_SCALE).round()` (message gap measure)
+
+Mirrors JS's `Math.round(bBox.width)` integer-quantization. Confined to sequence layout — no impact on other diagram types.
+
+**Aggregate before:** 17/36 exact W, 35/36 exact H, avg |dw|=0.09%
+**Aggregate after:** 28/36 exact W (+11), 35/36 exact H, avg |dw|=0.05%
+
+**Per-fixture wins (newly exact-W):**
+- activation-explicit, activation-shorthand, basic-sequence-diagram, comments, external-alias-syntax, loops, note-spanning-participants, sequence-numbers-with-autonumber, stacked-activations (the 9 -0.15 fixtures)
+- break-statement (was -0.04 → 0)
+- collections-participant (was +0.17 → 0)
+
+**Remaining residuals (per-glyph measurement noise, |dw| ≤ 4):**
+actor-creation-and-destruction (-3), alt-and-opt-paths (-3), background-highlighting (-3, also h=-0.20), boundary-participant (-1), entity-codes-for-special-characters (-2), grouping-with-box (-1), message-arrow-types (-4), nested-parallel-flows (+1)
+
+168 tests pass.

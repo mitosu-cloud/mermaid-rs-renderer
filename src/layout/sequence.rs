@@ -56,8 +56,9 @@ pub(super) fn compute_sequence_layout(
         // Same 0.855 scaling as messages — our char-table over-measures vs JS
         // canvas measureText. Only matters for actor labels longer than ~14
         // chars where the box would otherwise need to widen past the 150
-        // minimum (e.g. "BookingService" in break-statement).
-        let scaled_label_w = label.width * 0.855;
+        // minimum (e.g. "BookingService" in break-statement). Round to
+        // integer to mirror JS `Math.round(bBox.width)` (mermaid utils.ts:731).
+        let scaled_label_w = (label.width * 0.855).round();
         let width = (scaled_label_w + theme.font_size * 2.5).max(min_actor_width);
         participant_widths.insert(id.clone(), width);
         width_total += width;
@@ -143,11 +144,13 @@ pub(super) fn compute_sequence_layout(
         // than mermaid-cli's canvas measureText for the default trebuchet stack.
         // Scale only for gap sizing (not for rendering) so our gaps match JS
         // layout while labels continue to render at the measured visual width.
+        // Round to integer to mirror JS `Math.round(bBox.width)` in
+        // mermaid utils.ts:731 (calculateTextDimensions).
         const MESSAGE_GAP_MEASURE_SCALE: f32 = 0.855;
         let scaled_label_w = if has_html_entity {
-            max_label_w
+            max_label_w.round()
         } else {
-            max_label_w * MESSAGE_GAP_MEASURE_SCALE
+            (max_label_w * MESSAGE_GAP_MEASURE_SCALE).round()
         };
         let message_w = scaled_label_w + 2.0 * WRAP_PADDING;
         let lo_w = actor_widths[lo];
