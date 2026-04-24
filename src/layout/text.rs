@@ -19,6 +19,73 @@ static BR_TAG_RE: LazyLock<Regex> =
             .unwrap()
     });
 
+/// Mermaid entity-code references: `#NNNN;` (decimal) or `#name;` (named).
+static MERMAID_ENTITY_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"#([a-zA-Z]+|\d+);").unwrap());
+
+/// Common HTML named entities used in mermaid `#name;` syntax.
+fn named_entity(name: &str) -> Option<char> {
+    Some(match name {
+        "infin" => '∞',
+        "amp" => '&',
+        "lt" => '<',
+        "gt" => '>',
+        "quot" => '"',
+        "apos" => '\'',
+        "nbsp" => '\u{00A0}',
+        "copy" => '©',
+        "reg" => '®',
+        "trade" => '™',
+        "deg" => '°',
+        "plusmn" => '±',
+        "times" => '×',
+        "divide" => '÷',
+        "larr" => '←',
+        "uarr" => '↑',
+        "rarr" => '→',
+        "darr" => '↓',
+        "harr" => '↔',
+        "lArr" => '⇐',
+        "uArr" => '⇑',
+        "rArr" => '⇒',
+        "dArr" => '⇓',
+        "hellip" => '…',
+        "mdash" => '—',
+        "ndash" => '–',
+        "bull" => '•',
+        "middot" => '·',
+        "check" => '✓',
+        "cross" => '✗',
+        "heart" => '♥',
+        "spades" => '♠',
+        "clubs" => '♣',
+        "diams" => '♦',
+        _ => return None,
+    })
+}
+
+/// Decode mermaid entity codes (`#NNNN;` decimal and `#name;` named) into
+/// actual unicode characters. Mirrors mermaid.js behavior.
+pub(super) fn decode_mermaid_entities(text: &str) -> String {
+    MERMAID_ENTITY_RE
+        .replace_all(text, |caps: &regex::Captures| {
+            let token = &caps[1];
+            // Numeric: parse as u32 codepoint
+            if let Ok(n) = token.parse::<u32>() {
+                if let Some(c) = char::from_u32(n) {
+                    return c.to_string();
+                }
+            }
+            // Named entity lookup
+            if let Some(c) = named_entity(token) {
+                return c.to_string();
+            }
+            // Unknown — leave the original text intact
+            caps[0].to_string()
+        })
+        .into_owned()
+}
+
 /// Check whether a label string contains HTML formatting tags (not just `<br>`).
 pub(super) fn has_html_formatting(text: &str) -> bool {
     // Quick pre-check before hitting the regex.
@@ -52,6 +119,8 @@ pub(super) fn normalize_html_label(text: &str) -> String {
     }
     // Strip any remaining HTML tags.
     s = HTML_TAG_RE.replace_all(&s, "").into_owned();
+    // Decode mermaid entity codes (#NNNN; / #name;) to unicode characters.
+    s = decode_mermaid_entities(&s);
     s
 }
 
@@ -73,6 +142,10 @@ pub(super) fn measure_label_no_wrap(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> TextBlock {
+    // Decode mermaid entity codes first (#NNNN;, #name;) so plain-text
+    // labels also benefit from the conversion (not just HTML-formatted ones).
+    let decoded = decode_mermaid_entities(text);
+    let text = decoded.as_str();
     if has_html_formatting(text) {
         // The HTML/markdown path already produces one line per <br/> and does
         // its own character handling; no extra normalization needed.
@@ -90,6 +163,9 @@ pub(super) fn measure_label_no_wrap(
 }
 
 pub(super) fn measure_label(text: &str, theme: &Theme, config: &LayoutConfig) -> TextBlock {
+    // Decode mermaid entity codes for both HTML-formatted and plain labels.
+    let decoded = decode_mermaid_entities(text);
+    let text = decoded.as_str();
     // Intercept HTML-formatted labels and route them through the
     // markdown measurement path so <b>, <i>, <br/> etc. are honoured.
     if has_html_formatting(text) {

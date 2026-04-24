@@ -132,6 +132,24 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let node = layout.nodes.values().next();
             let (min_x, min_y) = node.map(|n| (n.x, n.y)).unwrap_or((0.0, 0.0));
             (ish.width, ish.height, min_x, min_y, ish.width, ish.height)
+        } else if let DiagramData::Sequence(seq) = &layout.diagram {
+            let width = layout.width.max(1.0);
+            let height = layout.height.max(1.0);
+            // Sequence frames (critical/loop/alt/opt) and their labelBox
+            // polygons can extend left of x=0. Push viewBox-x negative so the
+            // frame's left border isn't clipped (mirrors mermaid JS, which
+            // sets a negative viewBox-x for the same reason).
+            let min_frame_x = seq.frames.iter()
+                .map(|f| f.x)
+                .fold(0.0_f32, |acc, x| acc.min(x));
+            if min_frame_x < 0.0 {
+                let pad = 8.0_f32;
+                let viewbox_x = min_frame_x - pad;
+                let viewbox_width = (width - viewbox_x).max(1.0);
+                (viewbox_width, height, viewbox_x, 0.0, viewbox_width, height)
+            } else {
+                (width, height, 0.0, 0.0, width, height)
+            }
         } else {
             let width = layout.width.max(1.0);
             let height = layout.height.max(1.0);
@@ -622,17 +640,18 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 seq_box.x, seq_box.y, seq_box.width, seq_box.height, stroke
             ));
             if let Some(label) = seq_box.label.as_ref() {
-                let pad_x = theme.font_size * 0.8;
-                let pad_y = theme.font_size * 0.9;
-                let label_x = seq_box.x + pad_x;
-                let label_y = seq_box.y + pad_y + label.height / 2.0;
+                // Center the box title horizontally above the actor row,
+                // matching mermaid.js convention. The vertical offset places
+                // the label center in the gap reserved by `actor_y_offset`.
+                let label_x = seq_box.x + seq_box.width / 2.0;
+                let label_y = seq_box.y + theme.font_size * 0.85;
                 svg.push_str(&text_block_svg_anchor(
                     label_x,
                     label_y,
                     label,
                     theme,
                     config,
-                    "start",
+                    "middle",
                     Some(theme.primary_text_color.as_str()),
                 ));
             }
@@ -711,34 +730,31 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         ));
     }
 
-    // X-cross markers for `destroy`d participants. Draw two crossing strokes
-    // centered on the lifeline at the destroy y. Length scales with font.
-    for &(x, y) in seq_data
-        .map(|s| s.destroy_markers.as_slice())
-        .unwrap_or_default()
-    {
-        let r = (theme.font_size * 0.5).max(8.0);
-        let stroke = theme.primary_text_color.as_str();
-        svg.push_str(&format!(
-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"2\"/>",
-            x - r,
-            y - r,
-            x + r,
-            y + r
-        ));
-        svg.push_str(&format!(
-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"2\"/>",
-            x - r,
-            y + r,
-            x + r,
-            y - r
-        ));
-    }
+    // Destroyed actors are indicated by:
+    //   1. The `crosshead` (cross-seq-N) marker on the destroy message's
+    //      arrow tip — already emitted via marker-end on the edge.
+    //   2. The actor's footer rect repositioned to the destroy Y instead of
+    //      the diagram bottom.
+    // mermaid.js does NOT draw a standalone X-cross on the lifeline; doing so
+    // here would visibly overlap the footer rect's top border. Keep
+    // `destroy_markers` in the layout for any future renderer that wants it,
+    // but skip rendering them here.
+    let _unused_destroy_markers = seq_data.map(|s| s.destroy_markers.as_slice());
 
-    for activation in seq_data
+    let mut activations_sorted: Vec<_> = seq_data
         .map(|s| s.activations.as_slice())
         .unwrap_or_default()
-    {
+        .iter()
+        .collect();
+    // Render larger (outer) activations FIRST so smaller (inner) stacked
+    // activations layer on top and remain visible. Otherwise outer rects
+    // would cover inner ones, hiding the stack.
+    activations_sorted.sort_by(|a, b| {
+        b.height
+            .partial_cmp(&a.height)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    for activation in activations_sorted {
         svg.push_str(&format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
             activation.x,
@@ -753,20 +769,15 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     for note in seq_data.map(|s| s.notes.as_slice()).unwrap_or_default() {
         let fill = theme.sequence_note_fill.as_str();
         let stroke = theme.sequence_note_border.as_str();
-        let fold = (theme.font_size * 0.8)
-            .max(8.0)
-            .min(note.width.min(note.height) * 0.3);
-        let x = note.x;
-        let y = note.y;
-        let x2 = note.x + note.width;
-        let y2 = note.y + note.height;
-        let fold_x = x2 - fold;
-        let fold_y = y + fold;
+        // Sequence notes are plain rectangles in mermaid.js (yellow with
+        // dark border). State/class notes use a folded-corner path; sequence
+        // notes do not.
         svg.push_str(&format!(
-            "<path d=\"M {x:.2} {y:.2} L {fold_x:.2} {y:.2} L {x2:.2} {fold_y:.2} L {x2:.2} {y2:.2} L {x:.2} {y2:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.1\"/>"
-        ));
-        svg.push_str(&format!(
-            "<polyline points=\"{fold_x:.2},{y:.2} {fold_x:.2},{fold_y:.2} {x2:.2},{fold_y:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>"
+            "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1\"/>",
+            x = note.x,
+            y = note.y,
+            w = note.width,
+            h = note.height,
         ));
         let center_x = note.x + note.width / 2.0;
         let center_y = note.y + note.height / 2.0;
@@ -6417,6 +6428,11 @@ fn render_sequence_actor_shape(
         || node.id.starts_with("__end_");
 
     match node.shape {
+        // mermaid.js renders `actor` as a stick figure. `boundary`,
+        // `control`, and `entity` each have their own UML glyphs and
+        // are handled in dedicated arms below. Queue/Collections also
+        // get their own arms; `database` falls through to the cylinder
+        // arm.
         NodeShape::StickFigure => {
             // Draw a stick figure above the label.
             let cx = node.x + node.width / 2.0;
@@ -6462,154 +6478,195 @@ fn render_sequence_actor_shape(
             }
         }
         NodeShape::Boundary => {
-            // Boundary: a rectangle with a horizontal line separating the label from a top bar.
+            // UML boundary glyph: vertical bar | + horizontal connector — + circle O.
+            // Geometry mirrors mermaid JS drawActorTypeBoundary: torso line at
+            // y=12 from cx-radius*2.5 to cx-15, vertical arms at cx-radius*2.5
+            // (y=2..22), circle at cx with r=22.
+            let cx = node.x + node.width / 2.0;
+            let radius = 22.0_f32;
+            let glyph_y = node.y + 12.0;
+            let bar_x = cx - radius * 2.5;
+            let stroke = &theme.sequence_actor_border;
+            // Vertical bar (left)
+            svg.push_str(&format!(
+                "<line x1=\"{bar_x:.2}\" y1=\"{y1:.2}\" x2=\"{bar_x:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"2\"/>",
+                y1 = glyph_y - 10.0, y2 = glyph_y + 10.0
+            ));
+            // Horizontal connector
+            svg.push_str(&format!(
+                "<line x1=\"{x1:.2}\" y1=\"{glyph_y:.2}\" x2=\"{x2:.2}\" y2=\"{glyph_y:.2}\" stroke=\"{stroke}\" stroke-width=\"2\"/>",
+                x1 = bar_x, x2 = cx - 15.0
+            ));
+            // Circle (right)
+            svg.push_str(&format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{glyph_y:.2}\" r=\"{radius:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"2\"/>"
+            ));
+            if !hide_label {
+                let label_y = glyph_y + radius + 16.0;
+                svg.push_str(&text_block_svg(
+                    cx, label_y, &node.label, theme, config, false,
+                    node.style.text_color.as_deref(),
+                ));
+            }
+        }
+        NodeShape::Control => {
+            // UML control glyph: filled circle (with a tiny arrow marker
+            // at the top in JS — rendered here as just the circle since the
+            // marker is zero-length and visually subtle). Mirrors mermaid JS
+            // drawActorTypeControl: circle at (cx, actorY+32, r=22) with
+            // stroke-width 1.2.
+            let cx = node.x + node.width / 2.0;
+            let radius = 22.0_f32;
+            let cy = node.y + 32.0;
+            let stroke = &theme.sequence_actor_border;
+            let fill = &theme.sequence_actor_fill;
+            svg.push_str(&format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{radius:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.2\"/>"
+            ));
+            if !hide_label {
+                let label_y = cy + radius + 12.0;
+                svg.push_str(&text_block_svg(
+                    cx, label_y, &node.label, theme, config, false,
+                    node.style.text_color.as_deref(),
+                ));
+            }
+        }
+        NodeShape::Entity => {
+            // UML entity glyph: circle with a horizontal underline below.
+            // Mirrors mermaid JS drawActorTypeEntity: circle at
+            // (cx, actorY+25, r=22) and a 2-px stroke line at y=cy+r from
+            // x-r to x+r.
+            let cx = node.x + node.width / 2.0;
+            let radius = 22.0_f32;
+            let cy = node.y + 25.0;
+            let stroke = &theme.sequence_actor_border;
+            let fill = &theme.sequence_actor_fill;
+            svg.push_str(&format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{radius:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.2\"/>"
+            ));
+            let underline_y = cy + radius;
+            svg.push_str(&format!(
+                "<line x1=\"{x1:.2}\" y1=\"{underline_y:.2}\" x2=\"{x2:.2}\" y2=\"{underline_y:.2}\" stroke=\"{stroke}\" stroke-width=\"2\"/>",
+                x1 = cx - radius, x2 = cx + radius
+            ));
+            if !hide_label {
+                let label_y = underline_y + 12.0;
+                svg.push_str(&text_block_svg(
+                    cx, label_y, &node.label, theme, config, false,
+                    node.style.text_color.as_deref(),
+                ));
+            }
+        }
+        NodeShape::Collections => {
+            // Collections: stacked-papers look — two offset rects.
+            // JS draws a primary rect plus a back rect shifted by (-6, +6) so
+            // the back rect peeks out at the bottom-left corner.
             let x = node.x;
             let y = node.y;
             let w = node.width;
             let h = node.height;
-            let bar_h = 4.0;
+            // Primary rect drawn first.
             svg.push_str(&format!(
-                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{bar_h:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
                 fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
             ));
+            // Back rect on top, shifted down-left — matches JS draw order so
+            // the offset rect's left/bottom edges are visible as a "second
+            // paper" silhouette.
             svg.push_str(&format!(
-                "<rect x=\"{x:.2}\" y=\"{y2:.2}\" width=\"{w:.2}\" height=\"{h2:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                y2 = y + bar_h + 2.0, h2 = h - bar_h - 2.0,
+                "<rect x=\"{xb:.2}\" y=\"{yb:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                xb = x - 6.0, yb = y + 6.0,
                 fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
             ));
             if !hide_label {
                 let cx = x + w / 2.0;
-                let cy = y + (h + bar_h + 2.0) / 2.0;
-                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
-            }
-        }
-        NodeShape::Control => {
-            // Control: a circle with an arrow/chevron on top.
-            let cx = node.x + node.width / 2.0;
-            let cy = node.y + 16.0;
-            let r = 12.0;
-            svg.push_str(&format!(
-                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-            ));
-            // Small chevron on top
-            svg.push_str(&format!(
-                "<path d=\"M {x1:.2} {y1:.2} L {cx:.2} {y0:.2} L {x2:.2} {y1:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"1.5\"/>",
-                x1 = cx - 6.0, y1 = cy - r + 3.0, y0 = cy - r - 3.0, x2 = cx + 6.0,
-                stroke = theme.sequence_actor_border
-            ));
-            if !hide_label {
-                let label_y = cy + r + 14.0;
-                svg.push_str(&text_block_svg(cx, label_y, &node.label, theme, config, false, node.style.text_color.as_deref()));
-            }
-        }
-        NodeShape::Entity => {
-            // Entity: a circle with a horizontal line underneath.
-            let cx = node.x + node.width / 2.0;
-            let cy = node.y + 16.0;
-            let r = 12.0;
-            svg.push_str(&format!(
-                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-            ));
-            // Underline
-            svg.push_str(&format!(
-                "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"1.5\"/>",
-                x1 = cx - r, x2 = cx + r, y = cy + r + 2.0,
-                stroke = theme.sequence_actor_border
-            ));
-            if !hide_label {
-                let label_y = cy + r + 16.0;
-                svg.push_str(&text_block_svg(cx, label_y, &node.label, theme, config, false, node.style.text_color.as_deref()));
-            }
-        }
-        NodeShape::Collections => {
-            // Collections: two stacked rectangles.
-            let x = node.x;
-            let y = node.y;
-            let w = node.width;
-            let h = node.height;
-            let off = 4.0;
-            // Back rectangle (offset)
-            svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                x + off, y, w - off, h - off,
-                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-            ));
-            // Front rectangle
-            svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                x, y + off, w - off, h - off,
-                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-            ));
-            if !hide_label {
-                let cx = x + (w - off) / 2.0;
-                let cy = y + off + (h - off) / 2.0;
-                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
-            }
-        }
-        NodeShape::Queue => {
-            // Queue: a cylinder rotated 90 degrees (horizontal pill with right elliptical cap).
-            let x = node.x;
-            let y = node.y;
-            let w = node.width;
-            let h = node.height;
-            let cap_w = 8.0;
-            // Main rectangle body
-            svg.push_str(&format!(
-                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{bw:.2}\" height=\"{h:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                bw = w - cap_w, fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-            ));
-            // Right elliptical cap
-            let rx = cap_w;
-            let ry = h / 2.0;
-            let cap_cx = x + w - cap_w;
-            let cap_cy = y + h / 2.0;
-            svg.push_str(&format!(
-                "<ellipse cx=\"{cap_cx:.2}\" cy=\"{cap_cy:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-            ));
-            if !hide_label {
-                let cx = x + (w - cap_w) / 2.0;
                 let cy = y + h / 2.0;
                 svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
             }
         }
-        // Default (ActorBox, Rectangle, Cylinder, etc.)
-        _ => {
-            if node.shape == NodeShape::Cylinder {
-                // Database shape: cylinder
-                let x = node.x;
-                let y = node.y;
-                let w = node.width;
-                let h = node.height;
-                let ry = 6.0;
-                // Main body
-                svg.push_str(&format!(
-                    "<rect x=\"{x:.2}\" y=\"{y1:.2}\" width=\"{w:.2}\" height=\"{h1:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                    y1 = y + ry, h1 = h - ry * 2.0,
-                    fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-                ));
-                // Top ellipse
-                svg.push_str(&format!(
-                    "<ellipse cx=\"{cx:.2}\" cy=\"{cy:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                    cx = x + w / 2.0, cy = y + ry, rx = w / 2.0,
-                    fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-                ));
-                // Bottom half-ellipse
-                svg.push_str(&format!(
-                    "<path d=\"M {x:.2} {y1:.2} A {rx:.2} {ry:.2} 0 0 0 {x2:.2} {y1:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                    y1 = y + h - ry, rx = w / 2.0, x2 = x + w,
-                    fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-                ));
-            } else {
-                // Rectangle (participant, ActorBox)
-                svg.push_str(&format!(
-                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
-                    node.x, node.y, node.width, node.height,
-                    theme.sequence_actor_fill, theme.sequence_actor_border
+        NodeShape::Queue => {
+            // Queue: horizontal pill with semi-elliptical caps on BOTH ends.
+            // Matches mermaid.js queue actor shape (rx≈8.5 cap, full-height
+            // ellipse caps). Body starts at node.x + cap_w so the LEFT bulge
+            // (which extends leftward from path start) lands at node.x and the
+            // queue body is centered on the lifeline at node.x + node.width/2.
+            let y = node.y;
+            let w = node.width;
+            let h = node.height;
+            let cap_w = (w * 0.057).max(6.0); // matches mermaid's 8.55 for w=150
+            let body_w = w - cap_w * 2.0;
+            let ry = h / 2.0;
+            let cy = y + ry;
+            let path_x = node.x + cap_w;
+            // Single closed path: M(body left) -> arc-down (left cap, bulges
+            //   LEFT into cap_w region) -> horizontal right -> arc-up (right
+            //   cap, bulges RIGHT) -> horizontal left back.
+            let d = format!(
+                "M {x:.2},{y:.2} a {cap_w:.2},{ry:.2} 0 0,0 0,{h:.2} \
+                 h {body_w:.2} a {cap_w:.2},{ry:.2} 0 0,0 0,-{h:.2} \
+                 h -{body_w:.2} z",
+                x = path_x,
+                y = y,
+                cap_w = cap_w,
+                ry = ry,
+                h = h,
+                body_w = body_w,
+            );
+            svg.push_str(&format!(
+                "<path d=\"{d}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+            ));
+            if !hide_label {
+                let cx = node.x + w / 2.0;
+                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
+            }
+        }
+        NodeShape::Cylinder => {
+            // Database stereotype: small inset cylinder centered horizontally
+            // with the label drawn BELOW it. Mirrors mermaid JS
+            // drawActorTypeDatabase: cylinder w = h = actor.width / 3,
+            // rx = w/2, ry = rx / (2.5 + w/50). Single closed path so no
+            // internal horizontal stroke artifacts.
+            let actor_cx = node.x + node.width / 2.0;
+            let cyl_w = node.width / 3.0;
+            let rx = cyl_w / 2.0;
+            let ry = rx / (2.5 + cyl_w / 50.0);
+            let cyl_h = cyl_w;
+            let body_h = cyl_h - ry * 2.0;
+            let cyl_x = actor_cx - cyl_w / 2.0;
+            let cyl_top = node.y + ry;
+            let d = format!(
+                "M {cyl_x:.2},{cyl_top:.2} \
+                 a {rx:.2},{ry:.2} 0 0 0 {cyl_w:.2},0 \
+                 a {rx:.2},{ry:.2} 0 0 0 -{cyl_w:.2},0 \
+                 l 0,{body_h:.2} \
+                 a {rx:.2},{ry:.2} 0 0 0 {cyl_w:.2},0 \
+                 l 0,-{body_h:.2}"
+            );
+            svg.push_str(&format!(
+                "<path d=\"{d}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                fill = theme.sequence_actor_fill,
+                stroke = theme.sequence_actor_border,
+            ));
+            if !hide_label {
+                // Tight gap below cylinder front-arc bottom, matching JS
+                // drawActorTypeDatabase which centers the label ~3 px below
+                // the cylinder. text_block_svg adds ~4 px baseline pad on top
+                // of this offset.
+                let label_y = node.y + cyl_h + ry + 4.0;
+                svg.push_str(&text_block_svg(
+                    actor_cx, label_y, &node.label, theme, config, false,
+                    node.style.text_color.as_deref(),
                 ));
             }
+        }
+        // Default (ActorBox, Rectangle, etc.)
+        _ => {
+            svg.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
+                node.x, node.y, node.width, node.height,
+                theme.sequence_actor_fill, theme.sequence_actor_border
+            ));
             if !hide_label {
                 let cx = node.x + node.width / 2.0;
                 let cy = node.y + node.height / 2.0;
@@ -6690,8 +6747,8 @@ fn edge_decoration_svg(
     let join = " stroke-linejoin=\"round\" stroke-linecap=\"round\"";
     let shape = match decoration {
         crate::ir::EdgeDecoration::Circle => format!(
-            "<circle cx=\"0\" cy=\"0\" r=\"5\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>",
-            stroke, stroke_width
+            "<circle cx=\"0\" cy=\"0\" r=\"5\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"/>",
+            stroke, stroke, stroke_width
         ),
         crate::ir::EdgeDecoration::Cross => format!(
             "<path d=\"M -5 -5 L 5 5 M -5 5 L 5 -5\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",

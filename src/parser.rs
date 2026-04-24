@@ -1364,6 +1364,8 @@ fn parse_sequence_message(
     Option<crate::ir::SequenceActivationKind>,
     crate::ir::SequenceArrowHead,
     Option<crate::ir::SequenceArrowHead>,
+    Option<crate::ir::EdgeDecoration>, // start endpoint decoration (e.g., () = Circle)
+    Option<crate::ir::EdgeDecoration>, // end endpoint decoration
 )> {
     let tokens = [
         // Bidirectional arrows (longest first)
@@ -1391,17 +1393,28 @@ fn parse_sequence_message(
                 continue;
             }
             let (right, label) = split_label(right_part);
-            // Strip `()` central-connection markers from from/to identifiers.
-            // JS treats `Alice->>()John`, `Alice()->>John`, `John()->>()Alice`
-            // as central-connection arrows (drawing a circle marker at the
-            // lifeline center). We render a normal arrow but must avoid
-            // creating phantom actors named `()John`, `Alice()`, etc.
-            fn strip_cc(s: &str) -> &str {
-                let s = s.strip_suffix("()").unwrap_or(s);
-                s.strip_prefix("()").unwrap_or(s).trim()
+            // Detect and strip `()` central-connection markers from from/to
+            // identifiers. JS treats `Alice->>()John`, `Alice()->>John`,
+            // `John()->>()Alice` as central-connection arrows that draw a
+            // circle marker at the lifeline center on the marked end. We
+            // record which sides are marked so the renderer emits the
+            // circle decoration; we also strip the marker so we don't create
+            // phantom actors named `()John`, `Alice()`, etc.
+            fn strip_cc(s: &str) -> (String, bool) {
+                let mut marked = false;
+                let mut t = s;
+                if let Some(stripped) = t.strip_suffix("()") {
+                    marked = true;
+                    t = stripped;
+                }
+                if let Some(stripped) = t.strip_prefix("()") {
+                    marked = true;
+                    t = stripped;
+                }
+                (t.trim().to_string(), marked)
             }
-            let mut from = strip_cc(left).to_string();
-            let mut to = strip_cc(right.as_str()).to_string();
+            let (mut from, from_cc_marked) = strip_cc(left);
+            let (mut to, to_cc_marked) = strip_cc(right.as_str());
             let is_bidirectional = token.starts_with("<<");
             if token.starts_with('<') && !is_bidirectional {
                 std::mem::swap(&mut from, &mut to);
@@ -1433,7 +1446,28 @@ fn parse_sequence_message(
             } else {
                 None
             };
-            return Some((from, to, label, style, activation, arrow_head, start_arrow));
+            // Map cc-marked flags to circle decorations. The arrow direction
+            // is from→to AFTER the swap above, but the cc flags were captured
+            // BEFORE the swap (still tied to original left/right). Remap them
+            // to start/end matching the post-swap direction.
+            let (start_marked, end_marked) =
+                if token.starts_with('<') && !is_bidirectional {
+                    // Arrow points from `right` (now from) to `left` (now to).
+                    (to_cc_marked, from_cc_marked)
+                } else {
+                    (from_cc_marked, to_cc_marked)
+                };
+            let start_decoration = if start_marked {
+                Some(crate::ir::EdgeDecoration::Circle)
+            } else {
+                None
+            };
+            let end_decoration = if end_marked {
+                Some(crate::ir::EdgeDecoration::Circle)
+            } else {
+                None
+            };
+            return Some((from, to, label, style, activation, arrow_head, start_arrow, start_decoration, end_decoration));
         }
     }
     None
@@ -5715,7 +5749,7 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
-        if let Some((from, to, label, style, activation, arrow_head, start_arrow)) = parse_sequence_message(line) {
+        if let Some((from, to, label, style, activation, arrow_head, start_arrow, start_decoration, end_decoration)) = parse_sequence_message(line) {
             if !order.contains(&from) {
                 order.push(from.clone());
             }
@@ -5737,8 +5771,8 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 arrow_end: has_arrow,
                 arrow_start_kind: None,
                 arrow_end_kind: None,
-                start_decoration: None,
-                end_decoration: None,
+                start_decoration,
+                end_decoration,
                 sequence_arrow_end: Some(arrow_head),
                 sequence_arrow_start: start_arrow,
                 style,
