@@ -119,10 +119,10 @@ impl Theme {
             // Previously #9370DB which is the title color, much darker
             // than the browser-rendered actor border.
             sequence_actor_border: "#D2C7E4".to_string(),
-            sequence_actor_line: "#D2C7E4".to_string(),
+            sequence_actor_line: "#999999".to_string(),
             sequence_note_fill: "#FFF5AD".to_string(),
             sequence_note_border: "#AAAA33".to_string(),
-            sequence_activation_fill: "#F4F4F4".to_string(),
+            sequence_activation_fill: "#EDF2AE".to_string(),
             sequence_activation_border: "#666666".to_string(),
             text_color: MERMAID_TEXT_COLOR.to_string(),
             git_colors: MERMAID_GIT_COLORS.map(|value| value.to_string()),

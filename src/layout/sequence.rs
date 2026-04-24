@@ -68,7 +68,23 @@ pub(super) fn compute_sequence_layout(
     let participant_count = participants.len();
     // Match upstream mermaid: 65px actor box height for 1- or 2-line labels,
     // expanding only when labels actually need more vertical room.
-    let actor_height = (max_label_height + theme.font_size * 1.0).max(65.0);
+    // Stick-figure actors render the label BELOW the figure so they need
+    // additional vertical room to keep the label inside the actor envelope
+    // (otherwise the lifeline starts inside the label text).
+    let has_stick_actor = participants.iter().any(|id| {
+        graph.nodes.get(id).is_some_and(|n| {
+            matches!(
+                n.shape,
+                crate::ir::NodeShape::StickFigure
+                    | crate::ir::NodeShape::Boundary
+                    | crate::ir::NodeShape::Control
+                    | crate::ir::NodeShape::Entity
+                    | crate::ir::NodeShape::Cylinder
+            )
+        })
+    });
+    let stick_extra = if has_stick_actor { 16.0 } else { 0.0 };
+    let actor_height = (max_label_height + theme.font_size * 1.0).max(65.0) + stick_extra;
     let avg_actor_width = if participant_count > 0 {
         width_total / participant_count as f32
     } else {
@@ -195,8 +211,12 @@ pub(super) fn compute_sequence_layout(
     // titles, the cursor is bumped by boxMargin + boxTextMaxHeight BEFORE
     // top actors are drawn — top actors and everything below shift down,
     // making room for the box title text above. Same convention here.
+    // When sequence boxes have titles, mermaid.js reserves boxMargin +
+    // boxTextMaxHeight (~10 + 14 + 8 ≈ 32px) above the actor row so the
+    // box title centers in that gap above the top actor boxes. Without
+    // enough space the title text overlaps the actor rectangles.
     let actor_y_offset = if graph.sequence_boxes.iter().any(|b| b.label.is_some()) {
-        10.0
+        theme.font_size + 16.0
     } else {
         0.0
     };
@@ -471,7 +491,12 @@ pub(super) fn compute_sequence_layout(
                     && note.participants.len() > 1
                 {
                     let span = (max_x - min_x).abs();
-                    width = width.max(span + note_gap_x * 2.0);
+                    // Mermaid.js sequence config noteMargin = 25 — used as the
+                    // horizontal padding between an Over-spanning note's edges
+                    // and the outer participants' lifelines. Scale with font:
+                    // 1.5625 * 16 = 25 for the default font size.
+                    let note_span_pad_x = (theme.font_size * 1.5625).max(16.0);
+                    width = width.max(span + note_span_pad_x * 2.0);
                 }
                 // Mermaid.js positions LeftOf/RightOf notes by `(actor.width
                 // + actorMargin) / 2` from the actor's anchor (sequenceRenderer.ts
@@ -582,7 +607,44 @@ pub(super) fn compute_sequence_layout(
         } else {
             let from_x = from.x + from.width / 2.0;
             let to_x = to.x + to.width / 2.0;
-            vec![(from_x, y), (to_x, y)]
+            // Subtract a small margin from each endpoint that has an arrow
+            // so the arrowhead tip lands ON the destination lifeline rather
+            // than past it. Mirrors mermaid.js's per-side `arrowSize` shrink.
+            const ARROW_MARGIN: f32 = 4.0;
+            // Activation half-width: when a participant is currently in an
+            // activation block at this message, its endpoint should land on
+            // the activation rectangle's edge (offset toward the other side
+            // by activation_width/2 = 5px) rather than crossing through the
+            // activation rect to the lifeline center.
+            const ACTIVATION_OFFSET: f32 = 5.0;
+            let direction = if to_x >= from_x { 1.0 } else { -1.0 };
+            let has_end_arrow = edge.arrow_end || edge.sequence_arrow_end.is_some();
+            let has_start_arrow = edge.arrow_start || edge.sequence_arrow_start.is_some();
+            let from_active = is_actor_active_at(&graph.sequence_activations, &edge.from, idx);
+            let to_active = is_actor_active_at(&graph.sequence_activations, &edge.to, idx);
+            // Source side moves toward destination if active.
+            let from_x = if from_active {
+                from_x + direction * ACTIVATION_OFFSET
+            } else {
+                from_x
+            };
+            // Destination side moves toward source if active.
+            let to_x = if to_active {
+                to_x - direction * ACTIVATION_OFFSET
+            } else {
+                to_x
+            };
+            let adjusted_to_x = if has_end_arrow {
+                to_x - direction * ARROW_MARGIN
+            } else {
+                to_x
+            };
+            let adjusted_from_x = if has_start_arrow {
+                from_x + direction * ARROW_MARGIN
+            } else {
+                from_x
+            };
+            vec![(adjusted_from_x, y), (adjusted_to_x, y)]
         };
 
         let mut override_style = resolve_edge_style(idx, graph);
@@ -622,6 +684,7 @@ pub(super) fn compute_sequence_layout(
                 .cmp(&b.start_idx)
                 .then_with(|| b.end_idx.cmp(&a.end_idx))
         });
+        let frames_ref = frames.clone();
         for frame in frames {
             if frame.start_idx >= frame.end_idx || frame.start_idx >= message_ys.len() {
                 continue;
@@ -676,18 +739,69 @@ pub(super) fn compute_sequence_layout(
             // JS uses fixed boxMargin=10 for frame nesting padding, NOT a
             // font-size-relative value. Match that to avoid +2.4px overshoot
             // on critical-region with self-msgs.
-            let frame_pad_x = 10.0;
+            // Nesting: each frame that this frame STRICTLY contains adds an
+            // extra 10px outward so nested frames are visually inset rather
+            // than coincident with their parent's borders. Equivalent to JS:
+            // outer loop pad ≈ 21, inner alt/opt pad ≈ 11 — difference 10.
+            // Count frames CONTAINED in this one (allowing shared endpoints,
+            // but not the frame itself). Strict-on-both-ends missed cases like
+            // a nested `par` whose last message is also the outer frame's last
+            // message — both rects then collapsed to the same right/bottom
+            // borders, making the nesting invisible.
+            let nesting_below = frames_ref
+                .iter()
+                .filter(|other| {
+                    other.start_idx >= frame.start_idx
+                        && other.end_idx <= frame.end_idx
+                        && (other.start_idx != frame.start_idx
+                            || other.end_idx != frame.end_idx)
+                })
+                .count() as f32;
+            let frame_pad_x = 10.0 + nesting_below.min(2.0) * 10.0;
             let mut frame_width = (max_x - min_x) + frame_pad_x * 2.0;
             // Expand frame to fit any section title text that exceeds the
             // actor-center span. Mermaid.js's loopWidths accounts for the
             // section title in the loop's bounding box, with wrapPadding
             // (10) on each side.
-            const FRAME_TITLE_PAD: f32 = 16.0; // wrapPadding(10) + ~6 for label box
-            for section in &frame.sections {
+            // Predict the labelBox width (mirrors the calc later at frame
+            // construction). The FIRST section's label sits to the right of
+            // the labelBox, so frame_width must accommodate
+            //   labelBox_w + label_width + horizontal_pads
+            // or the section label spills past the frame's right border.
+            let predicted_label_box_w = {
+                let label_text = match frame.kind {
+                    crate::ir::SequenceFrameKind::Alt => "alt",
+                    crate::ir::SequenceFrameKind::Opt => "opt",
+                    crate::ir::SequenceFrameKind::Loop => "loop",
+                    crate::ir::SequenceFrameKind::Par => "par",
+                    crate::ir::SequenceFrameKind::Rect => "rect",
+                    crate::ir::SequenceFrameKind::Critical => "critical",
+                    crate::ir::SequenceFrameKind::Break => "break",
+                };
+                let label_w = super::text::measure_label_no_wrap(label_text, theme, config).width;
+                (label_w + theme.font_size * 2.0).max(theme.font_size * 3.0)
+            };
+            const FRAME_TITLE_PAD: f32 = 16.0; // wrapPadding(10) + ~6 visual pad
+            for (section_idx, section) in frame.sections.iter().enumerate() {
                 if let Some(label_text) = &section.label {
+                    // Rect frames don't render the section label as visible
+                    // text (the "label" here is the rgb color expression).
+                    // Skip width expansion so nested Rect frames keep their
+                    // 10px horizontal inset rather than collapsing to the
+                    // same width.
+                    if matches!(frame.kind, crate::ir::SequenceFrameKind::Rect) {
+                        continue;
+                    }
                     let display = format!("[{}]", label_text);
                     let measured = super::text::measure_label_no_wrap(&display, theme, config);
-                    let needed = measured.width + frame_pad_x * 2.0 + FRAME_TITLE_PAD;
+                    // First section sits to the right of the labelBox; reserve
+                    // labelBox width on the left. Other sections center in the
+                    // full frame width.
+                    let needed = if section_idx == 0 {
+                        predicted_label_box_w + measured.width + frame_pad_x * 2.0 + FRAME_TITLE_PAD
+                    } else {
+                        measured.width + frame_pad_x * 2.0 + FRAME_TITLE_PAD
+                    };
                     if needed > frame_width {
                         frame_width = needed;
                     }
@@ -699,12 +813,28 @@ pub(super) fn compute_sequence_layout(
                 .get(frame.start_idx)
                 .copied()
                 .unwrap_or(message_cursor);
-            let last_y = message_ys
-                .get(frame.end_idx.saturating_sub(1))
-                .copied()
-                .unwrap_or(first_y);
+            let last_idx = frame.end_idx.saturating_sub(1);
+            let last_y = message_ys.get(last_idx).copied().unwrap_or(first_y);
+            // Self-loop messages extend `pad` (≥30px) below their message Y
+            // for the loopback. Frame must enclose the loopback PLUS the
+            // arrow marker glyph (markerHeight ≈ 12 px, so ~6 px past line
+            // endpoint), or the rendered arrowhead tip nearly touches the
+            // frame bottom border. JS leaves ~40 px between hook bottom and
+            // frame bottom; we mirror that with `node_spacing*0.6 + font*0.8`
+            // (≈ 42 px for default config), then bottom_offset adds another
+            // ~9.6 on top.
+            let last_self_loop_pad = if graph
+                .edges
+                .get(last_idx)
+                .map(|e| e.from == e.to)
+                .unwrap_or(false)
+            {
+                config.node_spacing.max(20.0) * 0.6 + theme.font_size * 0.8
+            } else {
+                0.0
+            };
             let mut min_y = first_y;
-            let mut max_y = last_y;
+            let mut max_y = last_y + last_self_loop_pad;
             for note in &sequence_notes {
                 // Notes whose `index` equals frame.end_idx are positioned AFTER
                 // the frame's `end` keyword in source order — JS's drawNote runs
@@ -717,8 +847,30 @@ pub(super) fn compute_sequence_layout(
                 }
             }
             let header_offset = theme.font_size * 0.6;
-            let top_offset = (2.0 * base_spacing - header_offset).max(base_spacing);
-            let bottom_offset = header_offset;
+            // Rect (background highlight) frames have no label box, so they
+            // hug the message rows tightly. Other frame kinds (loop, alt,
+            // critical, par, opt) reserve room above the first message for
+            // the label box.
+            let top_offset = if matches!(frame.kind, crate::ir::SequenceFrameKind::Rect) {
+                // Rect frames hug content tightly. When the first enclosed
+                // element is a NOTE, min_y is already the note's top edge and
+                // a small header_offset suffices. When it's a MESSAGE, the
+                // message LABEL sits ABOVE its line by ~font_size*0.9 — we
+                // must reserve enough headroom or the label escapes the
+                // highlight rect. JS observed: ~font*1.5 above msg line.
+                let first_is_message = (min_y - first_y).abs() < 0.5;
+                if first_is_message {
+                    theme.font_size * 1.5
+                } else {
+                    header_offset
+                }
+            } else {
+                (2.0 * base_spacing - header_offset).max(base_spacing)
+            };
+            // Nested frames: outer frame bottom needs extra clearance so its
+            // bottom border doesn't coincide with the inner frame's bottom
+            // border (which would visually merge the two rects).
+            let bottom_offset = header_offset + nesting_below.min(2.0) * 10.0;
             let frame_y = min_y - top_offset;
             let frame_height = (max_y - min_y).max(0.0) + top_offset + bottom_offset;
 
@@ -745,47 +897,84 @@ pub(super) fn compute_sequence_layout(
 
             let mut dividers = Vec::new();
             let divider_offset = theme.font_size * 0.9;
+            // Self-loop messages extend `pad` (= node_spacing*0.6 ≥ 30) below
+            // their message Y for the loopback path. The divider must sit
+            // below the loopback's bottom edge or it bisects the loop.
+            let self_loop_pad = config.node_spacing.max(20.0) * 0.6;
             for window in frame.sections.windows(2) {
                 let prev_end = window[0].end_idx;
-                let base_y = message_ys
-                    .get(prev_end.saturating_sub(1))
-                    .copied()
-                    .unwrap_or(first_y);
-                dividers.push(base_y + divider_offset);
+                let last_idx = prev_end.saturating_sub(1);
+                let base_y = message_ys.get(last_idx).copied().unwrap_or(first_y);
+                let last_is_self_loop = graph
+                    .edges
+                    .get(last_idx)
+                    .map(|e| e.from == e.to)
+                    .unwrap_or(false);
+                let extra = if last_is_self_loop { self_loop_pad } else { 0.0 };
+                dividers.push(base_y + extra + divider_offset);
             }
 
             let mut section_labels = Vec::new();
-            let label_offset = theme.font_size * 0.7;
+            // Distance from divider line to section-label CENTER. text_block_svg
+            // renders the baseline at center + 4 with default text metrics, and
+            // the glyph top is `baseline - font*0.8` above the baseline. To
+            // achieve JS's ~10px glyph-top-to-divider clearance with a 16px
+            // font, center must sit ~font*1.18 below the divider (baseline ≈
+            // divider + 22.8 → glyph top ≈ divider + 10).
+            let label_offset = theme.font_size * 1.2;
             for (section_idx, section) in frame.sections.iter().enumerate() {
                 if let Some(label) = &section.label {
                     let display = format!("[{}]", label);
-                    let block = measure_label(&display, theme, config);
+                    // Section labels are single-line in mermaid.js — never wrap
+                    // (wrapping pushes the second line into the section's first
+                    // message row and creates a "text too close to a line"
+                    // collision the user has flagged).
+                    let block = super::text::measure_label_no_wrap(&display, theme, config);
                     let label_y = if section_idx == 0 {
                         // Keep the first section label close to the frame header
                         // so it does not collide with the first message row.
                         frame_y + label_box_h + theme.font_size * 0.45
                     } else {
-                        // Keep else/and section labels on the divider's upper side
-                        // to reduce collisions with the following message row text.
+                        // Place else/and section labels BELOW the divider with full
+                        // label_offset clearance, matching mermaid.js. The labelBox
+                        // sits across the dashed divider; the text baseline lands
+                        // ~font*0.7 below the line so it doesn't crowd it.
                         dividers
                             .get(section_idx - 1)
                             .copied()
                             .unwrap_or(frame_y + label_offset)
-                            - (theme.font_size * 0.35)
+                            + label_offset
                     };
                     let side_pad = theme.font_size * 0.45;
                     let label_x = if section_idx == 0 {
-                        let preferred =
-                            frame_x + label_box_w + theme.font_size * 1.6 + block.width / 2.0;
-                        let min_x = frame_x + block.width / 2.0 + theme.font_size * 0.4;
+                        // First section label sits in the space to the right of
+                        // the frame's labelBox: centered between labelBox right
+                        // edge and frame right edge (mermaid.js convention).
+                        let preferred = frame_x + (label_box_w + frame_width) / 2.0;
+                        let min_x =
+                            frame_x + label_box_w + block.width / 2.0 + theme.font_size * 0.4;
                         let max_x =
                             frame_x + frame_width - block.width / 2.0 - theme.font_size * 0.4;
-                        preferred.clamp(min_x, max_x)
+                        // Guard: if the label is wider than the available
+                        // space (min_x > max_x), fall back to the preferred
+                        // center to avoid a clamp panic.
+                        if min_x <= max_x {
+                            preferred.clamp(min_x, max_x)
+                        } else {
+                            preferred
+                        }
                     } else {
-                        let preferred = frame_x + side_pad + block.width / 2.0;
+                        // else/and/or section labels: centered in the frame
+                        // (mermaid.js convention). Falls back to side_pad if
+                        // the label is too wide for the frame.
+                        let preferred = frame_x + frame_width / 2.0;
                         let min_x = frame_x + block.width / 2.0 + side_pad;
                         let max_x = frame_x + frame_width - block.width / 2.0 - side_pad;
-                        preferred.clamp(min_x, max_x)
+                        if min_x <= max_x {
+                            preferred.clamp(min_x, max_x)
+                        } else {
+                            preferred
+                        }
                     };
                     section_labels.push(SequenceLabel {
                         x: label_x,
@@ -919,15 +1108,20 @@ pub(super) fn compute_sequence_layout(
         })
         .collect::<Vec<_>>();
 
+    // Destroyed actor footer rects sit BELOW the destroy y, not on it. JS
+    // leaves ~one message-row of clearance so the destroy message's crosshead
+    // arrow tip and the footer rect's top border don't overlap. Without this
+    // pad the rect's top stroke runs through the crosshead marker.
+    let destroy_footer_pad = theme.font_size * 1.5;
     let mut sequence_footboxes = participants
         .iter()
         .filter_map(|id| nodes.get(id))
         .map(|node| {
             let mut foot = node.clone();
-            foot.y = lifecycle_destroy
-                .get(&node.id)
-                .copied()
-                .unwrap_or(lifeline_end);
+            foot.y = match lifecycle_destroy.get(&node.id).copied() {
+                Some(destroy_y) => destroy_y + destroy_footer_pad,
+                None => lifeline_end,
+            };
             foot
         })
         .collect::<Vec<_>>();
@@ -944,7 +1138,10 @@ pub(super) fn compute_sequence_layout(
 
     let mut sequence_boxes = Vec::new();
     if !graph.sequence_boxes.is_empty() {
-        let pad_x = theme.font_size * 0.8;
+        // JS box horizontal padding = actorMargin / 2 = 25px (sequenceRenderer
+        // drawBackgroundRect: leftmost actor x − actorMargin/2). Without this
+        // adjacent boxes show a visible gap where JS has them touching.
+        let pad_x = 25.0_f32;
         // JS box bottom padding: noteMargin (8) + boxMargin/2 + ~1px ≈ 11px
         // for 16px font. Our prior 9.6 left grouping-with-box short by 1.4px.
         let pad_y = theme.font_size * 0.6875;
@@ -1329,6 +1526,12 @@ pub(super) fn compute_sequence_layout(
         max_x += shift_x;
         max_y += shift_y;
     }
+    // destroy_markers are computed pre-shift from raw node coords; apply
+    // the same shift_x/shift_y so they land on the rendered lifeline.
+    let destroy_markers: Vec<(f32, f32)> = destroy_markers
+        .into_iter()
+        .map(|(x, y)| (x + shift_x, y + shift_y))
+        .collect();
 
     let width = (max_x - min_x + margin * 2.0).max(1.0);
     let height = (max_y - min_y + margin_y * 2.0).max(1.0);
@@ -1353,6 +1556,36 @@ pub(super) fn compute_sequence_layout(
             destroy_markers,
         }),
     }
+}
+
+/// True if `participant` has an active activation block at message index
+/// `msg_idx`. Activations are inclusive on both ends: the activate event
+/// at idx X starts activation at message X, and the deactivate event at
+/// idx Y ends activation AFTER message Y (so message Y is still inside
+/// the activation block).
+fn is_actor_active_at(
+    activations: &[crate::ir::SequenceActivation],
+    participant: &str,
+    msg_idx: usize,
+) -> bool {
+    let mut count: i32 = 0;
+    for ev in activations {
+        if ev.index > msg_idx {
+            break;
+        }
+        if ev.participant != participant {
+            continue;
+        }
+        match ev.kind {
+            crate::ir::SequenceActivationKind::Activate => count += 1,
+            crate::ir::SequenceActivationKind::Deactivate => {
+                if ev.index < msg_idx {
+                    count -= 1;
+                }
+            }
+        }
+    }
+    count > 0
 }
 
 fn place_sequence_label_anchors(
