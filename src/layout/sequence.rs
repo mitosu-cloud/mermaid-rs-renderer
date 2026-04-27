@@ -46,9 +46,8 @@ pub(super) fn compute_sequence_layout(
     // Sequence actor labels honor explicit <br/> line breaks but should not
     // be auto-wrapped by the global character cap; upstream mermaid sizes
     // each actor box to fit the user-provided lines on their own.
-    let measure_actor_label = |text: &str| -> TextBlock {
-        super::text::measure_label_no_wrap(text, theme, config)
-    };
+    let measure_actor_label =
+        |text: &str| -> TextBlock { super::text::measure_label_no_wrap(text, theme, config) };
     for id in &participants {
         let node = graph.nodes.get(id).expect("participant missing");
         let label = measure_actor_label(&node.label);
@@ -358,10 +357,13 @@ pub(super) fn compute_sequence_layout(
                     && other.end_idx >= frame.end_idx
             });
             let extra = match frame.kind {
-                crate::ir::SequenceFrameKind::Par
-                | crate::ir::SequenceFrameKind::Alt => 1.0,
+                crate::ir::SequenceFrameKind::Par | crate::ir::SequenceFrameKind::Alt => 1.0,
                 crate::ir::SequenceFrameKind::Rect => {
-                    if is_nested_inner { 0.0 } else { 1.0 }
+                    if is_nested_inner {
+                        0.0
+                    } else {
+                        1.0
+                    }
                 }
                 _ => 0.0,
             };
@@ -457,9 +459,10 @@ pub(super) fn compute_sequence_layout(
                         // when the note is NOT inside a frame, but our smaller
                         // note_gap_y (~9) when it is (matches background-
                         // highlighting where the note sits inside a rect frame).
-                        let in_frame = graph.sequence_frames.iter().any(|frame| {
-                            frame.start_idx <= idx && idx < frame.end_idx
-                        });
+                        let in_frame = graph
+                            .sequence_frames
+                            .iter()
+                            .any(|frame| frame.start_idx <= idx && idx < frame.end_idx);
                         let gap = if in_frame { note_gap_y } else { box_margin };
                         message_cursor += gap;
                     }
@@ -753,8 +756,7 @@ pub(super) fn compute_sequence_layout(
                 .filter(|other| {
                     other.start_idx >= frame.start_idx
                         && other.end_idx <= frame.end_idx
-                        && (other.start_idx != frame.start_idx
-                            || other.end_idx != frame.end_idx)
+                        && (other.start_idx != frame.start_idx || other.end_idx != frame.end_idx)
                 })
                 .count() as f32;
             let frame_pad_x = 10.0 + nesting_below.min(2.0) * 10.0;
@@ -910,7 +912,11 @@ pub(super) fn compute_sequence_layout(
                     .get(last_idx)
                     .map(|e| e.from == e.to)
                     .unwrap_or(false);
-                let extra = if last_is_self_loop { self_loop_pad } else { 0.0 };
+                let extra = if last_is_self_loop {
+                    self_loop_pad
+                } else {
+                    0.0
+                };
                 dividers.push(base_y + extra + divider_offset);
             }
 
@@ -1032,10 +1038,18 @@ pub(super) fn compute_sequence_layout(
     // the actor.height envelope. Other actor-man-like types (boundary, entity,
     // queue, stick) keep their text within the actor.height envelope.
     let has_control_actor = participants.iter().any(|id| {
-        graph.nodes.get(id).map(|n| matches!(n.shape, crate::ir::NodeShape::Control)).unwrap_or(false)
+        graph
+            .nodes
+            .get(id)
+            .map(|n| matches!(n.shape, crate::ir::NodeShape::Control))
+            .unwrap_or(false)
     });
     let has_database_actor = participants.iter().any(|id| {
-        graph.nodes.get(id).map(|n| matches!(n.shape, crate::ir::NodeShape::Cylinder)).unwrap_or(false)
+        graph
+            .nodes
+            .get(id)
+            .map(|n| matches!(n.shape, crate::ir::NodeShape::Cylinder))
+            .unwrap_or(false)
     });
     let actor_man_extra = if has_control_actor {
         19.0
@@ -1058,14 +1072,13 @@ pub(super) fn compute_sequence_layout(
     let mut lifecycle_create: HashMap<String, f32> = HashMap::new();
     let mut lifecycle_destroy: HashMap<String, f32> = HashMap::new();
     for event in &graph.sequence_lifecycle {
-        let y = message_ys
-            .get(event.index)
-            .copied()
-            .unwrap_or(if matches!(event.kind, crate::ir::SequenceLifecycleKind::Create) {
+        let y = message_ys.get(event.index).copied().unwrap_or(
+            if matches!(event.kind, crate::ir::SequenceLifecycleKind::Create) {
                 lifeline_start
             } else {
                 lifeline_end
-            });
+            },
+        );
         match event.kind {
             crate::ir::SequenceLifecycleKind::Create => {
                 lifecycle_create.insert(event.participant.clone(), y);

@@ -202,9 +202,9 @@ fn extract_yaml_frontmatter(input: &str) -> (Option<serde_json::Value>, &str) {
     }
     // Find the opening `---` line.
     let after_open = &trimmed[3..];
-    let after_open = after_open.strip_prefix('\n').unwrap_or(
-        after_open.strip_prefix("\r\n").unwrap_or(after_open),
-    );
+    let after_open = after_open
+        .strip_prefix('\n')
+        .unwrap_or(after_open.strip_prefix("\r\n").unwrap_or(after_open));
     // Find the closing `---`.
     if let Some(close_pos) = after_open.find("\n---") {
         let yaml_block = &after_open[..close_pos];
@@ -422,7 +422,9 @@ fn parse_flowchart(input: &str) -> Result<ParseOutput> {
                 continue;
             }
 
-            if let Some((node_id, node_label, node_shape, node_classes, node_md)) = parse_node_only(&line) {
+            if let Some((node_id, node_label, node_shape, node_classes, node_md)) =
+                parse_node_only(&line)
+            {
                 graph.ensure_node_md(&node_id, node_label, node_shape, node_md);
                 apply_node_classes(&mut graph, &node_id, &node_classes);
                 apply_at_node_metadata(&mut graph, &line);
@@ -503,9 +505,8 @@ fn apply_at_node_metadata(graph: &mut Graph, token: &str) {
 fn extract_edge_id_prefix(line: &str) -> (Option<String>, String) {
     // Look for pattern: `<id>@` immediately before an arrow token
     // The edge ID appears as a word followed by @ before arrows like -->, -.->
-    static EDGE_ID_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-        regex::Regex::new(r"\b(\w+)@(--|-\.|-=|==|~~)").unwrap()
-    });
+    static EDGE_ID_RE: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"\b(\w+)@(--|-\.|-=|==|~~)").unwrap());
     if let Some(caps) = EDGE_ID_RE.captures(line) {
         let edge_id = caps.get(1).unwrap().as_str().to_string();
         let full_match = caps.get(0).unwrap();
@@ -550,7 +551,8 @@ fn add_flowchart_edge(line: &str, graph: &mut Graph, subgraph_stack: &[usize]) -
 
     let mut target_ids = Vec::new();
     for target in targets {
-        let (right_id, right_label, right_shape, right_classes, right_md) = parse_node_token(target);
+        let (right_id, right_label, right_shape, right_classes, right_md) =
+            parse_node_token(target);
         graph.ensure_node_md(&right_id, right_label, right_shape, right_md);
         apply_node_classes(graph, &right_id, &right_classes);
         apply_at_node_metadata(graph, target);
@@ -890,7 +892,11 @@ fn parse_state_stereotype(line: &str) -> (String, Option<crate::ir::NodeShape>, 
     };
 
     let (shape, label_override) = match stereo.as_str() {
-        "choice" => (Some(crate::ir::NodeShape::Diamond), None),
+        // Iter 271: choice stereotype is a pure-shape marker in JS — the
+        // diamond renders without any text inside. Force empty label so the
+        // diamond sizes from padding only (~28×28) instead of from the
+        // ID "if_state" (~64×64).
+        "choice" => (Some(crate::ir::NodeShape::Diamond), Some(String::new())),
         "fork" | "join" => (Some(crate::ir::NodeShape::ForkJoin), Some(String::new())),
         _ => (None, None),
     };
@@ -1259,37 +1265,154 @@ fn is_color_token(token: &str) -> bool {
 fn is_css_named_color(name: &str) -> bool {
     matches!(
         name,
-        "aliceblue" | "antiquewhite" | "aqua" | "aquamarine" | "azure" | "beige"
-        | "bisque" | "black" | "blanchedalmond" | "blue" | "blueviolet" | "brown"
-        | "burlywood" | "cadetblue" | "chartreuse" | "chocolate" | "coral"
-        | "cornflowerblue" | "cornsilk" | "crimson" | "cyan" | "darkblue"
-        | "darkcyan" | "darkgoldenrod" | "darkgray" | "darkgreen" | "darkgrey"
-        | "darkkhaki" | "darkmagenta" | "darkolivegreen" | "darkorange"
-        | "darkorchid" | "darkred" | "darksalmon" | "darkseagreen"
-        | "darkslateblue" | "darkslategray" | "darkslategrey" | "darkturquoise"
-        | "darkviolet" | "deeppink" | "deepskyblue" | "dimgray" | "dimgrey"
-        | "dodgerblue" | "firebrick" | "floralwhite" | "forestgreen" | "fuchsia"
-        | "gainsboro" | "ghostwhite" | "gold" | "goldenrod" | "gray" | "green"
-        | "greenyellow" | "grey" | "honeydew" | "hotpink" | "indianred" | "indigo"
-        | "ivory" | "khaki" | "lavender" | "lavenderblush" | "lawngreen"
-        | "lemonchiffon" | "lightblue" | "lightcoral" | "lightcyan"
-        | "lightgoldenrodyellow" | "lightgray" | "lightgreen" | "lightgrey"
-        | "lightpink" | "lightsalmon" | "lightseagreen" | "lightskyblue"
-        | "lightslategray" | "lightslategrey" | "lightsteelblue" | "lightyellow"
-        | "lime" | "limegreen" | "linen" | "magenta" | "maroon"
-        | "mediumaquamarine" | "mediumblue" | "mediumorchid" | "mediumpurple"
-        | "mediumseagreen" | "mediumslateblue" | "mediumspringgreen"
-        | "mediumturquoise" | "mediumvioletred" | "midnightblue" | "mintcream"
-        | "mistyrose" | "moccasin" | "navajowhite" | "navy" | "oldlace" | "olive"
-        | "olivedrab" | "orange" | "orangered" | "orchid" | "palegoldenrod"
-        | "palegreen" | "paleturquoise" | "palevioletred" | "papayawhip"
-        | "peachpuff" | "peru" | "pink" | "plum" | "powderblue" | "purple"
-        | "rebeccapurple" | "red" | "rosybrown" | "royalblue" | "saddlebrown"
-        | "salmon" | "sandybrown" | "seagreen" | "seashell" | "sienna" | "silver"
-        | "skyblue" | "slateblue" | "slategray" | "slategrey" | "snow"
-        | "springgreen" | "steelblue" | "tan" | "teal" | "thistle" | "tomato"
-        | "turquoise" | "violet" | "wheat" | "white" | "whitesmoke" | "yellow"
-        | "yellowgreen"
+        "aliceblue"
+            | "antiquewhite"
+            | "aqua"
+            | "aquamarine"
+            | "azure"
+            | "beige"
+            | "bisque"
+            | "black"
+            | "blanchedalmond"
+            | "blue"
+            | "blueviolet"
+            | "brown"
+            | "burlywood"
+            | "cadetblue"
+            | "chartreuse"
+            | "chocolate"
+            | "coral"
+            | "cornflowerblue"
+            | "cornsilk"
+            | "crimson"
+            | "cyan"
+            | "darkblue"
+            | "darkcyan"
+            | "darkgoldenrod"
+            | "darkgray"
+            | "darkgreen"
+            | "darkgrey"
+            | "darkkhaki"
+            | "darkmagenta"
+            | "darkolivegreen"
+            | "darkorange"
+            | "darkorchid"
+            | "darkred"
+            | "darksalmon"
+            | "darkseagreen"
+            | "darkslateblue"
+            | "darkslategray"
+            | "darkslategrey"
+            | "darkturquoise"
+            | "darkviolet"
+            | "deeppink"
+            | "deepskyblue"
+            | "dimgray"
+            | "dimgrey"
+            | "dodgerblue"
+            | "firebrick"
+            | "floralwhite"
+            | "forestgreen"
+            | "fuchsia"
+            | "gainsboro"
+            | "ghostwhite"
+            | "gold"
+            | "goldenrod"
+            | "gray"
+            | "green"
+            | "greenyellow"
+            | "grey"
+            | "honeydew"
+            | "hotpink"
+            | "indianred"
+            | "indigo"
+            | "ivory"
+            | "khaki"
+            | "lavender"
+            | "lavenderblush"
+            | "lawngreen"
+            | "lemonchiffon"
+            | "lightblue"
+            | "lightcoral"
+            | "lightcyan"
+            | "lightgoldenrodyellow"
+            | "lightgray"
+            | "lightgreen"
+            | "lightgrey"
+            | "lightpink"
+            | "lightsalmon"
+            | "lightseagreen"
+            | "lightskyblue"
+            | "lightslategray"
+            | "lightslategrey"
+            | "lightsteelblue"
+            | "lightyellow"
+            | "lime"
+            | "limegreen"
+            | "linen"
+            | "magenta"
+            | "maroon"
+            | "mediumaquamarine"
+            | "mediumblue"
+            | "mediumorchid"
+            | "mediumpurple"
+            | "mediumseagreen"
+            | "mediumslateblue"
+            | "mediumspringgreen"
+            | "mediumturquoise"
+            | "mediumvioletred"
+            | "midnightblue"
+            | "mintcream"
+            | "mistyrose"
+            | "moccasin"
+            | "navajowhite"
+            | "navy"
+            | "oldlace"
+            | "olive"
+            | "olivedrab"
+            | "orange"
+            | "orangered"
+            | "orchid"
+            | "palegoldenrod"
+            | "palegreen"
+            | "paleturquoise"
+            | "palevioletred"
+            | "papayawhip"
+            | "peachpuff"
+            | "peru"
+            | "pink"
+            | "plum"
+            | "powderblue"
+            | "purple"
+            | "rebeccapurple"
+            | "red"
+            | "rosybrown"
+            | "royalblue"
+            | "saddlebrown"
+            | "salmon"
+            | "sandybrown"
+            | "seagreen"
+            | "seashell"
+            | "sienna"
+            | "silver"
+            | "skyblue"
+            | "slateblue"
+            | "slategray"
+            | "slategrey"
+            | "snow"
+            | "springgreen"
+            | "steelblue"
+            | "tan"
+            | "teal"
+            | "thistle"
+            | "tomato"
+            | "turquoise"
+            | "violet"
+            | "wheat"
+            | "white"
+            | "whitesmoke"
+            | "yellow"
+            | "yellowgreen"
     )
 }
 
@@ -1369,20 +1492,14 @@ fn parse_sequence_message(
 )> {
     let tokens = [
         // Bidirectional arrows (longest first)
-        "<<-->>", "<<->>",
-        // Cross/open with activation
-        "--x+", "-x+", "--)+", "-)+",
-        "--x-", "-x-", "--)-", "-)-",
+        "<<-->>", "<<->>", // Cross/open with activation
+        "--x+", "-x+", "--)+", "-)+", "--x-", "-x-", "--)-", "-)-",
         // Existing activation variants
-        "-->>+", "->>+", "-->+", "->+",
-        "-->>-", "->>-", "-->-", "->-",
+        "-->>+", "->>+", "-->+", "->+", "-->>-", "->>-", "-->-", "->-",
         // Reverse cross/open
-        "<--x", "<-x", "<--)", "<-)",
-        // Existing reverse
-        "<--+", "<-+", "<--", "<-",
-        // Cross and open arrows
-        "--x", "-x", "--)", "-)",
-        // Existing arrows
+        "<--x", "<-x", "<--)", "<-)", // Existing reverse
+        "<--+", "<-+", "<--", "<-", // Cross and open arrows
+        "--x", "-x", "--)", "-)", // Existing arrows
         "-->>", "->>", "-->", "->",
     ];
     for token in tokens {
@@ -1450,13 +1567,12 @@ fn parse_sequence_message(
             // is from→to AFTER the swap above, but the cc flags were captured
             // BEFORE the swap (still tied to original left/right). Remap them
             // to start/end matching the post-swap direction.
-            let (start_marked, end_marked) =
-                if token.starts_with('<') && !is_bidirectional {
-                    // Arrow points from `right` (now from) to `left` (now to).
-                    (to_cc_marked, from_cc_marked)
-                } else {
-                    (from_cc_marked, to_cc_marked)
-                };
+            let (start_marked, end_marked) = if token.starts_with('<') && !is_bidirectional {
+                // Arrow points from `right` (now from) to `left` (now to).
+                (to_cc_marked, from_cc_marked)
+            } else {
+                (from_cc_marked, to_cc_marked)
+            };
             let start_decoration = if start_marked {
                 Some(crate::ir::EdgeDecoration::Circle)
             } else {
@@ -1467,7 +1583,17 @@ fn parse_sequence_message(
             } else {
                 None
             };
-            return Some((from, to, label, style, activation, arrow_head, start_arrow, start_decoration, end_decoration));
+            return Some((
+                from,
+                to,
+                label,
+                style,
+                activation,
+                arrow_head,
+                start_arrow,
+                start_decoration,
+                end_decoration,
+            ));
         }
     }
     None
@@ -1511,9 +1637,27 @@ fn parse_sequence_note(
 }
 
 fn split_label(input: &str) -> (String, Option<String>) {
-    if let Some((left, right)) = input.split_once(':') {
-        let label = right.trim();
-        let target = left.trim();
+    // Find the first single ':' that is NOT part of a ':::' inline-class
+    // marker (e.g. `s1 :::someclass` should NOT split into target "s1" and
+    // label "::someclass" — the triple-colon belongs entirely to the class
+    // suffix). A single ':' is a label separator only if neither neighbor
+    // is also a ':'.
+    let bytes = input.as_bytes();
+    let mut split_at = None;
+    for (i, &b) in bytes.iter().enumerate() {
+        if b != b':' {
+            continue;
+        }
+        let prev_colon = i > 0 && bytes[i - 1] == b':';
+        let next_colon = i + 1 < bytes.len() && bytes[i + 1] == b':';
+        if !prev_colon && !next_colon {
+            split_at = Some(i);
+            break;
+        }
+    }
+    if let Some(i) = split_at {
+        let target = input[..i].trim();
+        let label = input[i + 1..].trim();
         if !label.is_empty() {
             return (target.to_string(), Some(label.to_string()));
         }
@@ -2417,7 +2561,7 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
             icon: None,
             class: None,
             children: Vec::new(),
-                markdown_label: md_label,
+            markdown_label: md_label,
         };
 
         let idx = graph.mindmap.nodes.len();
@@ -2462,7 +2606,13 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
 
 fn parse_mindmap_node_token(
     token: &str,
-) -> (String, String, crate::ir::MindmapNodeType, Vec<String>, bool) {
+) -> (
+    String,
+    String,
+    crate::ir::MindmapNodeType,
+    Vec<String>,
+    bool,
+) {
     let (base, classes) = split_inline_classes(token);
     let trimmed = base.trim();
     if trimmed.is_empty() {
@@ -2569,7 +2719,7 @@ fn parse_journey_diagram(input: &str) -> Result<ParseOutput> {
                 nodes: Vec::new(),
                 direction: None,
                 icon: None,
-            markdown_label: false,
+                markdown_label: false,
             });
             current_section = Some(graph.subgraphs.len() - 1);
             last_task = None;
@@ -2614,11 +2764,11 @@ fn parse_journey_diagram(input: &str) -> Result<ParseOutput> {
                     sequence_arrow_end: None,
                     sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
-                markdown_label: false,
-                id: None,
-                curve: None,
-                arch_port_from: None,
-                arch_port_to: None,
+                    markdown_label: false,
+                    id: None,
+                    curve: None,
+                    arch_port_from: None,
+                    arch_port_to: None,
                 });
             }
             last_task = Some(node_id);
@@ -2794,7 +2944,7 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                 nodes: Vec::new(),
                 direction: None,
                 icon: None,
-            markdown_label: false,
+                markdown_label: false,
             });
             current_section = Some(graph.subgraphs.len() - 1);
             current_section_name = Some(label.to_string());
@@ -2858,11 +3008,11 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                     sequence_arrow_end: None,
                     sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
-                markdown_label: false,
-                id: None,
-                curve: None,
-                arch_port_from: None,
-                arch_port_to: None,
+                    markdown_label: false,
+                    id: None,
+                    curve: None,
+                    arch_port_from: None,
+                    arch_port_to: None,
                 });
             } else if let Some(prev) = last_task.take() {
                 graph.edges.push(crate::ir::Edge {
@@ -2881,11 +3031,11 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                     sequence_arrow_end: None,
                     sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
-                markdown_label: false,
-                id: None,
-                curve: None,
-                arch_port_from: None,
-                arch_port_to: None,
+                    markdown_label: false,
+                    id: None,
+                    curve: None,
+                    arch_port_from: None,
+                    arch_port_to: None,
                 });
             }
 
@@ -4068,11 +4218,11 @@ fn parse_sankey_diagram(input: &str) -> Result<ParseOutput> {
             sequence_arrow_end: None,
             sequence_arrow_start: None,
             style: crate::ir::EdgeStyle::Solid,
-                markdown_label: false,
-                id: None,
-                curve: None,
-                arch_port_from: None,
-                arch_port_to: None,
+            markdown_label: false,
+            id: None,
+            curve: None,
+            arch_port_from: None,
+            arch_port_to: None,
         });
     }
 
@@ -4332,11 +4482,11 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
                         sequence_arrow_end: None,
                         sequence_arrow_start: None,
                         style: edge_meta.style,
-                markdown_label: false,
-                id: None,
-                curve: None,
-                arch_port_from: None,
-                arch_port_to: None,
+                        markdown_label: false,
+                        id: None,
+                        curve: None,
+                        arch_port_from: None,
+                        arch_port_to: None,
                     });
                 }
             }
@@ -4442,11 +4592,11 @@ fn parse_packet_diagram(input: &str) -> Result<ParseOutput> {
                     sequence_arrow_end: None,
                     sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
-                markdown_label: false,
-                id: None,
-                curve: None,
-                arch_port_from: None,
-                arch_port_to: None,
+                    markdown_label: false,
+                    id: None,
+                    curve: None,
+                    arch_port_from: None,
+                    arch_port_to: None,
                 });
             }
             last_node = Some(node_id);
@@ -4484,7 +4634,7 @@ fn parse_kanban_diagram(input: &str) -> Result<ParseOutput> {
                 nodes: Vec::new(),
                 direction: None,
                 icon: None,
-            markdown_label: false,
+                markdown_label: false,
             });
             current_section = Some(graph.subgraphs.len() - 1);
             continue;
@@ -4537,7 +4687,11 @@ fn parse_architecture_diagram(input: &str) -> Result<ParseOutput> {
             // Junction is an invisible routing point — no icon, no label.
             let id = line.split_whitespace().nth(1).unwrap_or("").to_string();
             if !id.is_empty() {
-                graph.ensure_node(&id, Some(String::new()), Some(crate::ir::NodeShape::Rectangle));
+                graph.ensure_node(
+                    &id,
+                    Some(String::new()),
+                    Some(crate::ir::NodeShape::Rectangle),
+                );
                 if let Some(node) = graph.nodes.get_mut(&id) {
                     node.label = String::new();
                 }
@@ -4559,7 +4713,7 @@ fn parse_architecture_diagram(input: &str) -> Result<ParseOutput> {
                         nodes: Vec::new(),
                         direction: None,
                         icon: icon,
-            markdown_label: false,
+                        markdown_label: false,
                     });
                     groups.insert(id, graph.subgraphs.len() - 1);
                 } else {
@@ -4655,7 +4809,12 @@ fn parse_architecture_node(
 
 fn parse_architecture_edge(
     line: &str,
-) -> Option<(String, String, Option<crate::ir::ArchPort>, Option<crate::ir::ArchPort>)> {
+) -> Option<(
+    String,
+    String,
+    Option<crate::ir::ArchPort>,
+    Option<crate::ir::ArchPort>,
+)> {
     let arrows = ["-->", "--", "->"];
     for arrow in &arrows {
         if let Some(idx) = line.find(arrow) {
@@ -4843,11 +5002,11 @@ fn parse_treemap_diagram(input: &str) -> Result<ParseOutput> {
                     sequence_arrow_end: None,
                     sequence_arrow_start: None,
                     style: crate::ir::EdgeStyle::Solid,
-                markdown_label: false,
-                id: None,
-                curve: None,
-                arch_port_from: None,
-                arch_port_to: None,
+                    markdown_label: false,
+                    id: None,
+                    curve: None,
+                    arch_port_from: None,
+                    arch_port_to: None,
                 });
             }
         } else {
@@ -5112,17 +5271,23 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     nodes: region_nodes,
                     direction: None,
                     icon: None,
-            markdown_label: false,
+                    markdown_label: false,
                 });
+                // Concurrent regions render with a faint dashed border to
+                // visually separate them — JS draws an alt-shaded rect with a
+                // dashed divider; we use a single light-gray dashed stroke
+                // around each region.
                 graph.subgraph_styles.insert(
                     id,
                     NodeStyle {
                         fill: Some("none".to_string()),
-                        stroke: Some("none".to_string()),
+                        stroke: Some("#9370DB".to_string()),
                         text_color: None,
-                        stroke_width: Some(0.0),
-                        stroke_dasharray: None,
+                        stroke_width: Some(1.0),
+                        stroke_dasharray: Some("10 10".to_string()),
                         line_color: None,
+                        font_style: None,
+                        font_weight: None,
                     },
                 );
             }
@@ -5194,7 +5359,7 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     nodes: Vec::new(),
                     direction: None,
                     icon: None,
-            markdown_label: false,
+                    markdown_label: false,
                 });
                 subgraph_stack.push(graph.subgraphs.len() - 1);
                 composite_stack.push(CompositeContext {
@@ -5231,18 +5396,28 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     state_shape.or(Some(crate::ir::NodeShape::RoundRect)),
                 );
                 apply_node_classes(&mut graph, &id, &classes);
-                add_node_to_subgraphs(&mut graph, &subgraph_stack, &id);
+                add_node_to_state_subgraphs(&mut graph, &subgraph_stack, &id);
                 record_region_node(&mut composite_stack, &id);
                 continue;
             }
 
             if let Some((left, meta, right, label)) = parse_state_transition(line) {
-                // Determine current scope for start/end state tracking
-                let scope = subgraph_stack
+                // Determine current scope for start/end state tracking.
+                // When inside a composite state with concurrent regions (`--`),
+                // each region needs its own [*] start/end node — otherwise all
+                // regions share one start, which produces a single fan-out node
+                // instead of independent per-region start dots.
+                let base_scope = subgraph_stack
                     .last()
                     .and_then(|&idx| graph.subgraphs.get(idx))
                     .and_then(|sub| sub.id.clone())
                     .unwrap_or_else(|| "root".to_string());
+                let scope = match composite_stack.last() {
+                    Some(ctx) if ctx.has_separator => {
+                        format!("{}__region_{}", base_scope, ctx.current_region)
+                    }
+                    _ => base_scope,
+                };
                 let (left_token, left_classes) = split_inline_classes(&left);
                 let (right_token, right_classes) = split_inline_classes(&right);
                 let (left_id, left_shape, left_label_override) = normalize_state_token(
@@ -5280,8 +5455,8 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                 graph.ensure_node(&right_id, right_label, right_shape);
                 apply_node_classes(&mut graph, &left_id, &left_classes);
                 apply_node_classes(&mut graph, &right_id, &right_classes);
-                add_node_to_subgraphs(&mut graph, &subgraph_stack, &left_id);
-                add_node_to_subgraphs(&mut graph, &subgraph_stack, &right_id);
+                add_node_to_state_subgraphs(&mut graph, &subgraph_stack, &left_id);
+                add_node_to_state_subgraphs(&mut graph, &subgraph_stack, &right_id);
                 record_region_node(&mut composite_stack, &left_id);
                 record_region_node(&mut composite_stack, &right_id);
                 graph.edges.push(crate::ir::Edge {
@@ -5300,11 +5475,11 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     sequence_arrow_end: None,
                     sequence_arrow_start: None,
                     style: meta.style,
-                markdown_label: false,
-                id: None,
-                curve: None,
-                arch_port_from: None,
-                arch_port_to: None,
+                    markdown_label: false,
+                    id: None,
+                    curve: None,
+                    arch_port_from: None,
+                    arch_port_to: None,
                 });
                 continue;
             }
@@ -5318,7 +5493,7 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     state_shape.or(Some(crate::ir::NodeShape::RoundRect)),
                 );
                 apply_node_classes(&mut graph, &id, &classes);
-                add_node_to_subgraphs(&mut graph, &subgraph_stack, &id);
+                add_node_to_state_subgraphs(&mut graph, &subgraph_stack, &id);
                 record_region_node(&mut composite_stack, &id);
                 continue;
             }
@@ -5333,7 +5508,7 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     };
                     graph.ensure_node(&target, labels.get(&target).cloned(), shape);
                     apply_node_classes(&mut graph, &target, &classes);
-                    add_node_to_subgraphs(&mut graph, &subgraph_stack, &target);
+                    add_node_to_state_subgraphs(&mut graph, &subgraph_stack, &target);
                     record_region_node(&mut composite_stack, &target);
                 }
                 let mut body_lines: Vec<String> = Vec::new();
@@ -5382,7 +5557,7 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     target: target.clone(),
                     label,
                 });
-                add_node_to_subgraphs(&mut graph, &subgraph_stack, &target);
+                add_node_to_state_subgraphs(&mut graph, &subgraph_stack, &target);
                 record_region_node(&mut composite_stack, &target);
                 continue;
             }
@@ -5397,8 +5572,30 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     state_shape.or(Some(crate::ir::NodeShape::RoundRect)),
                 );
                 apply_node_classes(&mut graph, &id, &classes);
-                add_node_to_subgraphs(&mut graph, &subgraph_stack, &id);
+                add_node_to_state_subgraphs(&mut graph, &subgraph_stack, &id);
                 record_region_node(&mut composite_stack, &id);
+                continue;
+            }
+
+            // Fallback: a bare identifier line (e.g. just `s1` without any
+            // declaration keyword or transition) should still create a state
+            // node. Without this, orphan states render as an empty diagram.
+            // Only accept lines that look like a single valid identifier
+            // (alphanumeric + underscore + optional inline classes).
+            let (bare_id, bare_classes) = parse_state_id_with_classes(line);
+            if !bare_id.is_empty()
+                && bare_id
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+            {
+                graph.ensure_node(
+                    &bare_id,
+                    labels.get(&bare_id).cloned(),
+                    state_shape.or(Some(crate::ir::NodeShape::RoundRect)),
+                );
+                apply_node_classes(&mut graph, &bare_id, &bare_classes);
+                add_node_to_state_subgraphs(&mut graph, &subgraph_stack, &bare_id);
+                record_region_node(&mut composite_stack, &bare_id);
                 continue;
             }
         }
@@ -5490,13 +5687,11 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 }
                 // The actor becomes visible at the next message (the one
                 // that follows the `create` statement).
-                graph
-                    .sequence_lifecycle
-                    .push(crate::ir::SequenceLifecycle {
-                        participant: id,
-                        index: graph.edges.len(),
-                        kind: crate::ir::SequenceLifecycleKind::Create,
-                    });
+                graph.sequence_lifecycle.push(crate::ir::SequenceLifecycle {
+                    participant: id,
+                    index: graph.edges.len(),
+                    kind: crate::ir::SequenceLifecycleKind::Create,
+                });
             }
             continue;
         }
@@ -5509,13 +5704,11 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 ensure_sequence_node(&mut graph, &labels, &id, None);
                 // The actor's lifeline ends at the next message (the one
                 // that follows the `destroy` statement).
-                graph
-                    .sequence_lifecycle
-                    .push(crate::ir::SequenceLifecycle {
-                        participant: id.to_string(),
-                        index: graph.edges.len(),
-                        kind: crate::ir::SequenceLifecycleKind::Destroy,
-                    });
+                graph.sequence_lifecycle.push(crate::ir::SequenceLifecycle {
+                    participant: id.to_string(),
+                    index: graph.edges.len(),
+                    kind: crate::ir::SequenceLifecycleKind::Destroy,
+                });
             }
             continue;
         }
@@ -5749,7 +5942,18 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
-        if let Some((from, to, label, style, activation, arrow_head, start_arrow, start_decoration, end_decoration)) = parse_sequence_message(line) {
+        if let Some((
+            from,
+            to,
+            label,
+            style,
+            activation,
+            arrow_head,
+            start_arrow,
+            start_decoration,
+            end_decoration,
+        )) = parse_sequence_message(line)
+        {
             if !order.contains(&from) {
                 order.push(from.clone());
             }
@@ -5792,12 +5996,8 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 // activations like `John-->>-Alice` (which deactivates John,
                 // not Alice).
                 let participant = match kind {
-                    crate::ir::SequenceActivationKind::Activate => {
-                        graph.edges[last].to.clone()
-                    }
-                    crate::ir::SequenceActivationKind::Deactivate => {
-                        graph.edges[last].from.clone()
-                    }
+                    crate::ir::SequenceActivationKind::Activate => graph.edges[last].to.clone(),
+                    crate::ir::SequenceActivationKind::Deactivate => graph.edges[last].from.clone(),
                 };
                 graph
                     .sequence_activations
@@ -5836,6 +6036,27 @@ fn add_node_to_subgraph(graph: &mut Graph, idx: usize, node_id: &str) {
 }
 
 fn add_node_to_subgraphs(graph: &mut Graph, subgraph_stack: &[usize], node_id: &str) {
+    for idx in subgraph_stack {
+        add_node_to_subgraph(graph, *idx, node_id);
+    }
+}
+
+/// State-diagram variant of `add_node_to_subgraphs` that mirrors mermaid-cli's
+/// "last reference wins" parentId behavior. When a state name is referenced
+/// inside a composite scope, JS's `insertOrUpdateNode` overwrites the node's
+/// `parentId` via `Object.assign`. So `second` declared in `state Second {...}`
+/// then re-referenced in `state End { [*] --> second }` ends up parented to End,
+/// not Second. We model this by REMOVING the node from any subgraph not in the
+/// current stack before adding it to the current stack — so the node is
+/// visually nested under its most recent scope.
+fn add_node_to_state_subgraphs(graph: &mut Graph, subgraph_stack: &[usize], node_id: &str) {
+    use std::collections::HashSet;
+    let stack_set: HashSet<usize> = subgraph_stack.iter().copied().collect();
+    for (idx, sub) in graph.subgraphs.iter_mut().enumerate() {
+        if !stack_set.contains(&idx) {
+            sub.nodes.retain(|n| n != node_id);
+        }
+    }
     for idx in subgraph_stack {
         add_node_to_subgraph(graph, *idx, node_id);
     }
@@ -6609,6 +6830,8 @@ fn parse_node_style(input: &str) -> crate::ir::NodeStyle {
             }
             "stroke-dasharray" => style.stroke_dasharray = Some(value.to_string()),
             "color" => style.text_color = Some(value.to_string()),
+            "font-style" => style.font_style = Some(value.to_string()),
+            "font-weight" => style.font_weight = Some(value.to_string()),
             _ => {}
         }
     }
@@ -6811,12 +7034,7 @@ fn split_asymmetric_label(token: &str) -> Option<(String, String, crate::ir::Nod
         return None;
     }
     let (text, md) = strip_quotes_markdown(label);
-    Some((
-        id.to_string(),
-        text,
-        crate::ir::NodeShape::Asymmetric,
-        md,
-    ))
+    Some((id.to_string(), text, crate::ir::NodeShape::Asymmetric, md))
 }
 
 fn split_inline_classes(token: &str) -> (String, Vec<String>) {
@@ -7078,10 +7296,7 @@ fn parse_tree_view_diagram(input: &str) -> Result<ParseOutput> {
         .map(|(_, n)| n.clone())
         .collect();
 
-    Ok(ParseOutput {
-        graph,
-        init_config,
-    })
+    Ok(ParseOutput { graph, init_config })
 }
 
 // ── Ishikawa parser ─────────────────────────────────────────────────────
@@ -7117,10 +7332,7 @@ fn parse_ishikawa_diagram(input: &str) -> Result<ParseOutput> {
     }
 
     if all_nodes.is_empty() {
-        return Ok(ParseOutput {
-            graph,
-            init_config,
-        });
+        return Ok(ParseOutput { graph, init_config });
     }
 
     // Build tree: first node = root (effect), rest = causes.
@@ -7181,10 +7393,7 @@ fn parse_ishikawa_diagram(input: &str) -> Result<ParseOutput> {
 
     graph.ishikawa.root = Some(build_ishikawa_tree(&all_nodes));
 
-    Ok(ParseOutput {
-        graph,
-        init_config,
-    })
+    Ok(ParseOutput { graph, init_config })
 }
 
 // ── Wardley parser ──────────────────────────────────────────────────────
@@ -7284,9 +7493,7 @@ fn parse_wardley_diagram(input: &str) -> Result<ParseOutput> {
             let rest = trimmed.get(7..).unwrap_or("").trim();
             if let Some((name, coords_str)) = rest.split_once('[') {
                 let name = name.trim().to_string();
-                if let Some((vis, evo)) =
-                    extract_bracket_coords(&format!("[{}", coords_str))
-                {
+                if let Some((vis, evo)) = extract_bracket_coords(&format!("[{}", coords_str)) {
                     graph.wardley.nodes.push(crate::ir::WardleyNode {
                         id: name.clone(),
                         label: name,
@@ -7307,13 +7514,8 @@ fn parse_wardley_diagram(input: &str) -> Result<ParseOutput> {
             let rest = trimmed.get(10..).unwrap_or("").trim();
             if let Some(bracket_start) = rest.find('[') {
                 let name = rest[..bracket_start].trim().to_string();
-                if let Some((vis, evo)) =
-                    extract_bracket_coords(&rest[bracket_start..])
-                {
-                    let after_bracket = rest
-                        .find(']')
-                        .map(|i| rest[i + 1..].trim())
-                        .unwrap_or("");
+                if let Some((vis, evo)) = extract_bracket_coords(&rest[bracket_start..]) {
+                    let after_bracket = rest.find(']').map(|i| rest[i + 1..].trim()).unwrap_or("");
 
                     // Parse optional label offset: label [dx, dy]
                     let label_offset = if let Some(li) = after_bracket.find("label") {
@@ -7355,7 +7557,10 @@ fn parse_wardley_diagram(input: &str) -> Result<ParseOutput> {
         // Links: A -> B, A +> B, A -.-> B, A -> B; label
         if trimmed.contains("->") || trimmed.contains("+>") || trimmed.contains("+<") {
             let (line_part, label) = if let Some(idx) = trimmed.find(';') {
-                (trimmed[..idx].trim(), Some(trimmed[idx + 1..].trim().to_string()))
+                (
+                    trimmed[..idx].trim(),
+                    Some(trimmed[idx + 1..].trim().to_string()),
+                )
             } else {
                 (trimmed, None)
             };
@@ -7412,10 +7617,7 @@ fn parse_wardley_diagram(input: &str) -> Result<ParseOutput> {
         ];
     }
 
-    Ok(ParseOutput {
-        graph,
-        init_config,
-    })
+    Ok(ParseOutput { graph, init_config })
 }
 
 fn wardley_to_percent(val: f32) -> f32 {
@@ -7468,11 +7670,18 @@ mod tests {
         let input = r#"flowchart LR
 A["reads artifacts & computes deps"] --> B"#;
         let parsed = parse_mermaid(input).unwrap();
-        assert_eq!(parsed.graph.nodes.len(), 2, "ampersand in label must not create extra nodes");
+        assert_eq!(
+            parsed.graph.nodes.len(),
+            2,
+            "ampersand in label must not create extra nodes"
+        );
         assert_eq!(parsed.graph.edges.len(), 1);
         assert!(parsed.graph.nodes.contains_key("A"));
         assert!(parsed.graph.nodes.contains_key("B"));
-        assert_eq!(parsed.graph.nodes["A"].label, "reads artifacts & computes deps");
+        assert_eq!(
+            parsed.graph.nodes["A"].label,
+            "reads artifacts & computes deps"
+        );
     }
 
     #[test]

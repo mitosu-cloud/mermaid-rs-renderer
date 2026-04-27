@@ -34,7 +34,11 @@ pub(super) fn compute_venn_layout(graph: &Graph, _theme: &Theme, _config: &Layou
     }
 
     // Title height
-    let title_h = if graph.venn.title.is_some() { 40.0 } else { 0.0 };
+    let title_h = if graph.venn.title.is_some() {
+        40.0
+    } else {
+        0.0
+    };
 
     // Determine radii from sizes (proportional to sqrt of size)
     let max_size = graph
@@ -73,9 +77,9 @@ pub(super) fn compute_venn_layout(graph: &Graph, _theme: &Theme, _config: &Layou
             let r_avg = (radii[0] + radii[1] + radii[2]) / 3.0;
             let spread = r_avg * 0.85;
             vec![
-                (0.0, -spread * 0.6),                          // top
-                (-spread * 0.866, spread * 0.4),                // bottom-left
-                (spread * 0.866, spread * 0.4),                 // bottom-right
+                (0.0, -spread * 0.6),            // top
+                (-spread * 0.866, spread * 0.4), // bottom-left
+                (spread * 0.866, spread * 0.4),  // bottom-right
             ]
         }
         _ => {
@@ -84,8 +88,8 @@ pub(super) fn compute_venn_layout(graph: &Graph, _theme: &Theme, _config: &Layou
             let ring_radius = r_avg * 1.2;
             (0..num_sets)
                 .map(|i| {
-                    let angle =
-                        -std::f32::consts::FRAC_PI_2 + 2.0 * std::f32::consts::PI * i as f32 / num_sets as f32;
+                    let angle = -std::f32::consts::FRAC_PI_2
+                        + 2.0 * std::f32::consts::PI * i as f32 / num_sets as f32;
                     (ring_radius * angle.cos(), ring_radius * angle.sin())
                 })
                 .collect()
@@ -135,7 +139,13 @@ pub(super) fn compute_venn_layout(graph: &Graph, _theme: &Theme, _config: &Layou
                     style.color.clone().unwrap_or_else(|| "#333".to_string()),
                 )
             } else {
-                (default_color, 0.5, "#333".to_string(), 2.0, "#333".to_string())
+                (
+                    default_color,
+                    0.5,
+                    "#333".to_string(),
+                    2.0,
+                    "#333".to_string(),
+                )
             };
 
         circles.push(VennCircleLayout {

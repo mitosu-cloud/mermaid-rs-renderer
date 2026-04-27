@@ -216,6 +216,34 @@ pub(super) fn median_position(
     }
 }
 
+/// Phase B (iter 246, refined iter 256): compute global ranks for ALL
+/// nodes in a state diagram using ALL edges (including cross-cluster
+/// edges). Now uses network-simplex (Gansner et al. 1993) — the same
+/// algorithm dagre uses — instead of plain topological sort. Network
+/// simplex produces a tight, low-edge-length ranking where same-rank
+/// nodes across clusters are aligned at consistent ranks.
+pub(super) fn compute_state_global_ranks(graph: &crate::ir::Graph) -> HashMap<String, usize> {
+    let all_ids: Vec<String> = graph.nodes.keys().cloned().collect();
+    super::network_simplex::compute_ranks_network_simplex(&all_ids, &graph.edges, &graph.node_order)
+}
+
+/// Iter 259: dispatcher that uses network simplex for state diagrams
+/// (matching dagre semantics) and topological-sort for other diagram
+/// types (preserving existing behavior). Wired into per-cluster rank
+/// computation call sites.
+pub(super) fn compute_ranks_subset_for(
+    graph: &crate::ir::Graph,
+    node_ids: &[String],
+    edges: &[crate::ir::Edge],
+    node_order: &HashMap<String, usize>,
+) -> HashMap<String, usize> {
+    if graph.kind == crate::ir::DiagramKind::State {
+        super::network_simplex::compute_ranks_network_simplex(node_ids, edges, node_order)
+    } else {
+        compute_ranks_subset(node_ids, edges, node_order)
+    }
+}
+
 pub(super) fn compute_ranks_subset(
     node_ids: &[String],
     edges: &[crate::ir::Edge],
@@ -354,9 +382,11 @@ mod tests {
             sequence_arrow_end: None,
             sequence_arrow_start: None,
             style: crate::ir::EdgeStyle::Solid,
-                markdown_label: false,
-                id: None,
-                curve: None, arch_port_from: None, arch_port_to: None,
+            markdown_label: false,
+            id: None,
+            curve: None,
+            arch_port_from: None,
+            arch_port_to: None,
         }
     }
 

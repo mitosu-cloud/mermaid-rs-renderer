@@ -139,7 +139,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             // polygons can extend left of x=0. Push viewBox-x negative so the
             // frame's left border isn't clipped (mirrors mermaid JS, which
             // sets a negative viewBox-x for the same reason).
-            let min_frame_x = seq.frames.iter()
+            let min_frame_x = seq
+                .frames
+                .iter()
                 .map(|f| f.x)
                 .fold(0.0_f32, |acc, x| acc.min(x));
             if min_frame_x < 0.0 {
@@ -250,10 +252,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         if has_acc_descr {
             labelledby.push("chart-desc");
         }
-        aria_attrs.push_str(&format!(
-            " aria-labelledby=\"{}\"",
-            labelledby.join(" ")
-        ));
+        aria_attrs.push_str(&format!(" aria-labelledby=\"{}\"", labelledby.join(" ")));
     }
 
     svg.push_str(&format!(
@@ -289,7 +288,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     }
 
     // Timeline and Ishikawa use CSS background-color on the SVG element.
-    if !matches!(layout.diagram, DiagramData::Timeline(_) | DiagramData::Ishikawa(_)) {
+    if !matches!(
+        layout.diagram,
+        DiagramData::Timeline(_) | DiagramData::Ishikawa(_)
+    ) {
         svg.push_str(&format!(
             "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
             theme.background
@@ -321,65 +323,65 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     if is_timeline {
         // Jump past generic marker defs — render_timeline() adds its own.
     } else {
-    svg.push_str("<defs>");
-    for color in &colors {
-        let idx = color_ids.get(color).copied().unwrap_or(0);
-        svg.push_str(&format!(
+        svg.push_str("<defs>");
+        for color in &colors {
+            let idx = color_ids.get(color).copied().unwrap_or(0);
+            svg.push_str(&format!(
             "<marker id=\"arrow-{idx}\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
             color, color
         ));
-        svg.push_str(&format!(
+            svg.push_str(&format!(
             "<marker id=\"arrow-start-{idx}\" viewBox=\"0 0 10 10\" refX=\"4.5\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M 0 5 L 10 10 L 10 0 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
             color, color
         ));
-        if is_sequence {
-            svg.push_str(&format!(
+            if is_sequence {
+                svg.push_str(&format!(
                 "<marker id=\"arrow-seq-{idx}\" viewBox=\"-1 0 12 10\" refX=\"7.9\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto-start-reverse\"><path d=\"M -1 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
                 color,
                 color
             ));
-            svg.push_str(&format!(
+                svg.push_str(&format!(
                 "<marker id=\"arrow-start-seq-{idx}\" viewBox=\"-1 0 12 10\" refX=\"2.1\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"12\" markerHeight=\"12\" orient=\"auto\"><path d=\"M 11 0 L 0 5 L 11 10 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
                 color,
                 color
             ));
-            // Cross marker for -x / --x arrows
-            svg.push_str(&format!(
+                // Cross marker for -x / --x arrows
+                svg.push_str(&format!(
                 "<marker id=\"cross-seq-{idx}\" viewBox=\"0 0 8 9\" refX=\"4\" refY=\"4.5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"15\" markerHeight=\"8\" orient=\"auto\"><path fill=\"none\" stroke=\"{}\" stroke-width=\"1.5\" d=\"M 1,2 L 6,7 M 6,2 L 1,7\" style=\"stroke-dasharray: 0, 0;\"/></marker>",
                 color
             ));
-            // Open (async) arrow marker for -) / --) arrows
-            svg.push_str(&format!(
+                // Open (async) arrow marker for -) / --) arrows
+                svg.push_str(&format!(
                 "<marker id=\"open-seq-{idx}\" refX=\"15.5\" refY=\"7\" markerWidth=\"20\" markerHeight=\"28\" orient=\"auto\"><path d=\"M 18,7 L9,13 L14,7 L9,1 Z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/></marker>",
                 color, color
             ));
-        }
-        if is_state {
-            svg.push_str(&format!(
+            }
+            if is_state {
+                svg.push_str(&format!(
                 "<marker id=\"arrow-state-{idx}\" viewBox=\"0 0 20 14\" refX=\"19\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 19 7 L 9 13 L 14 7 L 9 1 Z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
                 color, color
             ));
-        }
-        if is_class {
-            svg.push_str(&format!(
+            }
+            if is_class {
+                svg.push_str(&format!(
                 "<marker id=\"arrow-class-open-{idx}\" viewBox=\"0 0 20 14\" refX=\"1\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 1 7 L 18 13 V 1 Z\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
                 color
             ));
-            svg.push_str(&format!(
+                svg.push_str(&format!(
                 "<marker id=\"arrow-class-open-start-{idx}\" viewBox=\"0 0 20 14\" refX=\"18\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 1 7 L 18 13 V 1 Z\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
                 color
             ));
-            svg.push_str(&format!(
+                svg.push_str(&format!(
                 "<marker id=\"arrow-class-dep-{idx}\" viewBox=\"0 0 20 14\" refX=\"13\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 18 7 L 9 13 L 14 7 L 9 1 Z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
                 color, color
             ));
-            svg.push_str(&format!(
+                svg.push_str(&format!(
                 "<marker id=\"arrow-class-dep-start-{idx}\" viewBox=\"0 0 20 14\" refX=\"6\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 5 7 L 9 13 L 1 7 L 9 1 Z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
                 color, color
             ));
+            }
         }
-    }
-    svg.push_str("</defs>");
+        svg.push_str("</defs>");
     } // end !is_timeline defs block
 
     if let DiagramData::Error(ref error) = layout.diagram {
@@ -542,29 +544,40 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     sub_stroke
                 ));
             }
+            let sub_dash = subgraph
+                .style
+                .stroke_dasharray
+                .as_ref()
+                .map(|value| format!(" stroke-dasharray=\"{}\"", value))
+                .unwrap_or_default();
             svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"6\" ry=\"6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>",
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"6\" ry=\"6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{}/>",
                 subgraph.x,
                 subgraph.y,
                 subgraph.width,
                 subgraph.height,
                 sub_stroke,
-                sub_stroke_width
+                sub_stroke_width,
+                sub_dash
             ));
             if !label_empty {
-                let label_pad_x = (theme.font_size * 0.6).max(subgraph.label_block.height * 0.35);
-                let label_x = subgraph.x + label_pad_x;
+                // JS centers composite-state cluster titles on the cluster's
+                // horizontal midpoint (see mermaid-js stateDiagram .cluster-label
+                // translate computation).
+                let label_x = subgraph.x + subgraph.width / 2.0;
                 let label_y = subgraph.y + header_h / 2.0;
-                svg.push_str(&text_block_svg_with_font_size_weight(
+                let weight = subgraph.style.font_weight.as_deref().unwrap_or("600");
+                svg.push_str(&text_block_svg_with_font_attrs(
                     label_x,
                     label_y,
                     &subgraph.label_block,
                     theme,
                     config,
                     state_font_size,
-                    "start",
+                    "middle",
                     subgraph.style.text_color.as_deref(),
-                    Some("600"),
+                    Some(weight),
+                    subgraph.style.font_style.as_deref(),
                     false,
                 ));
             }
@@ -663,7 +676,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         // `rect <color>` blocks render as a solid filled background with no
         // dashed border and no label box (matches mermaid.js convention).
         if matches!(frame.kind, crate::ir::SequenceFrameKind::Rect) {
-            let fill = frame.fill_color.as_deref().unwrap_or("rgba(200,200,200,0.3)");
+            let fill = frame
+                .fill_color
+                .as_deref()
+                .unwrap_or("rgba(200,200,200,0.3)");
             svg.push_str(&format!(
                 "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"none\"/>",
                 frame.x, frame.y, frame.width, frame.height, fill
@@ -809,12 +825,8 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             // the note shape paints over the connector ends.
             if let Some(target) = layout.nodes.get(&note.target) {
                 let (note_anchor_x, target_anchor_x) = match note.position {
-                    crate::ir::StateNotePosition::LeftOf => {
-                        (note.x + note.width, target.x)
-                    }
-                    crate::ir::StateNotePosition::RightOf => {
-                        (note.x, target.x + target.width)
-                    }
+                    crate::ir::StateNotePosition::LeftOf => (note.x + note.width, target.x),
+                    crate::ir::StateNotePosition::RightOf => (note.x, target.x + target.width),
                 };
                 let note_anchor_y = note.y + note.height / 2.0;
                 let target_anchor_y = target.y + target.height / 2.0;
@@ -858,24 +870,40 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let (endpoint_pad_x, endpoint_pad_y) = endpoint_label_padding(layout.kind);
             let marker_id = color_ids.get(&stroke).copied().unwrap_or(0);
             let marker_end = match edge.sequence_arrow_end {
-                Some(crate::ir::SequenceArrowHead::Filled) => format!("marker-end=\"url(#arrow-seq-{marker_id})\""),
-                Some(crate::ir::SequenceArrowHead::Cross) => format!("marker-end=\"url(#cross-seq-{marker_id})\""),
-                Some(crate::ir::SequenceArrowHead::Open) => format!("marker-end=\"url(#open-seq-{marker_id})\""),
-                _ => if edge.arrow_end {
+                Some(crate::ir::SequenceArrowHead::Filled) => {
                     format!("marker-end=\"url(#arrow-seq-{marker_id})\"")
-                } else {
-                    String::new()
-                },
+                }
+                Some(crate::ir::SequenceArrowHead::Cross) => {
+                    format!("marker-end=\"url(#cross-seq-{marker_id})\"")
+                }
+                Some(crate::ir::SequenceArrowHead::Open) => {
+                    format!("marker-end=\"url(#open-seq-{marker_id})\"")
+                }
+                _ => {
+                    if edge.arrow_end {
+                        format!("marker-end=\"url(#arrow-seq-{marker_id})\"")
+                    } else {
+                        String::new()
+                    }
+                }
             };
             let marker_start = match edge.sequence_arrow_start {
-                Some(crate::ir::SequenceArrowHead::Filled) => format!("marker-start=\"url(#arrow-start-seq-{marker_id})\""),
-                Some(crate::ir::SequenceArrowHead::Cross) => format!("marker-start=\"url(#cross-seq-{marker_id})\""),
-                Some(crate::ir::SequenceArrowHead::Open) => format!("marker-start=\"url(#open-seq-{marker_id})\""),
-                _ => if edge.arrow_start {
+                Some(crate::ir::SequenceArrowHead::Filled) => {
                     format!("marker-start=\"url(#arrow-start-seq-{marker_id})\"")
-                } else {
-                    String::new()
-                },
+                }
+                Some(crate::ir::SequenceArrowHead::Cross) => {
+                    format!("marker-start=\"url(#cross-seq-{marker_id})\"")
+                }
+                Some(crate::ir::SequenceArrowHead::Open) => {
+                    format!("marker-start=\"url(#open-seq-{marker_id})\"")
+                }
+                _ => {
+                    if edge.arrow_start {
+                        format!("marker-start=\"url(#arrow-start-seq-{marker_id})\"")
+                    } else {
+                        String::new()
+                    }
+                }
             };
 
             let mut dash = String::new();
@@ -1476,7 +1504,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             }
             let center_x = node.x + node.width / 2.0;
             let center_y = node.y + node.height / 2.0;
-            let hide_label = node.label.lines.iter().all(|line| line.text().trim().is_empty())
+            let hide_label = node
+                .label
+                .lines
+                .iter()
+                .all(|line| line.text().trim().is_empty())
                 || node.id.starts_with("__start_")
                 || node.id.starts_with("__end_");
             if !hide_label {
@@ -1515,7 +1547,8 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     } else {
                         // Parent/category nodes: label top-left
                         let label_x = node.x + config.treemap.label_padding_x;
-                        let label_y = node.y + config.treemap.label_padding_y + node.label.height / 2.0;
+                        let label_y =
+                            node.y + config.treemap.label_padding_y + node.label.height / 2.0;
                         let small_font = theme.font_size * 0.7;
                         text_block_svg_with_font_size(
                             label_x,
@@ -1531,7 +1564,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     }
                 } else if layout.kind == crate::ir::DiagramKind::Er {
                     render_er_node_label(node, theme, config).unwrap_or_else(|| {
-                        if node.label.lines.iter().any(|line| is_divider_text_line(line)) {
+                        if node
+                            .label
+                            .lines
+                            .iter()
+                            .any(|line| is_divider_text_line(line))
+                        {
                             text_block_svg_class(
                                 node,
                                 theme,
@@ -1550,7 +1588,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                             )
                         }
                     })
-                } else if node.label.lines.iter().any(|line| is_divider_text_line(line)) {
+                } else if node
+                    .label
+                    .lines
+                    .iter()
+                    .any(|line| is_divider_text_line(line))
+                {
                     text_block_svg_class(node, theme, config, node.style.text_color.as_deref())
                 } else if layout.kind == crate::ir::DiagramKind::State {
                     text_block_svg_with_font_size(
@@ -1614,7 +1657,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 || footbox.id.starts_with("__start_")
                 || footbox.id.starts_with("__end_");
             if !hide_label {
-                let label_svg = if footbox.label.lines.iter().any(|line| is_divider_text_line(line)) {
+                let label_svg = if footbox
+                    .label
+                    .lines
+                    .iter()
+                    .any(|line| is_divider_text_line(line))
+                {
                     text_block_svg_class(
                         footbox,
                         theme,
@@ -1652,9 +1700,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
                 }
             }
-            render_sequence_actor_shape(
-                &mut svg, node, theme, config, false,
-            );
+            render_sequence_actor_shape(&mut svg, node, theme, config, false);
             if node.link.is_some() {
                 svg.push_str("</a>");
             }
@@ -1666,9 +1712,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
                 }
             }
-            render_sequence_actor_shape(
-                &mut svg, footbox, theme, config, false,
-            );
+            render_sequence_actor_shape(&mut svg, footbox, theme, config, false);
             if footbox.link.is_some() {
                 svg.push_str("</a>");
             }
@@ -1691,7 +1735,55 @@ fn points_to_curved_path(points: &[(f32, f32)], curve: crate::ir::CurveType) -> 
     if deduped.len() == 1 {
         return format!("M {:.3},{:.3}", deduped[0].0, deduped[0].1);
     }
-    let pts = &deduped;
+    // Iter 264: for non-linear curves, interpolate intermediate waypoints
+    // along long segments. This converts straight-line cubic Beziers into
+    // multi-segment Beziers with smoother arrowhead tangents, matching JS
+    // dagre's M..L..C..C..L SVG markup style.
+    let interpolated;
+    let pts = if !matches!(curve, crate::ir::CurveType::Linear) && deduped.len() <= 4 {
+        // Compute total polyline length.
+        let mut total_len = 0.0f32;
+        for w in deduped.windows(2) {
+            let (sx, sy) = w[0];
+            let (ex, ey) = w[1];
+            total_len += ((ex - sx).powi(2) + (ey - sy).powi(2)).sqrt();
+        }
+        // Only interpolate if total length is meaningful (>80px) and we'd
+        // benefit (currently <5 input points → at most single C from
+        // curve_tangent_bezier).
+        if total_len > 80.0 {
+            // For each segment, insert 1-2 intermediate points so total
+            // becomes 5+. Distribute proportionally to segment length.
+            let mut new_pts: Vec<(f32, f32)> = Vec::with_capacity(deduped.len() + 4);
+            new_pts.push(deduped[0]);
+            for w in deduped.windows(2) {
+                let (sx, sy) = w[0];
+                let (ex, ey) = w[1];
+                let seg_len = ((ex - sx).powi(2) + (ey - sy).powi(2)).sqrt();
+                let n_inserts = if seg_len > 100.0 {
+                    3
+                } else if seg_len > 50.0 {
+                    2
+                } else if seg_len > 20.0 {
+                    1
+                } else {
+                    0
+                };
+                let step = 1.0 / (n_inserts as f32 + 1.0);
+                for i in 1..=n_inserts {
+                    let t = step * i as f32;
+                    new_pts.push((sx + (ex - sx) * t, sy + (ey - sy) * t));
+                }
+                new_pts.push((ex, ey));
+            }
+            interpolated = new_pts;
+            &interpolated
+        } else {
+            &deduped
+        }
+    } else {
+        &deduped
+    };
     match curve {
         crate::ir::CurveType::Linear => {
             let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
@@ -1700,27 +1792,13 @@ fn points_to_curved_path(points: &[(f32, f32)], curve: crate::ir::CurveType) -> 
             }
             d
         }
-        crate::ir::CurveType::Basis => {
-            curve_basis(pts)
-        }
-        crate::ir::CurveType::Step => {
-            curve_step(pts, 0.5)
-        }
-        crate::ir::CurveType::StepBefore => {
-            curve_step(pts, 0.0)
-        }
-        crate::ir::CurveType::StepAfter => {
-            curve_step(pts, 1.0)
-        }
-        crate::ir::CurveType::Natural => {
-            curve_natural(pts)
-        }
-        crate::ir::CurveType::MonotoneX | crate::ir::CurveType::BumpX => {
-            curve_monotone_x(pts)
-        }
-        crate::ir::CurveType::MonotoneY | crate::ir::CurveType::BumpY => {
-            curve_monotone_y(pts)
-        }
+        crate::ir::CurveType::Basis => curve_basis(pts),
+        crate::ir::CurveType::Step => curve_step(pts, 0.5),
+        crate::ir::CurveType::StepBefore => curve_step(pts, 0.0),
+        crate::ir::CurveType::StepAfter => curve_step(pts, 1.0),
+        crate::ir::CurveType::Natural => curve_natural(pts),
+        crate::ir::CurveType::MonotoneX | crate::ir::CurveType::BumpX => curve_monotone_x(pts),
+        crate::ir::CurveType::MonotoneY | crate::ir::CurveType::BumpY => curve_monotone_y(pts),
         crate::ir::CurveType::Cardinal | crate::ir::CurveType::CatmullRom => {
             curve_cardinal(pts, 0.5)
         }
@@ -1761,7 +1839,9 @@ fn curve_basis(pts: &[(f32, f32)]) -> String {
     let y2 = (pts[0].1 + 2.0 * pts[1].1) / 3.0;
     let mx = (x2 + (pts[1].0 + 2.0 * pts[2].0) / 3.0) / 2.0;
     let my = (y2 + (pts[1].1 + 2.0 * pts[2].1) / 3.0) / 2.0;
-    d.push_str(&format!(" C {x1:.3},{y1:.3} {x2:.3},{y2:.3} {mx:.3},{my:.3}"));
+    d.push_str(&format!(
+        " C {x1:.3},{y1:.3} {x2:.3},{y2:.3} {mx:.3},{my:.3}"
+    ));
     let mut last_ex = mx;
     let mut last_ey = my;
     for i in 2..pts.len() - 1 {
@@ -1847,10 +1927,7 @@ fn curve_tangent_bezier(pts: &[(f32, f32)]) -> String {
         ));
     }
     // Last tangent: approach direction.
-    tangents.push((
-        pts[n - 1].0 - pts[n - 2].0,
-        pts[n - 1].1 - pts[n - 2].1,
-    ));
+    tangents.push((pts[n - 1].0 - pts[n - 2].0, pts[n - 1].1 - pts[n - 2].1));
 
     // Compute the bounding box of all edge waypoints to clamp control
     // points and prevent the curve from swinging outside the SVG.
@@ -1879,8 +1956,12 @@ fn curve_tangent_bezier(pts: &[(f32, f32)]) -> String {
         let p1 = pts[i + 1];
         // Scale tangents by 1/3 of the segment length for natural-looking curves.
         let seg_len = ((p1.0 - p0.0).powi(2) + (p1.1 - p0.1).powi(2)).sqrt();
-        let t0_len = (tangents[i].0.powi(2) + tangents[i].1.powi(2)).sqrt().max(1e-6);
-        let t1_len = (tangents[i + 1].0.powi(2) + tangents[i + 1].1.powi(2)).sqrt().max(1e-6);
+        let t0_len = (tangents[i].0.powi(2) + tangents[i].1.powi(2))
+            .sqrt()
+            .max(1e-6);
+        let t1_len = (tangents[i + 1].0.powi(2) + tangents[i + 1].1.powi(2))
+            .sqrt()
+            .max(1e-6);
         let scale0 = seg_len / (3.0 * t0_len);
         let scale1 = seg_len / (3.0 * t1_len);
         let c1x = (p0.0 + tangents[i].0 * scale0).clamp(clamp_min_x, clamp_max_x);
@@ -1936,7 +2017,12 @@ fn curve_natural(pts: &[(f32, f32)]) -> String {
     for i in 0..n {
         d.push_str(&format!(
             " C {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
-            cx1x[i], cx1y[i], cx2x[i], cx2y[i], pts[i + 1].0, pts[i + 1].1
+            cx1x[i],
+            cx1y[i],
+            cx2x[i],
+            cx2y[i],
+            pts[i + 1].0,
+            pts[i + 1].1
         ));
     }
     d
@@ -2023,7 +2109,8 @@ fn curve_monotone_x(pts: &[(f32, f32)]) -> String {
         let cy2 = pts[i + 1].1 - tangents[i + 1] * dx / 3.0;
         d.push_str(&format!(
             " C {cx1:.3},{cy1:.3} {cx2:.3},{cy2:.3} {:.3},{:.3}",
-            pts[i + 1].0, pts[i + 1].1,
+            pts[i + 1].0,
+            pts[i + 1].1,
         ));
     }
     d
@@ -2066,7 +2153,8 @@ fn curve_monotone_y(pts: &[(f32, f32)]) -> String {
         let cy2 = pts[i + 1].1 - dy / 3.0;
         d.push_str(&format!(
             " C {cx1:.3},{cy1:.3} {cx2:.3},{cy2:.3} {:.3},{:.3}",
-            pts[i + 1].0, pts[i + 1].1,
+            pts[i + 1].0,
+            pts[i + 1].1,
         ));
     }
     d
@@ -2087,7 +2175,11 @@ fn curve_cardinal(pts: &[(f32, f32)], tension: f32) -> String {
         let p0 = if i == 0 { pts[0] } else { pts[i - 1] };
         let p1 = pts[i];
         let p2 = pts[i + 1];
-        let p3 = if i + 2 < pts.len() { pts[i + 2] } else { pts[i + 1] };
+        let p3 = if i + 2 < pts.len() {
+            pts[i + 2]
+        } else {
+            pts[i + 1]
+        };
         let cx1 = p1.0 + s * (p2.0 - p0.0) / 3.0;
         let cy1 = p1.1 + s * (p2.1 - p0.1) / 3.0;
         let cx2 = p2.0 - s * (p3.0 - p1.0) / 3.0;
@@ -2238,6 +2330,13 @@ fn edge_label_background_visible(
     let gap = polyline_rect_gap(edge_points, &rect);
     match label_kind {
         EdgeLabelKind::Center => {
+            // State diagrams (per mermaid-js .edgeLabel rect{opacity:0.5}) always
+            // render the label chip, regardless of edge proximity — the chip's
+            // 50% fill prevents the curved bidirectional transitions from
+            // visibly piercing the label text.
+            if matches!(diagram_kind, crate::ir::DiagramKind::State) {
+                return true;
+            }
             let gap_limit = match diagram_kind {
                 crate::ir::DiagramKind::Flowchart => 1.2,
                 crate::ir::DiagramKind::Sequence => (rect.height * 0.16).clamp(1.2, 2.4),
@@ -2818,7 +2917,13 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
         if header_count >= 2 {
             let min_header_gap = theme.font_size * 1.25;
             let id_y = header_y + req.header_line_gap.max(min_header_gap);
-            svg.push_str(&render_line(header_x, id_y, &lines[1].text(), label_color, true));
+            svg.push_str(&render_line(
+                header_x,
+                id_y,
+                &lines[1].text(),
+                label_color,
+                true,
+            ));
         }
 
         if !body_lines.is_empty() {
@@ -2834,7 +2939,13 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
             ));
             let mut body_y = divider_y + req.label_padding_y;
             for line in body_lines {
-                svg.push_str(&render_line(header_x, body_y, &line.text(), label_color, false));
+                svg.push_str(&render_line(
+                    header_x,
+                    body_y,
+                    &line.text(),
+                    label_color,
+                    false,
+                ));
                 body_y += line_height;
             }
         }
@@ -2872,7 +2983,12 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
     }
 
     fn parse_series(node: &crate::layout::NodeLayout) -> Option<(String, Vec<(String, f32)>)> {
-        let text_lines: Vec<String> = node.label.lines.iter().map(|l| l.text().into_owned()).collect();
+        let text_lines: Vec<String> = node
+            .label
+            .lines
+            .iter()
+            .map(|l| l.text().into_owned())
+            .collect();
         let mut lines = text_lines
             .iter()
             .map(|line| line.trim())
@@ -3077,7 +3193,9 @@ fn architecture_icon_svg(icon_type: Option<&str>, w: f32, h: f32, fill: &str) ->
             // Source icon is 80×80, scale to fit w×h.
             let s = w.min(h) / 80.0;
             let t = format!("transform=\"scale({s:.3})\"");
-            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            let lst = format!(
+                "fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\""
+            );
             let fst = format!("fill=\"{fill}\"");
             format!(
                 "<g {t}>\
@@ -3094,7 +3212,9 @@ fn architecture_icon_svg(icon_type: Option<&str>, w: f32, h: f32, fill: &str) ->
             // Database cylinder — matching Iconify icon from mermaid-js.
             let s = w.min(h) / 80.0;
             let t = format!("transform=\"scale({s:.3})\"");
-            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            let lst = format!(
+                "fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\""
+            );
             format!(
                 "<g {t}>\
                  <path d=\"m20,57.86c0,3.94,8.95,7.14,20,7.14s20-3.2,20-7.14\" {lst}/>\
@@ -3111,7 +3231,9 @@ fn architecture_icon_svg(icon_type: Option<&str>, w: f32, h: f32, fill: &str) ->
             // Casing + corner screws + platter + spindle + actuator arm.
             let s = w.min(h) / 80.0;
             let t = format!("transform=\"scale({s:.3})\"");
-            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            let lst = format!(
+                "fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\""
+            );
             let fst = format!("fill=\"{fill}\"");
             format!(
                 "<g {t}>\
@@ -3130,7 +3252,9 @@ fn architecture_icon_svg(icon_type: Option<&str>, w: f32, h: f32, fill: &str) ->
             // Cloud — matching Iconify icon from mermaid-js.
             let s = w.min(h) / 80.0;
             let t = format!("transform=\"scale({s:.3})\"");
-            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            let lst = format!(
+                "fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\""
+            );
             format!(
                 "<g {t}>\
                  <path d=\"m65,47.5c0,2.76-2.24,5-5,5H20c-2.76,0-5-2.24-5-5,0-1.87,1.03-3.51,2.56-4.36-.04-.21-.06-.42-.06-.64,0-2.6,2.48-4.74,5.65-4.97,1.65-4.51,6.34-7.76,11.85-7.76.86,0,1.69.08,2.5.23,2.09-1.57,4.69-2.5,7.5-2.5,6.1,0,11.19,4.38,12.28,10.17,2.14.56,3.72,2.51,3.72,4.83,0,.03,0,.07-.01.1,2.29.46,4.01,2.48,4.01,4.9Z\" {lst}/>\
@@ -3141,7 +3265,9 @@ fn architecture_icon_svg(icon_type: Option<&str>, w: f32, h: f32, fill: &str) ->
         Some(t) if t.contains("database") || t.contains("cylinder") => {
             let s = w.min(h) / 80.0;
             let tf = format!("transform=\"scale({s:.3})\"");
-            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            let lst = format!(
+                "fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\""
+            );
             format!(
                 "<g {tf}>\
                  <path d=\"m20,57.86c0,3.94,8.95,7.14,20,7.14s20-3.2,20-7.14\" {lst}/>\
@@ -3154,7 +3280,9 @@ fn architecture_icon_svg(icon_type: Option<&str>, w: f32, h: f32, fill: &str) ->
         Some(t) if t.contains("cloud") => {
             let s = w.min(h) / 80.0;
             let tf = format!("transform=\"scale({s:.3})\"");
-            let lst = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\"");
+            let lst = format!(
+                "fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\""
+            );
             format!(
                 "<g {tf}><path d=\"m65,47.5c0,2.76-2.24,5-5,5H20c-2.76,0-5-2.24-5-5,0-1.87,1.03-3.51,2.56-4.36-.04-.21-.06-.42-.06-.64,0-2.6,2.48-4.74,5.65-4.97,1.65-4.51,6.34-7.76,11.85-7.76.86,0,1.69.08,2.5.23,2.09-1.57,4.69-2.5,7.5-2.5,6.1,0,11.19,4.38,12.28,10.17,2.14.56,3.72,2.51,3.72,4.83,0,.03,0,.07-.01.1,2.29.46,4.01,2.48,4.01,4.9Z\" {lst}/></g>"
             )
@@ -3530,7 +3658,13 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
             text_metrics::get_computed_text_length(&percent_text, font_size, &theme.font_family);
         let outside = !suppress_outside_labels && (arc_len < percent_width * 1.35 || span < 0.4);
         let label_text = if outside {
-            slice.label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" ")
+            slice
+                .label
+                .lines
+                .iter()
+                .map(|l| l.text().into_owned())
+                .collect::<Vec<_>>()
+                .join(" ")
         } else {
             percent_text.clone()
         };
@@ -4296,30 +4430,78 @@ fn render_timeline(
     // Returns (fill_hsl, text_color, line_hsl) for a given section index.
     // Default HSL palette (matches JS CSS class colors).
     // idx=-1 → section--1 (first), idx=0 → section-0, etc.
-    let default_colors: [(& str, &str, &str); 11] = [
-        ("hsl(240, 100%, 76.2745098039%)", "#ffffff", "hsl(60, 100%, 86.2745098039%)"),
-        ("hsl(60, 100%, 73.5294117647%)",  "black",   "hsl(240, 100%, 83.5294117647%)"),
-        ("hsl(80, 100%, 76.2745098039%)",  "black",   "hsl(260, 100%, 86.2745098039%)"),
-        ("hsl(270, 100%, 76.2745098039%)", "#ffffff", "hsl(90, 100%, 86.2745098039%)"),
-        ("hsl(300, 100%, 76.2745098039%)", "black",   "hsl(120, 100%, 86.2745098039%)"),
-        ("hsl(330, 100%, 76.2745098039%)", "black",   "hsl(150, 100%, 86.2745098039%)"),
-        ("hsl(0, 100%, 76.2745098039%)",   "black",   "hsl(180, 100%, 86.2745098039%)"),
-        ("hsl(30, 100%, 76.2745098039%)",  "black",   "hsl(210, 100%, 86.2745098039%)"),
-        ("hsl(90, 100%, 76.2745098039%)",  "black",   "hsl(270, 100%, 86.2745098039%)"),
-        ("hsl(150, 100%, 76.2745098039%)", "black",   "hsl(330, 100%, 86.2745098039%)"),
-        ("hsl(180, 100%, 76.2745098039%)", "black",   "hsl(0, 100%, 86.2745098039%)"),
+    let default_colors: [(&str, &str, &str); 11] = [
+        (
+            "hsl(240, 100%, 76.2745098039%)",
+            "#ffffff",
+            "hsl(60, 100%, 86.2745098039%)",
+        ),
+        (
+            "hsl(60, 100%, 73.5294117647%)",
+            "black",
+            "hsl(240, 100%, 83.5294117647%)",
+        ),
+        (
+            "hsl(80, 100%, 76.2745098039%)",
+            "black",
+            "hsl(260, 100%, 86.2745098039%)",
+        ),
+        (
+            "hsl(270, 100%, 76.2745098039%)",
+            "#ffffff",
+            "hsl(90, 100%, 86.2745098039%)",
+        ),
+        (
+            "hsl(300, 100%, 76.2745098039%)",
+            "black",
+            "hsl(120, 100%, 86.2745098039%)",
+        ),
+        (
+            "hsl(330, 100%, 76.2745098039%)",
+            "black",
+            "hsl(150, 100%, 86.2745098039%)",
+        ),
+        (
+            "hsl(0, 100%, 76.2745098039%)",
+            "black",
+            "hsl(180, 100%, 86.2745098039%)",
+        ),
+        (
+            "hsl(30, 100%, 76.2745098039%)",
+            "black",
+            "hsl(210, 100%, 86.2745098039%)",
+        ),
+        (
+            "hsl(90, 100%, 76.2745098039%)",
+            "black",
+            "hsl(270, 100%, 86.2745098039%)",
+        ),
+        (
+            "hsl(150, 100%, 76.2745098039%)",
+            "black",
+            "hsl(330, 100%, 86.2745098039%)",
+        ),
+        (
+            "hsl(180, 100%, 76.2745098039%)",
+            "black",
+            "hsl(0, 100%, 86.2745098039%)",
+        ),
     ];
 
     // Custom cScale colors from themeVariables override the default palette.
     let has_custom = !theme.cscale_colors.is_empty();
     let custom_colors: Vec<(String, &str, String)> = if has_custom {
-        theme.cscale_colors.iter().map(|c| {
-            let text_color = "black";
-            // JS applies the same section class to both path and line,
-            // so the divider line uses the same fill color as the card.
-            let line_color = c.clone();
-            (c.clone(), text_color, line_color)
-        }).collect()
+        theme
+            .cscale_colors
+            .iter()
+            .map(|c| {
+                let text_color = "black";
+                // JS applies the same section class to both path and line,
+                // so the divider line uses the same fill color as the card.
+                let line_color = c.clone();
+                (c.clone(), text_color, line_color)
+            })
+            .collect()
     } else {
         Vec::new()
     };
@@ -4341,7 +4523,7 @@ fn render_timeline(
     svg.push_str(
         "<defs><marker id=\"timeline-arrowhead\" refX=\"5\" refY=\"2\" \
          markerWidth=\"6\" markerHeight=\"4\" orient=\"auto\">\
-         <path d=\"M 0,0 V 4 L6,2 Z\"/></marker></defs>"
+         <path d=\"M 0,0 V 4 L6,2 Z\"/></marker></defs>",
     );
 
     // ── Section headers ────────────────────────────────────────────────
@@ -4378,7 +4560,10 @@ fn render_timeline(
     // ── Time period cards ──────────────────────────────────────────────
     for period in &layout.time_periods {
         let (fill, text_color, line_color) = section_colors(period.section_idx);
-        let label_text = period.label.lines.iter()
+        let label_text = period
+            .label
+            .lines
+            .iter()
             .map(|l| l.text().into_owned())
             .collect::<Vec<_>>()
             .join(" ");
@@ -4467,7 +4652,9 @@ fn render_timeline(
 
     // ── Title ──────────────────────────────────────────────────────────
     if let Some(ref title) = layout.title {
-        let title_text = title.lines.iter()
+        let title_text = title
+            .lines
+            .iter()
             .map(|l| l.text().into_owned())
             .collect::<Vec<_>>()
             .join(" ");
@@ -4540,7 +4727,11 @@ fn render_journey(layout: &JourneyLayout, theme: &Theme, config: &LayoutConfig) 
             theme.cluster_border
         ));
         if !section.label.lines.is_empty()
-            && !section.label.lines.iter().all(|l| l.text().trim().is_empty())
+            && !section
+                .label
+                .lines
+                .iter()
+                .all(|l| l.text().trim().is_empty())
         {
             let label_x = section.x + section.width / 2.0;
             let label_y = section.y + section.height / 2.0;
@@ -5032,9 +5223,7 @@ fn text_block_svg_with_font_size(
         let dy = if idx == 0 { 0.0 } else { line_height };
         let line_text = line.text();
         if is_divider_line(&line_text) {
-            text.push_str(&format!(
-                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\"></tspan>",
-            ));
+            text.push_str(&format!("<tspan x=\"{x:.2}\" dy=\"{dy:.2}\"></tspan>",));
         } else if line.has_formatting() {
             render_formatted_tspans(&mut text, x, dy, line, true);
         } else {
@@ -5061,6 +5250,34 @@ fn text_block_svg_with_font_size_weight(
     font_weight: Option<&str>,
     baseline: bool,
 ) -> String {
+    text_block_svg_with_font_attrs(
+        x,
+        y,
+        label,
+        theme,
+        config,
+        font_size,
+        anchor,
+        override_color,
+        font_weight,
+        None,
+        baseline,
+    )
+}
+
+fn text_block_svg_with_font_attrs(
+    x: f32,
+    y: f32,
+    label: &TextBlock,
+    theme: &Theme,
+    config: &LayoutConfig,
+    font_size: f32,
+    anchor: &str,
+    override_color: Option<&str>,
+    font_weight: Option<&str>,
+    font_style: Option<&str>,
+    baseline: bool,
+) -> String {
     let total_height = label.lines.len() as f32 * font_size * config.label_line_height;
     let start_y = if baseline {
         y
@@ -5074,9 +5291,13 @@ fn text_block_svg_with_font_size_weight(
         .filter(|w| !w.trim().is_empty())
         .map(|w| format!(" font-weight=\"{}\"", w))
         .unwrap_or_default();
+    let style_attr = font_style
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| format!(" font-style=\"{}\"", s))
+        .unwrap_or_default();
 
     text.push_str(&format!(
-        "<text x=\"{x:.2}\" y=\"{start_y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\"{weight_attr}>",
+        "<text x=\"{x:.2}\" y=\"{start_y:.2}\" text-anchor=\"{anchor}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\"{weight_attr}{style_attr}>",
         normalize_font_family(&theme.font_family),
         font_size,
         fill
@@ -5087,9 +5308,7 @@ fn text_block_svg_with_font_size_weight(
         let dy = if idx == 0 { 0.0 } else { line_height };
         let line_text = line.text();
         if is_divider_line(&line_text) {
-            text.push_str(&format!(
-                "<tspan x=\"{x:.2}\" dy=\"{dy:.2}\"></tspan>",
-            ));
+            text.push_str(&format!("<tspan x=\"{x:.2}\" dy=\"{dy:.2}\"></tspan>",));
         } else if line.has_formatting() {
             render_formatted_tspans(&mut text, x, dy, line, true);
         } else {
@@ -5715,11 +5934,13 @@ fn text_block_svg_class(
     let left_x = node.x + config.node_padding_x.max(10.0);
     let fill = override_color.unwrap_or(theme.primary_text_color.as_str());
 
-    let text_lines: Vec<String> = node.label.lines.iter().map(|l| l.text().into_owned()).collect();
-    let Some(divider_idx) = text_lines
+    let text_lines: Vec<String> = node
+        .label
+        .lines
         .iter()
-        .position(|line| is_divider_line(line))
-    else {
+        .map(|l| l.text().into_owned())
+        .collect();
+    let Some(divider_idx) = text_lines.iter().position(|line| is_divider_line(line)) else {
         let lines: Vec<(usize, &str)> = text_lines
             .iter()
             .enumerate()
@@ -5783,10 +6004,13 @@ fn render_er_node_label(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> Option<String> {
-    let text_lines: Vec<String> = node.label.lines.iter().map(|l| l.text().into_owned()).collect();
-    let divider_idx = text_lines
+    let text_lines: Vec<String> = node
+        .label
+        .lines
         .iter()
-        .position(|line| is_divider_line(line))?;
+        .map(|l| l.text().into_owned())
+        .collect();
+    let divider_idx = text_lines.iter().position(|line| is_divider_line(line))?;
     let line_height = theme.font_size * config.class_label_line_height();
     let total_height = node.label.lines.len() as f32 * line_height;
     let start_y = node.y + node.height / 2.0 - total_height / 2.0 + theme.font_size;
@@ -5862,11 +6086,8 @@ fn render_er_node_label(
                 use_columns = false;
                 break;
             }
-            let width = text_metrics::get_computed_text_length(
-                first,
-                theme.font_size,
-                &theme.font_family,
-            );
+            let width =
+                text_metrics::get_computed_text_length(first, theme.font_size, &theme.font_family);
             max_type_width = max_type_width.max(width);
             parsed.push((*idx, first.to_string(), rest.to_string()));
         }
@@ -5994,7 +6215,12 @@ fn is_divider_text_line(line: &crate::layout::TextLine) -> bool {
 }
 
 fn divider_lines_svg(node: &crate::layout::NodeLayout, theme: &Theme, line_height: f32) -> String {
-    if !node.label.lines.iter().any(|line| is_divider_text_line(line)) {
+    if !node
+        .label
+        .lines
+        .iter()
+        .any(|line| is_divider_text_line(line))
+    {
         return String::new();
     }
 
@@ -6392,7 +6618,8 @@ pub fn write_output_png(
     #[cfg(target_os = "ios")]
     {
         opt.fontdb_mut().load_fonts_dir("/System/Library/Fonts");
-        opt.fontdb_mut().load_fonts_dir("/System/Library/Fonts/Core");
+        opt.fontdb_mut()
+            .load_fonts_dir("/System/Library/Fonts/Core");
     }
 
     let tree = usvg::Tree::from_str(svg, &opt)?;
@@ -6423,7 +6650,11 @@ fn render_sequence_actor_shape(
 ) {
     use crate::ir::NodeShape;
 
-    let hide_label = node.label.lines.iter().all(|line| line.text().trim().is_empty())
+    let hide_label = node
+        .label
+        .lines
+        .iter()
+        .all(|line| line.text().trim().is_empty())
         || node.id.starts_with("__start_")
         || node.id.starts_with("__end_");
 
@@ -6472,7 +6703,12 @@ fn render_sequence_actor_shape(
             if !hide_label {
                 let label_y = leg_bot + 8.0;
                 svg.push_str(&text_block_svg(
-                    cx, label_y, &node.label, theme, config, false,
+                    cx,
+                    label_y,
+                    &node.label,
+                    theme,
+                    config,
+                    false,
                     node.style.text_color.as_deref(),
                 ));
             }
@@ -6504,7 +6740,12 @@ fn render_sequence_actor_shape(
             if !hide_label {
                 let label_y = glyph_y + radius + 16.0;
                 svg.push_str(&text_block_svg(
-                    cx, label_y, &node.label, theme, config, false,
+                    cx,
+                    label_y,
+                    &node.label,
+                    theme,
+                    config,
+                    false,
                     node.style.text_color.as_deref(),
                 ));
             }
@@ -6526,7 +6767,12 @@ fn render_sequence_actor_shape(
             if !hide_label {
                 let label_y = cy + radius + 12.0;
                 svg.push_str(&text_block_svg(
-                    cx, label_y, &node.label, theme, config, false,
+                    cx,
+                    label_y,
+                    &node.label,
+                    theme,
+                    config,
+                    false,
                     node.style.text_color.as_deref(),
                 ));
             }
@@ -6552,7 +6798,12 @@ fn render_sequence_actor_shape(
             if !hide_label {
                 let label_y = underline_y + 12.0;
                 svg.push_str(&text_block_svg(
-                    cx, label_y, &node.label, theme, config, false,
+                    cx,
+                    label_y,
+                    &node.label,
+                    theme,
+                    config,
+                    false,
                     node.style.text_color.as_deref(),
                 ));
             }
@@ -6581,7 +6832,15 @@ fn render_sequence_actor_shape(
             if !hide_label {
                 let cx = x + w / 2.0;
                 let cy = y + h / 2.0;
-                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
+                svg.push_str(&text_block_svg(
+                    cx,
+                    cy,
+                    &node.label,
+                    theme,
+                    config,
+                    false,
+                    node.style.text_color.as_deref(),
+                ));
             }
         }
         NodeShape::Queue => {
@@ -6614,11 +6873,20 @@ fn render_sequence_actor_shape(
             );
             svg.push_str(&format!(
                 "<path d=\"{d}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+                fill = theme.sequence_actor_fill,
+                stroke = theme.sequence_actor_border
             ));
             if !hide_label {
                 let cx = node.x + w / 2.0;
-                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
+                svg.push_str(&text_block_svg(
+                    cx,
+                    cy,
+                    &node.label,
+                    theme,
+                    config,
+                    false,
+                    node.style.text_color.as_deref(),
+                ));
             }
         }
         NodeShape::Cylinder => {
@@ -6655,7 +6923,12 @@ fn render_sequence_actor_shape(
                 // of this offset.
                 let label_y = node.y + cyl_h + ry + 4.0;
                 svg.push_str(&text_block_svg(
-                    actor_cx, label_y, &node.label, theme, config, false,
+                    actor_cx,
+                    label_y,
+                    &node.label,
+                    theme,
+                    config,
+                    false,
                     node.style.text_color.as_deref(),
                 ));
             }
@@ -6670,7 +6943,15 @@ fn render_sequence_actor_shape(
             if !hide_label {
                 let cx = node.x + node.width / 2.0;
                 let cy = node.y + node.height / 2.0;
-                svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
+                svg.push_str(&text_block_svg(
+                    cx,
+                    cy,
+                    &node.label,
+                    theme,
+                    config,
+                    false,
+                    node.style.text_color.as_deref(),
+                ));
             }
         }
     }
@@ -6838,7 +7119,9 @@ fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutCon
             .stroke
             .as_ref()
             .unwrap_or(&theme.primary_border_color);
-        raw.push_str(&crate::icons::render_icon_svg(icon_name, ix, iy, icon_size, fill));
+        raw.push_str(&crate::icons::render_icon_svg(
+            icon_name, ix, iy, icon_size, fill,
+        ));
     }
     // If the node has an image, render it inside the shape
     if let Some(img_url) = &node.img {
@@ -6858,7 +7141,11 @@ fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutCon
     }
 }
 
-fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutConfig) -> String {
+fn shape_svg_inner(
+    node: &crate::layout::NodeLayout,
+    theme: &Theme,
+    config: &LayoutConfig,
+) -> String {
     let stroke = node
         .style
         .stroke
@@ -6930,7 +7217,11 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             )
         }
         crate::ir::NodeShape::Circle | crate::ir::NodeShape::DoubleCircle => {
-            let label_empty = node.label.lines.iter().all(|line| line.text().trim().is_empty());
+            let label_empty = node
+                .label
+                .lines
+                .iter()
+                .all(|line| line.text().trim().is_empty());
             let is_state_start = node.id.starts_with("__start_");
             let is_state_end = node.id.starts_with("__end_");
             let (circle_fill, circle_stroke) = if is_state_start {
@@ -7021,9 +7312,8 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let body_d = format!(
                 "M {x:.2},{y_top:.2} A {rx:.2},{ry:.2} 0 0,0 {x_right:.2},{y_top:.2} L {x_right:.2},{y_bot:.2} A {rx:.2},{ry:.2} 0 0,1 {x:.2},{y_bot:.2} Z"
             );
-            let lid_d = format!(
-                "M {x:.2},{y_top:.2} A {rx:.2},{ry:.2} 0 0,1 {x_right:.2},{y_top:.2}"
-            );
+            let lid_d =
+                format!("M {x:.2},{y_top:.2} A {rx:.2},{ry:.2} 0 0,1 {x_right:.2},{y_top:.2}");
             let mut svg = format!(
                 "<path d=\"{body_d}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}{join}/>"
             );
@@ -7202,7 +7492,7 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let sw = node.style.stroke_width.unwrap_or(1.0);
             let radius = h / 2.0;
             let rw = (w - radius).max(0.0); // where the arc starts
-            let tw = h / 4.0;               // trapezoid indent
+            let tw = h / 4.0; // trapezoid indent
             format!(
                 "<path d=\"M {rx:.2} {y:.2} \
                  L {lx:.2} {y:.2} \
@@ -7211,8 +7501,11 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
                  L {rx:.2} {by:.2} \
                  A {r:.2} {r:.2} 0 0 0 {rx:.2} {y:.2} \
                  Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                rx = x + rw, lx = x + tw, my = y + h / 2.0,
-                by = y + h, r = radius,
+                rx = x + rw,
+                lx = x + tw,
+                my = y + h / 2.0,
+                by = y + h,
+                r = radius,
             )
         }
         crate::ir::NodeShape::StackedDocument => {
@@ -7230,8 +7523,11 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
                      L {lx:.2} {by:.2} L {rx:.2} {by:.2} \
                      A {r:.2} {r:.2} 0 0 0 {rx:.2} {sy:.2} Z\" \
                      fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                    rx = sx + rw, lx = sx + tw, my = sy + dh / 2.0,
-                    by = sy + dh, r = radius,
+                    rx = sx + rw,
+                    lx = sx + tw,
+                    my = sy + dh / 2.0,
+                    by = sy + dh,
+                    r = radius,
                 )
             };
             let back = doc_path(x + off, y, bw, bh);
@@ -7244,7 +7540,10 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let notch = (w.min(h) * 0.15).min(12.0);
             format!(
                 "<path d=\"M {x1:.2} {y:.2} h {w1:.2} v {h:.2} h {nw:.2} v {nh:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x1 = x + notch, w1 = w - notch, nw = -(w), nh = -(h - notch),
+                x1 = x + notch,
+                w1 = w - notch,
+                nw = -(w),
+                nh = -(h - notch),
             )
         }
         crate::ir::NodeShape::TagRect => {
@@ -7255,14 +7554,19 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             // Outer rectangle (with fold cutout at bottom-right).
             let rect_path = format!(
                 "M {x:.2} {y:.2} h {w:.2} v {hf:.2} l {nf:.2} {f:.2} h {nwf:.2} Z",
-                hf = h - fold, nf = -fold, f = fold, nwf = -(w - fold),
+                hf = h - fold,
+                nf = -fold,
+                f = fold,
+                nwf = -(w - fold),
             );
             // Fold triangle overlay.
             let fx = x + w - fold;
             let fy = y + h - fold;
             let fold_path = format!(
                 "M {fx:.2} {fy2:.2} h {f:.2} v {nf:.2} Z",
-                fy2 = y + h, f = fold, nf = -fold,
+                fy2 = y + h,
+                f = fold,
+                nf = -fold,
             );
             format!(
                 "<path d=\"{rect_path}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>\
@@ -7275,7 +7579,10 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let indent = w * 0.18;
             format!(
                 "<path d=\"M {x:.2} {y:.2} h {w:.2} l {ni:.2} {hh:.2} l {ind:.2} {hh:.2} h {nw:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                ni = -indent, hh = h / 2.0, ind = indent, nw = -w,
+                ni = -indent,
+                hh = h / 2.0,
+                ind = indent,
+                nw = -w,
             )
         }
         crate::ir::NodeShape::Hourglass => {
@@ -7283,7 +7590,14 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let sw = node.style.stroke_width.unwrap_or(1.0);
             format!(
                 "<polygon points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x, y, x + w, y, x, y + h, x + w, y + h,
+                x,
+                y,
+                x + w,
+                y,
+                x,
+                y + h,
+                x + w,
+                y + h,
             )
         }
         crate::ir::NodeShape::LightningBolt => {
@@ -7291,12 +7605,18 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let sw = node.style.stroke_width.unwrap_or(1.0);
             format!(
                 "<polygon points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x + w * 0.35, y,
-                x + w, y,
-                x + w * 0.45, y + h * 0.45,
-                x + w * 0.7, y + h * 0.45,
-                x, y + h,
-                x + w * 0.55, y + h * 0.55,
+                x + w * 0.35,
+                y,
+                x + w,
+                y,
+                x + w * 0.45,
+                y + h * 0.45,
+                x + w * 0.7,
+                y + h * 0.45,
+                x,
+                y + h,
+                x + w * 0.55,
+                y + h * 0.55,
             )
         }
         crate::ir::NodeShape::WindowPane => {
@@ -7323,7 +7643,14 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let offset = w * 0.15;
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
-                x + offset, y, x + w, y, x + w - offset, y + h, x, y + h
+                x + offset,
+                y,
+                x + w,
+                y,
+                x + w - offset,
+                y + h,
+                x,
+                y + h
             );
             format!(
                 "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
@@ -7335,7 +7662,14 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let offset = w * 0.15;
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
-                x, y, x + w - offset, y, x + w, y + h, x + offset, y + h
+                x,
+                y,
+                x + w - offset,
+                y,
+                x + w,
+                y + h,
+                x + offset,
+                y + h
             );
             format!(
                 "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
@@ -7383,7 +7717,10 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let fold = (w.min(h) * 0.15).min(12.0);
             format!(
                 "<path d=\"M {x:.2} {y:.2} h {w1:.2} v {fold:.2} h {nfold:.2} v {h1:.2} h {nw:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                w1 = w - fold, nfold = -fold, h1 = h - fold, nw = -(w - fold) - fold,
+                w1 = w - fold,
+                nfold = -fold,
+                h1 = h - fold,
+                nw = -(w - fold) - fold,
             )
         }
         crate::ir::NodeShape::OddShape => {
@@ -7392,12 +7729,18 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let cut = (w.min(h) * 0.15).min(10.0);
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
-                x + cut, y,
-                x + w - cut, y,
-                x + w, y + h / 2.0,
-                x + w - cut, y + h,
-                x + cut, y + h,
-                x, y + h / 2.0,
+                x + cut,
+                y,
+                x + w - cut,
+                y,
+                x + w,
+                y + h / 2.0,
+                x + w - cut,
+                y + h,
+                x + cut,
+                y + h,
+                x,
+                y + h / 2.0,
             );
             format!(
                 "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
@@ -7425,8 +7768,11 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let doc = format!(
                 "<path d=\"M {x:.2} {y:.2} h {w:.2} v {bh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 bh = h - wave,
-                q1x = w * 0.25, q1y = wave * 2.0, qmx = w * -0.5,
-                q2x = w * -0.25, q2y = wave * -2.0,
+                q1x = w * 0.25,
+                q1y = wave * 2.0,
+                qmx = w * -0.5,
+                q2x = w * -0.25,
+                q2y = wave * -2.0,
             );
             // Add 2-3 horizontal lines inside the document
             let line_spacing = (h - wave) / 4.0;
@@ -7459,13 +7805,18 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
                  L {rx:.2} {by:.2} \
                  A {r:.2} {r:.2} 0 0 0 {rx:.2} {y:.2} \
                  Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                rx = x + rw, lx = x + tw, fx = x + tw + fold,
-                fy = y + fold, my = y + h / 2.0,
-                by = y + h, r = radius,
+                rx = x + rw,
+                lx = x + tw,
+                fx = x + tw + fold,
+                fy = y + fold,
+                my = y + h / 2.0,
+                by = y + h,
+                r = radius,
             );
             let fold_line = format!(
                 "<path d=\"M {fx:.2} {y:.2} v {fold:.2} h {nf:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                fx = x + tw + fold, nf = -fold,
+                fx = x + tw + fold,
+                nf = -fold,
             );
             format!("{doc}{fold_line}")
         }
@@ -7478,12 +7829,17 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
                 "<path d=\"M {x1:.2} {y:.2} h {tw:.2} C {cx1:.2} {cy1:.2} {cx2:.2} {cy2:.2} {x4:.2} {y4:.2} h {bw:.2} C {cx3:.2} {cy3:.2} {cx4:.2} {cy4:.2} {x1:.2} {y:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 x1 = x + inset,
                 tw = w - 2.0 * inset,
-                cx1 = x + w - inset + cp * 0.3, cy1 = y + cp,
-                cx2 = x + w + cp * 0.1, cy2 = y + h - cp,
-                x4 = x + w, y4 = y + h,
+                cx1 = x + w - inset + cp * 0.3,
+                cy1 = y + cp,
+                cx2 = x + w + cp * 0.1,
+                cy2 = y + h - cp,
+                x4 = x + w,
+                y4 = y + h,
                 bw = -w,
-                cx3 = x - cp * 0.1, cy3 = y + h - cp,
-                cx4 = x + inset - cp * 0.3, cy4 = y + cp,
+                cx3 = x - cp * 0.1,
+                cy3 = y + h - cp,
+                cx4 = x + inset - cp * 0.3,
+                cy4 = y + cp,
             )
         }
         crate::ir::NodeShape::Cloud => {
@@ -7503,11 +7859,26 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
                 a {a5rx:.2} {a5ry:.2} 0 0 1 {a5dx:.2} {a5dy:.2} \
                 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 x1 = x,
-                a1rx = rx * 0.45, a1ry = ry * 0.65, a1dx = rx * 0.35, a1dy = -ry * 0.75,
-                a2rx = rx * 0.50, a2ry = ry * 0.55, a2dx = rx * 0.65, a2dy = -ry * 0.15,
-                a3rx = rx * 0.50, a3ry = ry * 0.60, a3dx = rx * 0.35, a3dy = ry * 0.70,
-                a4rx = rx * 0.55, a4ry = ry * 0.55, a4dx = -rx * 0.50, a4dy = ry * 0.45,
-                a5rx = rx * 0.50, a5ry = ry * 0.60, a5dx = -rx * 0.85, a5dy = -ry * 0.25,
+                a1rx = rx * 0.45,
+                a1ry = ry * 0.65,
+                a1dx = rx * 0.35,
+                a1dy = -ry * 0.75,
+                a2rx = rx * 0.50,
+                a2ry = ry * 0.55,
+                a2dx = rx * 0.65,
+                a2dy = -ry * 0.15,
+                a3rx = rx * 0.50,
+                a3ry = ry * 0.60,
+                a3dx = rx * 0.35,
+                a3dy = ry * 0.70,
+                a4rx = rx * 0.55,
+                a4ry = ry * 0.55,
+                a4dx = -rx * 0.50,
+                a4dy = ry * 0.45,
+                a5rx = rx * 0.50,
+                a5ry = ry * 0.60,
+                a5dx = -rx * 0.85,
+                a5dy = -ry * 0.25,
             )
         }
         crate::ir::NodeShape::Triangle => {
@@ -7515,9 +7886,12 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let sw = node.style.stroke_width.unwrap_or(1.0);
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
-                x + w / 2.0, y,
-                x + w, y + h,
-                x, y + h,
+                x + w / 2.0,
+                y,
+                x + w,
+                y + h,
+                x,
+                y + h,
             );
             format!(
                 "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
@@ -7528,9 +7902,12 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let sw = node.style.stroke_width.unwrap_or(1.0);
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
-                x, y,
-                x + w, y,
-                x + w / 2.0, y + h,
+                x,
+                y,
+                x + w,
+                y,
+                x + w / 2.0,
+                y + h,
             );
             format!(
                 "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
@@ -7562,7 +7939,8 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let r = h / 2.0;
             format!(
                 "<path d=\"M {x:.2} {y:.2} h {w1:.2} a {r:.2} {r:.2} 0 0 1 0 {h:.2} h {nw1:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                w1 = w - r, nw1 = -(w - r),
+                w1 = w - r,
+                nw1 = -(w - r),
             )
         }
         crate::ir::NodeShape::SlopedRect => {
@@ -7571,7 +7949,9 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let slope = h * 0.2;
             format!(
                 "<path d=\"M {x:.2} {y1:.2} L {x2:.2} {y:.2} v {h:.2} h {nw:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                y1 = y + slope, x2 = x + w, nw = -w,
+                y1 = y + slope,
+                x2 = x + w,
+                nw = -w,
             )
         }
         crate::ir::NodeShape::NotchedPentagon => {
@@ -7581,16 +7961,22 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let inset = w * 0.15;
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
-                x, y,
-                x + w, y,
-                x + w, y + h - notch,
-                x + w - inset, y + h,
-                x + inset, y + h,
+                x,
+                y,
+                x + w,
+                y,
+                x + w,
+                y + h - notch,
+                x + w - inset,
+                y + h,
+                x + inset,
+                y + h,
             );
             // Close with line back to start through the left notch point
             format!(
                 "<polygon points=\"{points} {:.2},{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x, y + h - notch,
+                x,
+                y + h - notch,
             )
         }
         crate::ir::NodeShape::StackedRect => {
@@ -7605,7 +7991,8 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             );
             let back1 = format!(
                 "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x + off, y + off,
+                x + off,
+                y + off,
             );
             let front = format!(
                 "<rect x=\"{x:.2}\" y=\"{:.2}\" width=\"{bw:.2}\" height=\"{bh:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
@@ -7619,8 +8006,12 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let curve = w * 0.1;
             format!(
                 "<path d=\"M {x1:.2} {y:.2} h {w1:.2} v {h:.2} h {nw1:.2} q {qx:.2} {qy:.2} 0 {nqh:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x1 = x + curve, w1 = w - curve, nw1 = -(w - curve),
-                qx = curve, qy = h / 2.0, nqh = -h,
+                x1 = x + curve,
+                w1 = w - curve,
+                nw1 = -(w - curve),
+                qx = curve,
+                qy = h / 2.0,
+                nqh = -h,
             )
         }
         crate::ir::NodeShape::FramedCircle => {
@@ -7650,11 +8041,17 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             let d = r * 0.707; // cos(45°)
             let line1 = format!(
                 "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                cx - d, cy - d, cx + d, cy + d,
+                cx - d,
+                cy - d,
+                cx + d,
+                cy + d,
             );
             let line2 = format!(
                 "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                cx + d, cy - d, cx - d, cy + d,
+                cx + d,
+                cy - d,
+                cx - d,
+                cy + d,
             );
             format!("{circ}{line1}{line2}")
         }
@@ -7714,11 +8111,15 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             );
             let line1 = format!(
                 "<line x1=\"{:.2}\" y1=\"{y:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                x + inset, x + inset, y + h,
+                x + inset,
+                x + inset,
+                y + h,
             );
             let line2 = format!(
                 "<line x1=\"{:.2}\" y1=\"{y:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                x + w - inset, x + w - inset, y + h,
+                x + w - inset,
+                x + w - inset,
+                y + h,
             );
             format!("{rect}{line1}{line2}")
         }
@@ -7730,9 +8131,13 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             format!(
                 "<path d=\"M {x:.2} {y_mid:.2} q {q1x:.2} {q1y_up:.2} {qmx:.2} 0 q {q2x:.2} {q2y_dn:.2} {qmx:.2} 0 v {body:.2} q {nq1x:.2} {q2y_dn:.2} {nqmx:.2} 0 q {nq2x:.2} {q1y_up:.2} {nqmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 y_mid = y + wave,
-                q1x = w * 0.25, q1y_up = -wave * 2.0, qmx = w * 0.5,
-                q2x = w * 0.25, q2y_dn = wave * 2.0,
-                nq1x = -(w * 0.25), nqmx = -(w * 0.5),
+                q1x = w * 0.25,
+                q1y_up = -wave * 2.0,
+                qmx = w * 0.5,
+                q2x = w * 0.25,
+                q2y_dn = wave * 2.0,
+                nq1x = -(w * 0.25),
+                nqmx = -(w * 0.5),
                 nq2x = -(w * 0.25),
                 body = h - wave * 2.0,
             )
@@ -7787,9 +8192,11 @@ mod tests {
             sequence_arrow_end: None,
             sequence_arrow_start: None,
             style: crate::ir::EdgeStyle::Solid,
-                markdown_label: false,
-                id: None,
-                curve: None, arch_port_from: None, arch_port_to: None,
+            markdown_label: false,
+            id: None,
+            curve: None,
+            arch_port_from: None,
+            arch_port_to: None,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
@@ -7926,7 +8333,11 @@ mod tests {
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
 
-        let (_, node) = layout.nodes.iter().find(|(id, _)| id.as_str() == "E").unwrap();
+        let (_, node) = layout
+            .nodes
+            .iter()
+            .find(|(id, _)| id.as_str() == "E")
+            .unwrap();
         let node_right = (node.x + node.width + 1.0) as f64;
 
         let paper_idx = svg.find("Paper Records").unwrap();
@@ -7946,8 +8357,12 @@ mod tests {
         abs_x = nums[0];
         max_x = max_x.max(abs_x);
 
-        let remainder = d_attr.trim_start_matches(|c: char| c == 'M' || c == ' ' || c.is_ascii_digit() || c == '.' || c == '-');
-        for segment in remainder.split_inclusive(|c: char| c.is_ascii_uppercase() || c.is_ascii_lowercase()) {
+        let remainder = d_attr.trim_start_matches(|c: char| {
+            c == 'M' || c == ' ' || c.is_ascii_digit() || c == '.' || c == '-'
+        });
+        for segment in
+            remainder.split_inclusive(|c: char| c.is_ascii_uppercase() || c.is_ascii_lowercase())
+        {
             let cmd = segment.chars().last().unwrap_or(' ');
             let seg_nums: Vec<f64> = segment
                 .split(|c: char| !c.is_ascii_digit() && c != '.' && c != '-')
@@ -7976,10 +8391,7 @@ mod tests {
 
 // ── TreeView renderer ───────────────────────────────────────────────────
 
-fn render_tree_view(
-    layout: &crate::layout::TreeViewLayout,
-    theme: &Theme,
-) -> String {
+fn render_tree_view(layout: &crate::layout::TreeViewLayout, theme: &Theme) -> String {
     let mut svg = String::new();
     let font_family = normalize_font_family(&theme.font_family);
     let font_size = theme.font_size;
@@ -8045,10 +8457,7 @@ fn wrap_by_chars(text: &str, max_chars: usize) -> Vec<String> {
     }
 }
 
-fn render_ishikawa(
-    layout: &crate::layout::IshikawaLayout,
-    theme: &Theme,
-) -> String {
+fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> String {
     let mut svg = String::new();
     let font_family = normalize_font_family(&theme.font_family);
     let font_size = theme.font_size;
@@ -8067,8 +8476,12 @@ fn render_ishikawa(
     svg.push_str(&format!(
         "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
          stroke=\"{lc}\" stroke-width=\"{sw}\" fill=\"none\"/>",
-        layout.spine.x1, layout.spine.y1, layout.spine.x2, layout.spine.y2,
-        lc = line_color, sw = layout.spine.stroke_width,
+        layout.spine.x1,
+        layout.spine.y1,
+        layout.spine.x2,
+        layout.spine.y2,
+        lc = line_color,
+        sw = layout.spine.stroke_width,
     ));
 
     // Fish head path — in a group translated to spine center (matching JS).
@@ -8079,7 +8492,8 @@ fn render_ishikawa(
              </g>",
             hy = layout.head_y,
             path = layout.head_path,
-            fill = box_fill, lc = line_color,
+            fill = box_fill,
+            lc = line_color,
         ));
     }
 
@@ -8089,8 +8503,12 @@ fn render_ishikawa(
             "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
              stroke=\"{lc}\" stroke-width=\"{sw}\" fill=\"none\" \
              marker-start=\"url(#ishikawa-arrow)\"/>",
-            branch.x1, branch.y1, branch.x2, branch.y2,
-            lc = line_color, sw = branch.stroke_width,
+            branch.x1,
+            branch.y1,
+            branch.x2,
+            branch.y2,
+            lc = line_color,
+            sw = branch.stroke_width,
         ));
     }
 
@@ -8100,8 +8518,12 @@ fn render_ishikawa(
             svg.push_str(&format!(
                 "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" \
                  fill=\"{fill}\" stroke=\"{lc}\" stroke-width=\"2\"/>",
-                label.box_x, label.box_y, label.box_w, label.box_h,
-                fill = box_fill, lc = line_color,
+                label.box_x,
+                label.box_y,
+                label.box_w,
+                label.box_h,
+                fill = box_fill,
+                lc = line_color,
             ));
         }
     }
@@ -8156,8 +8578,10 @@ fn render_ishikawa(
                  fill=\"{tc}\">{tspans}</text></g>",
                 hy = layout.head_y,
                 text_y = text_y,
-                tx = label.x, ty = ty,
-                ff = font_family, fs = head_fs,
+                tx = label.x,
+                ty = ty,
+                ff = font_family,
+                fs = head_fs,
                 tc = theme.primary_text_color,
                 tspans = tspans,
             ));
@@ -8170,9 +8594,11 @@ fn render_ishikawa(
                     "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
                      dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" \
                      fill=\"{tc}\">{text}</text>",
-                    label.x, label.y,
+                    label.x,
+                    label.y,
                     anchor = label.anchor,
-                    ff = font_family, fs = font_size,
+                    ff = font_family,
+                    fs = font_size,
                     tc = theme.primary_text_color,
                     text = escape_xml(&label.text),
                 ));
@@ -8184,7 +8610,8 @@ fn render_ishikawa(
                     let dy = if i == 0 { 0.0 } else { line_h };
                     tspans.push_str(&format!(
                         "<tspan x=\"{:.1}\" dy=\"{dy}\">{}</tspan>",
-                        label.x, escape_xml(line),
+                        label.x,
+                        escape_xml(line),
                     ));
                 }
                 // Shift up by half the extra lines to keep vertically centered
@@ -8193,9 +8620,11 @@ fn render_ishikawa(
                     "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
                      dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" \
                      fill=\"{tc}\">{tspans}</text>",
-                    label.x, label.y + shift_y,
+                    label.x,
+                    label.y + shift_y,
                     anchor = label.anchor,
-                    ff = font_family, fs = font_size,
+                    ff = font_family,
+                    fs = font_size,
                     tc = theme.primary_text_color,
                     tspans = tspans,
                 ));
@@ -8208,10 +8637,7 @@ fn render_ishikawa(
 
 // ── Wardley map renderer ────────────────────────────────────────────────
 
-fn render_wardley(
-    layout: &crate::layout::WardleyLayout,
-    theme: &Theme,
-) -> String {
+fn render_wardley(layout: &crate::layout::WardleyLayout, theme: &Theme) -> String {
     let mut svg = String::new();
     let font_family = normalize_font_family(&theme.font_family);
     let axis_color = "#000";
@@ -8239,17 +8665,28 @@ fn render_wardley(
     }
 
     // Axes
-    let (cx, cy, cw, ch) = (layout.chart_x, layout.chart_y, layout.chart_width, layout.chart_height);
+    let (cx, cy, cw, ch) = (
+        layout.chart_x,
+        layout.chart_y,
+        layout.chart_width,
+        layout.chart_height,
+    );
 
     // X-axis (bottom)
     svg.push_str(&format!(
         "<line x1=\"{cx}\" y1=\"{y}\" x2=\"{x2}\" y2=\"{y}\" stroke=\"{c}\" stroke-width=\"1\"/>",
-        cx = cx, y = cy + ch, x2 = cx + cw, c = axis_color,
+        cx = cx,
+        y = cy + ch,
+        x2 = cx + cw,
+        c = axis_color,
     ));
     // Y-axis (left)
     svg.push_str(&format!(
         "<line x1=\"{cx}\" y1=\"{cy}\" x2=\"{cx}\" y2=\"{y2}\" stroke=\"{c}\" stroke-width=\"1\"/>",
-        cx = cx, cy = cy, y2 = cy + ch, c = axis_color,
+        cx = cx,
+        cy = cy,
+        y2 = cy + ch,
+        c = axis_color,
     ));
 
     // X-axis label
@@ -8279,7 +8716,10 @@ fn render_wardley(
             svg.push_str(&format!(
                 "<line x1=\"{x}\" y1=\"{cy}\" x2=\"{x}\" y2=\"{y2}\" \
                  stroke=\"{c}\" stroke-width=\"1\" stroke-dasharray=\"5 5\"/>",
-                x = stage.divider_x, cy = cy, y2 = cy + ch, c = axis_color,
+                x = stage.divider_x,
+                cy = cy,
+                y2 = cy + ch,
+                c = axis_color,
             ));
         }
         svg.push_str(&format!(
@@ -8302,26 +8742,34 @@ fn render_wardley(
          <marker id=\"wardley-link-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" \
          markerWidth=\"6\" markerHeight=\"6\" orient=\"auto\">\
          <path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"#000\"/></marker>\
-         </defs>"
+         </defs>",
     );
 
     // Links
     for link in &layout.links {
-        let dash = if link.dashed { " stroke-dasharray=\"6 6\"" } else { "" };
+        let dash = if link.dashed {
+            " stroke-dasharray=\"6 6\""
+        } else {
+            ""
+        };
         let marker = match link.flow {
-            Some(crate::ir::WardleyFlow::Forward) =>
-                " marker-end=\"url(#wardley-link-arrow)\"",
-            Some(crate::ir::WardleyFlow::Backward) =>
-                " marker-start=\"url(#wardley-link-arrow)\"",
-            Some(crate::ir::WardleyFlow::Bidirectional) =>
-                " marker-start=\"url(#wardley-link-arrow)\" marker-end=\"url(#wardley-link-arrow)\"",
+            Some(crate::ir::WardleyFlow::Forward) => " marker-end=\"url(#wardley-link-arrow)\"",
+            Some(crate::ir::WardleyFlow::Backward) => " marker-start=\"url(#wardley-link-arrow)\"",
+            Some(crate::ir::WardleyFlow::Bidirectional) => {
+                " marker-start=\"url(#wardley-link-arrow)\" marker-end=\"url(#wardley-link-arrow)\""
+            }
             None => "",
         };
         svg.push_str(&format!(
             "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
              stroke=\"{c}\" stroke-width=\"1\"{dash}{marker}/>",
-            link.x1, link.y1, link.x2, link.y2,
-            c = axis_color, dash = dash, marker = marker,
+            link.x1,
+            link.y1,
+            link.x2,
+            link.y2,
+            c = axis_color,
+            dash = dash,
+            marker = marker,
         ));
         if let Some(ref label) = link.label {
             let mx = (link.x1 + link.x2) / 2.0;
@@ -8342,7 +8790,10 @@ fn render_wardley(
             "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
              stroke=\"{c}\" stroke-width=\"1\" stroke-dasharray=\"4 4\" \
              marker-end=\"url(#wardley-trend-arrow)\"/>",
-            trend.x1, trend.y1, trend.x2, trend.y2,
+            trend.x1,
+            trend.y1,
+            trend.x2,
+            trend.y2,
             c = evolution_color,
         ));
     }
@@ -8361,8 +8812,11 @@ fn render_wardley(
             svg.push_str(&format!(
                 "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{:.1}\" \
                  fill=\"{fill}\" stroke=\"{c}\" stroke-width=\"1\"/>",
-                node.cx, node.cy, overlay_r,
-                fill = fill, c = axis_color,
+                node.cx,
+                node.cy,
+                overlay_r,
+                fill = fill,
+                c = axis_color,
             ));
         }
 
@@ -8370,7 +8824,8 @@ fn render_wardley(
         svg.push_str(&format!(
             "<circle cx=\"{:.1}\" cy=\"{:.1}\" r=\"{r}\" \
              fill=\"{fill}\" stroke=\"{c}\" stroke-width=\"1\"/>",
-            node.cx, node.cy,
+            node.cx,
+            node.cy,
             r = node.radius,
             fill = node_fill,
             c = axis_color,
@@ -8389,11 +8844,16 @@ fn render_wardley(
         }
 
         // Label
-        let weight = if node.is_anchor { " font-weight=\"bold\"" } else { "" };
+        let weight = if node.is_anchor {
+            " font-weight=\"bold\""
+        } else {
+            ""
+        };
         svg.push_str(&format!(
             "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"{ff}\" \
              font-size=\"10\"{weight} fill=\"{tc}\">{text}</text>",
-            node.label_x, node.label_y,
+            node.label_x,
+            node.label_y,
             ff = font_family,
             weight = weight,
             tc = theme.primary_text_color,

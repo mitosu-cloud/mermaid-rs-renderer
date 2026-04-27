@@ -11,13 +11,12 @@ use super::{TextBlock, TextLine};
 static HTML_TAG_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"</?[a-zA-Z][a-zA-Z0-9]*[^>]*>").unwrap());
 
-static BR_TAG_RE: LazyLock<Regex> =
-    LazyLock::new(|| {
-        regex::RegexBuilder::new(r"<br\s*/?>")
-            .case_insensitive(true)
-            .build()
-            .unwrap()
-    });
+static BR_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
+    regex::RegexBuilder::new(r"<br\s*/?>")
+        .case_insensitive(true)
+        .build()
+        .unwrap()
+});
 
 /// Mermaid entity-code references: `#NNNN;` (decimal) or `#name;` (named).
 static MERMAID_ENTITY_RE: LazyLock<Regex> =
@@ -137,11 +136,7 @@ fn replace_tag_ci(text: &str, tag: &str, replacement: &str) -> String {
 /// auto-wraps based on the configured character width cap. Used by callers
 /// (e.g. sequence actor boxes) that size containers to fit the user's
 /// pre-formatted lines verbatim.
-pub(super) fn measure_label_no_wrap(
-    text: &str,
-    theme: &Theme,
-    config: &LayoutConfig,
-) -> TextBlock {
+pub(super) fn measure_label_no_wrap(text: &str, theme: &Theme, config: &LayoutConfig) -> TextBlock {
     // Decode mermaid entity codes first (#NNNN;, #name;) so plain-text
     // labels also benefit from the conversion (not just HTML-formatted ones).
     let decoded = decode_mermaid_entities(text);
@@ -568,10 +563,7 @@ mod tests {
 
     #[test]
     fn normalize_html_label_converts_italic() {
-        assert_eq!(
-            normalize_html_label("<i>italic</i> text"),
-            "*italic* text"
-        );
+        assert_eq!(normalize_html_label("<i>italic</i> text"), "*italic* text");
     }
 
     #[test]

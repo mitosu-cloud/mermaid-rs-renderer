@@ -211,7 +211,7 @@ fn resolve_center_labels(
     let edge_obs_rects: Vec<Rect> = edge_obstacles.iter().map(|(_, r)| *r).collect();
     let edge_grid = ObstacleGrid::new(48.0, &edge_obs_rects);
     let mut occupied_grid = ObstacleGrid::new(48.0, &occupied);
-    let bundle_fractions = if kind == DiagramKind::Flowchart {
+    let bundle_fractions = if matches!(kind, DiagramKind::Flowchart | DiagramKind::State) {
         edge_label_bundle_fractions(edges)
     } else {
         vec![None; edges.len()]
@@ -2970,10 +2970,17 @@ fn edge_label_bundle_fractions(edges: &[EdgeLayout]) -> Vec<Option<f32>> {
         if edge.label.is_none() {
             continue;
         }
-        bundle_map
-            .entry((edge.from.clone(), edge.to.clone()))
-            .or_default()
-            .push(idx);
+        // Use an unordered (alphabetically sorted) endpoint pair so that
+        // back-and-forth edges between the same two nodes (A→B and B→A) end up
+        // in the same bundle. Without this, each direction gets its own bundle
+        // of size 1 and the labels both land at the path midpoint, producing
+        // horizontal label overlap on bidirectional state-diagram transitions.
+        let key = if edge.from <= edge.to {
+            (edge.from.clone(), edge.to.clone())
+        } else {
+            (edge.to.clone(), edge.from.clone())
+        };
+        bundle_map.entry(key).or_default().push(idx);
     }
     let mut preferred = vec![None; edges.len()];
     for indices in bundle_map.values_mut() {
@@ -2982,11 +2989,22 @@ fn edge_label_bundle_fractions(edges: &[EdgeLayout]) -> Vec<Option<f32>> {
         }
         indices.sort_unstable();
         let count = indices.len();
+        // Detect bidirectional pair: 2 edges with opposite directions
+        // (A→B and B→A). Same-direction parallel edges map fractions to
+        // different absolute positions; opposite-direction edges' fractions
+        // mirror around 0.5, so 0.34 + 0.66 collapse to the same y. Use a
+        // small fraction-from-start for both so labels sit near opposite
+        // ends of the shared path rather than overlapping at the midpoint.
+        let bidirectional = count == 2
+            && edges[indices[0]].from == edges[indices[1]].to
+            && edges[indices[0]].to == edges[indices[1]].from;
         let left = 0.16f32;
         let right = 0.84f32;
         let span = (right - left).max(0.0);
         for (rank, edge_idx) in indices.iter().enumerate() {
-            let fraction = if count == 2 {
+            let fraction = if bidirectional {
+                0.25
+            } else if count == 2 {
                 if rank == 0 { 0.34 } else { 0.66 }
             } else {
                 left + span * (rank as f32 / (count.saturating_sub(1) as f32))

@@ -49,9 +49,10 @@ pub(super) fn compute_wardley_layout(
     // Layout links
     let mut links_out = Vec::new();
     for link in &data.links {
-        if let (Some(&(sx, sy)), Some(&(tx, ty))) =
-            (node_pos.get(link.source.as_str()), node_pos.get(link.target.as_str()))
-        {
+        if let (Some(&(sx, sy)), Some(&(tx, ty))) = (
+            node_pos.get(link.source.as_str()),
+            node_pos.get(link.target.as_str()),
+        ) {
             links_out.push(WardleyLinkLayout {
                 x1: sx,
                 y1: sy,
@@ -110,12 +111,26 @@ pub(super) fn compute_wardley_layout(
         "__wardley_content".to_string(),
         NodeLayout {
             id: "__wardley_content".to_string(),
-            x: 0.0, y: 0.0, width: canvas_w, height: canvas_h,
-            label: TextBlock { lines: vec![TextLine::plain(String::new())], width: 0.0, height: 0.0 },
+            x: 0.0,
+            y: 0.0,
+            width: canvas_w,
+            height: canvas_h,
+            label: TextBlock {
+                lines: vec![TextLine::plain(String::new())],
+                width: 0.0,
+                height: 0.0,
+            },
             shape: crate::ir::NodeShape::Rectangle,
             style: crate::ir::NodeStyle::default(),
-            link: None, anchor_subgraph: None, hidden: false,
-            icon: None, img: None, img_w: None, img_h: None, sub_label: None, is_treemap_leaf: false,
+            link: None,
+            anchor_subgraph: None,
+            hidden: false,
+            icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
+            sub_label: None,
+            is_treemap_leaf: false,
         },
     );
 
