@@ -788,7 +788,7 @@ pub struct IshikawaLabelLayout {
     pub lines: Vec<String>, // pre-wrapped lines (only used for head label)
     pub x: f32,
     pub y: f32,
-    pub anchor: String,    // "middle", "end", "start"
+    pub anchor: String, // "middle", "end", "start"
     pub font_weight: String,
     pub has_box: bool,
     pub box_x: f32,
@@ -799,7 +799,7 @@ pub struct IshikawaLabelLayout {
 
 #[derive(Debug, Clone)]
 pub struct IshikawaLayout {
-    pub head_path: String,  // SVG path for fish head
+    pub head_path: String, // SVG path for fish head
     pub head_x: f32,
     pub head_y: f32,
     pub spine: IshikawaLineLayout,

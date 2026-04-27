@@ -52,15 +52,25 @@ pub(super) fn compute_architecture_layout(
     let mut grid: HashMap<String, (i32, i32)> = HashMap::new();
     if !graph.edges.is_empty() {
         // Build adjacency list with direction info.
-        let mut adj: HashMap<String, Vec<(String, Option<crate::ir::ArchPort>, Option<crate::ir::ArchPort>)>> =
-            HashMap::new();
+        let mut adj: HashMap<
+            String,
+            Vec<(
+                String,
+                Option<crate::ir::ArchPort>,
+                Option<crate::ir::ArchPort>,
+            )>,
+        > = HashMap::new();
         for edge in &graph.edges {
-            adj.entry(edge.from.clone())
-                .or_default()
-                .push((edge.to.clone(), edge.arch_port_from, edge.arch_port_to));
-            adj.entry(edge.to.clone())
-                .or_default()
-                .push((edge.from.clone(), edge.arch_port_to, edge.arch_port_from));
+            adj.entry(edge.from.clone()).or_default().push((
+                edge.to.clone(),
+                edge.arch_port_from,
+                edge.arch_port_to,
+            ));
+            adj.entry(edge.to.clone()).or_default().push((
+                edge.from.clone(),
+                edge.arch_port_to,
+                edge.arch_port_from,
+            ));
         }
 
         // BFS to assign grid coordinates.
@@ -177,7 +187,6 @@ pub(super) fn compute_architecture_layout(
             style,
             icon: sub.icon.clone(),
         });
-
     }
 
     // Free nodes: position using grid coordinates.

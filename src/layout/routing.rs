@@ -2347,7 +2347,11 @@ pub(super) fn build_label_obstacles_for_routing(
         }
         if node.label.width <= 0.0
             || node.label.height <= 0.0
-            || node.label.lines.iter().all(|line| line.text().trim().is_empty())
+            || node
+                .label
+                .lines
+                .iter()
+                .all(|line| line.text().trim().is_empty())
         {
             continue;
         }
@@ -2649,10 +2653,7 @@ pub(super) fn simplify_edge_path(
 /// Resample the middle of a path to produce evenly-spaced control
 /// points.  The first two and last two points are always kept as-is
 /// (they define departure/approach direction for arrowheads).
-fn resample_smooth(
-    points: &[(f32, f32)],
-    obstacles: &[Obstacle],
-) -> Vec<(f32, f32)> {
+fn resample_smooth(points: &[(f32, f32)], obstacles: &[Obstacle]) -> Vec<(f32, f32)> {
     if points.len() <= 4 {
         return points.to_vec();
     }
@@ -2682,13 +2683,15 @@ fn resample_smooth(
 
     let mut resampled = Vec::with_capacity(target_count + 2);
     resampled.push(points[0]); // start
-    resampled.push(inner[0]);  // depart stub
+    resampled.push(inner[0]); // depart stub
 
     for k in 1..target_count - 1 {
         let t = k as f32 / (target_count - 1) as f32;
         let target_dist = t * total_len;
         // Find the segment containing target_dist.
-        let seg = cumulative.partition_point(|&d| d < target_dist).min(inner.len() - 1);
+        let seg = cumulative
+            .partition_point(|&d| d < target_dist)
+            .min(inner.len() - 1);
         let seg = seg.max(1);
         let seg_start = cumulative[seg - 1];
         let seg_end = cumulative[seg];

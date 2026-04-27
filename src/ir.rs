@@ -661,12 +661,12 @@ pub enum NodeShape {
     MindmapDefault,
     Text,
     // Sequence-diagram actor types
-    StickFigure,     // actor keyword — stick-figure person
-    Boundary,        // boundary keyword — line-bracket shape
-    Control,         // control keyword — circle with arrow
-    Entity,          // entity keyword — circle with underline
-    Collections,     // collections keyword — stacked rectangles
-    Queue,           // queue keyword — cylinder rotated 90 degrees
+    StickFigure, // actor keyword — stick-figure person
+    Boundary,    // boundary keyword — line-bracket shape
+    Control,     // control keyword — circle with arrow
+    Entity,      // entity keyword — circle with underline
+    Collections, // collections keyword — stacked rectangles
+    Queue,       // queue keyword — cylinder rotated 90 degrees
     // v11.3+ @{shape: ...} shapes
     NotchRect,       // notch-rect — rectangle with notched corner
     TagRect,         // tag-rect — rectangle with tag/flag
@@ -687,22 +687,22 @@ pub enum NodeShape {
     LinedCylinder,   // lin-cyl — cylinder with lines
     CurvedTrapezoid, // curv-trap — curved trapezoid
     // v11.3+ additional shapes
-    Cloud,            // cloud — overlapping elliptical arcs
-    Triangle,         // tri / extract — pointing up
-    FlippedTriangle,  // flip-tri / manual-file — pointing down
-    SmallCircle,      // sm-circ / start — smaller default radius
-    FilledCircle,     // f-circ / junction — solid fill, no label
-    HalfRoundedRect,  // delay — rectangle with rounded right side
-    SlopedRect,       // sl-rect / manual-input — rectangle with sloped top
-    NotchedPentagon,  // notch-pent / loop-limit — pentagon with notched bottom
-    StackedRect,      // st-rect / procs — rectangle with offset rects behind
-    BowTieRect,       // bow-rect / stored-data — rectangle with curved left side
-    FramedCircle,     // fr-circ / stop — circle inside circle
-    CrossedCircle,    // cross-circ / summary — circle with X
+    Cloud,              // cloud — overlapping elliptical arcs
+    Triangle,           // tri / extract — pointing up
+    FlippedTriangle,    // flip-tri / manual-file — pointing down
+    SmallCircle,        // sm-circ / start — smaller default radius
+    FilledCircle,       // f-circ / junction — solid fill, no label
+    HalfRoundedRect,    // delay — rectangle with rounded right side
+    SlopedRect,         // sl-rect / manual-input — rectangle with sloped top
+    NotchedPentagon,    // notch-pent / loop-limit — pentagon with notched bottom
+    StackedRect,        // st-rect / procs — rectangle with offset rects behind
+    BowTieRect,         // bow-rect / stored-data — rectangle with curved left side
+    FramedCircle,       // fr-circ / stop — circle inside circle
+    CrossedCircle,      // cross-circ / summary — circle with X
     HorizontalCylinder, // h-cyl / das — cylinder rotated 90 degrees
-    DividedRect,      // div-rect / div-proc — rectangle with horizontal divider
-    LinedRect,        // lin-rect / lin-proc — rectangle with vertical lines
-    WavyRect,         // wave-rect / paper-tape — rectangle with wavy top and bottom
+    DividedRect,        // div-rect / div-proc — rectangle with horizontal divider
+    LinedRect,          // lin-rect / lin-proc — rectangle with vertical lines
+    WavyRect,           // wave-rect / paper-tape — rectangle with wavy top and bottom
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -915,6 +915,8 @@ pub struct NodeStyle {
     pub stroke_width: Option<f32>,
     pub stroke_dasharray: Option<String>,
     pub line_color: Option<String>,
+    pub font_style: Option<String>,
+    pub font_weight: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]

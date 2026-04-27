@@ -246,8 +246,7 @@ pub fn run() -> Result<()> {
     }
 
     // Multiple diagrams (Markdown input)
-    let outputs =
-        resolve_multi_outputs(args.output.as_deref(), output_format, diagrams.len())?;
+    let outputs = resolve_multi_outputs(args.output.as_deref(), output_format, diagrams.len())?;
     for (idx, diagram) in diagrams.iter().enumerate() {
         let parsed = parse_mermaid(diagram)?;
         let mut config = base_config.clone();

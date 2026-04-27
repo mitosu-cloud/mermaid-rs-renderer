@@ -32,7 +32,8 @@ pub(super) fn compute_tree_view_layout(
         parent_x: Option<f32>,
     ) {
         let x = depth as f32 * (row_indent + padding_x);
-        let label_w = crate::text_metrics::get_computed_text_length(&node.name, font_size, font_family);
+        let label_w =
+            crate::text_metrics::get_computed_text_length(&node.name, font_size, font_family);
         let node_w = label_w + padding_x * 2.0;
         let node_h = font_size + padding_y * 2.0;
         let y = *total_height;
@@ -81,7 +82,8 @@ pub(super) fn compute_tree_view_layout(
 
         // Vertical connector spanning all children
         if !node.children.is_empty() {
-            let first_child_mid = nodes_out[child_start_idx].y + nodes_out[child_start_idx].height / 2.0;
+            let first_child_mid =
+                nodes_out[child_start_idx].y + nodes_out[child_start_idx].height / 2.0;
             let last_child_idx = nodes_out.len() - 1;
             // Find the last DIRECT child (not grandchild) — it's the one at child_start_idx + direct children count - 1
             // Actually we just connect from our bottom to the last direct child's mid
@@ -133,7 +135,11 @@ pub(super) fn compute_tree_view_layout(
             y: 0.0,
             width,
             height,
-            label: TextBlock { lines: vec![TextLine::plain(String::new())], width: 0.0, height: 0.0 },
+            label: TextBlock {
+                lines: vec![TextLine::plain(String::new())],
+                width: 0.0,
+                height: 0.0,
+            },
             shape: crate::ir::NodeShape::Rectangle,
             style: crate::ir::NodeStyle::default(),
             link: None,

@@ -58,10 +58,7 @@ pub fn parse_markdown_spans(input: &str) -> Vec<TextSpan> {
                     }
 
                     if !inner.is_empty() {
-                        spans.push(TextSpan {
-                            text: inner,
-                            style,
-                        });
+                        spans.push(TextSpan { text: inner, style });
                     }
                     i = close_pos + delim_len;
                     continue;

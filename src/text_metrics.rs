@@ -36,12 +36,7 @@ pub fn get_computed_text_length(text: &str, font_size: f32, font_family: &str) -
 /// Uses [`get_computed_text_length`] for measurement.  Returns the
 /// resulting lines; a single-word line that exceeds `max_width` is
 /// kept intact (never broken mid-word).
-pub fn wrap_text(
-    text: &str,
-    max_width: f32,
-    font_size: f32,
-    font_family: &str,
-) -> Vec<String> {
+pub fn wrap_text(text: &str, max_width: f32, font_size: f32, font_family: &str) -> Vec<String> {
     if get_computed_text_length(text, font_size, font_family) <= max_width {
         return vec![text.to_string()];
     }

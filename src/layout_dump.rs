@@ -67,7 +67,12 @@ impl LayoutDump {
                 height: node.height,
                 label_width: node.label.width,
                 label_height: node.label.height,
-                label_lines: node.label.lines.iter().map(|l| l.text().into_owned()).collect(),
+                label_lines: node
+                    .label
+                    .lines
+                    .iter()
+                    .map(|l| l.text().into_owned())
+                    .collect(),
                 anchor_subgraph: node.anchor_subgraph,
                 hidden: node.hidden,
             })

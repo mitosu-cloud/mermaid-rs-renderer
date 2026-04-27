@@ -13,7 +13,11 @@ pub(super) fn compute_ishikawa_layout(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> Layout {
-    let font_size = if theme.font_size > 0.0 { theme.font_size } else { 14.0 };
+    let font_size = if theme.font_size > 0.0 {
+        theme.font_size
+    } else {
+        14.0
+    };
     let angle = ANGLE_DEG * std::f32::consts::PI / 180.0;
     let cos_a = angle.cos(); // ≈ 0.139
     let sin_a = angle.sin(); // ≈ 0.990
@@ -39,7 +43,11 @@ pub(super) fn compute_ishikawa_layout(
     // For 2 pairs (4 causes): JS spine ≈ 331, pair spacing ≈ 151.
     // For 1 pair (2 causes): JS spine ≈ 170.
     fn count_descendants(node: &crate::ir::IshikawaNode) -> usize {
-        1 + node.children.iter().map(|c| count_descendants(c)).sum::<usize>()
+        1 + node
+            .children
+            .iter()
+            .map(|c| count_descendants(c))
+            .sum::<usize>()
     }
     let upper_desc: usize = upper.iter().map(|c| count_descendants(c)).sum();
     let lower_desc: usize = lower.iter().map(|c| count_descendants(c)).sum();
@@ -79,7 +87,8 @@ pub(super) fn compute_ishikawa_layout(
     };
     let num_head_lines = head_lines.len().max(1) as f32;
     // Approximate text bbox: width from longest line, height from line count
-    let head_text_w = head_lines.iter()
+    let head_text_w = head_lines
+        .iter()
         .map(|l| crate::text_metrics::get_computed_text_length(l, font_size, &theme.font_family))
         .fold(0.0_f32, f32::max);
     let head_text_h = num_head_lines * font_size * 1.2;
@@ -117,17 +126,21 @@ pub(super) fn compute_ishikawa_layout(
 
             // Primary branch line
             branches.push(IshikawaLineLayout {
-                x1: attach_x, y1: spine_y,
-                x2: end_x, y2: end_y,
+                x1: attach_x,
+                y1: spine_y,
+                x2: end_x,
+                y2: end_y,
                 stroke_width: 2.0,
             });
 
             // Cause label at branch endpoint
-            let label_w = crate::text_metrics::get_computed_text_length(&cause.text, font_size, font_family);
+            let label_w =
+                crate::text_metrics::get_computed_text_length(&cause.text, font_size, font_family);
             labels.push(IshikawaLabelLayout {
                 text: cause.text.clone(),
                 lines: Vec::new(),
-                x: end_x, y: end_y - 12.0,
+                x: end_x,
+                y: end_y - 12.0,
                 anchor: "middle".to_string(),
                 font_weight: "normal".to_string(),
                 has_box: true,
@@ -143,22 +156,32 @@ pub(super) fn compute_ishikawa_layout(
                 let t = (j as f32 + 1.0) / (n_sub as f32 + 1.0);
                 let sub_x = attach_x + dx * t;
                 let sub_y = spine_y + dy * t;
-                let sub_len = if sub.children.is_empty() { BONE_STUB } else { BONE_BASE };
+                let sub_len = if sub.children.is_empty() {
+                    BONE_STUB
+                } else {
+                    BONE_BASE
+                };
 
                 branches.push(IshikawaLineLayout {
-                    x1: sub_x, y1: sub_y,
-                    x2: sub_x - sub_len, y2: sub_y,
+                    x1: sub_x,
+                    y1: sub_y,
+                    x2: sub_x - sub_len,
+                    y2: sub_y,
                     stroke_width: 1.0,
                 });
 
                 labels.push(IshikawaLabelLayout {
                     text: sub.text.clone(),
                     lines: Vec::new(),
-                    x: sub_x - sub_len - 4.0, y: sub_y,
+                    x: sub_x - sub_len - 4.0,
+                    y: sub_y,
                     anchor: "end".to_string(),
                     font_weight: "normal".to_string(),
                     has_box: false,
-                    box_x: 0.0, box_y: 0.0, box_w: 0.0, box_h: 0.0,
+                    box_x: 0.0,
+                    box_y: 0.0,
+                    box_w: 0.0,
+                    box_h: 0.0,
                 });
             }
         }
@@ -173,16 +196,20 @@ pub(super) fn compute_ishikawa_layout(
             let end_y = spine_y + dy;
 
             branches.push(IshikawaLineLayout {
-                x1: attach_x, y1: spine_y,
-                x2: end_x, y2: end_y,
+                x1: attach_x,
+                y1: spine_y,
+                x2: end_x,
+                y2: end_y,
                 stroke_width: 2.0,
             });
 
-            let label_w = crate::text_metrics::get_computed_text_length(&cause.text, font_size, font_family);
+            let label_w =
+                crate::text_metrics::get_computed_text_length(&cause.text, font_size, font_family);
             labels.push(IshikawaLabelLayout {
                 text: cause.text.clone(),
                 lines: Vec::new(),
-                x: end_x, y: end_y + 12.0,
+                x: end_x,
+                y: end_y + 12.0,
                 anchor: "middle".to_string(),
                 font_weight: "normal".to_string(),
                 has_box: true,
@@ -198,22 +225,32 @@ pub(super) fn compute_ishikawa_layout(
                 let t = (j as f32 + 1.0) / (n_sub as f32 + 1.0);
                 let sub_x = attach_x + dx * t;
                 let sub_y = spine_y + dy * t;
-                let sub_len = if sub.children.is_empty() { BONE_STUB } else { BONE_BASE };
+                let sub_len = if sub.children.is_empty() {
+                    BONE_STUB
+                } else {
+                    BONE_BASE
+                };
 
                 branches.push(IshikawaLineLayout {
-                    x1: sub_x, y1: sub_y,
-                    x2: sub_x - sub_len, y2: sub_y,
+                    x1: sub_x,
+                    y1: sub_y,
+                    x2: sub_x - sub_len,
+                    y2: sub_y,
                     stroke_width: 1.0,
                 });
 
                 labels.push(IshikawaLabelLayout {
                     text: sub.text.clone(),
                     lines: Vec::new(),
-                    x: sub_x - sub_len - 4.0, y: sub_y,
+                    x: sub_x - sub_len - 4.0,
+                    y: sub_y,
                     anchor: "end".to_string(),
                     font_weight: "normal".to_string(),
                     has_box: false,
-                    box_x: 0.0, box_y: 0.0, box_w: 0.0, box_h: 0.0,
+                    box_x: 0.0,
+                    box_y: 0.0,
+                    box_w: 0.0,
+                    box_h: 0.0,
                 });
             }
         }
@@ -226,27 +263,30 @@ pub(super) fn compute_ishikawa_layout(
     labels.push(IshikawaLabelLayout {
         text: root.text.clone(),
         lines: head_lines,
-        x: head_label_x, y: spine_y,
+        x: head_label_x,
+        y: spine_y,
         anchor: "start".to_string(),
         font_weight: "600".to_string(),
         has_box: false,
-        box_x: 0.0, box_y: 0.0, box_w: 0.0, box_h: 0.0,
+        box_x: 0.0,
+        box_y: 0.0,
+        box_w: 0.0,
+        box_h: 0.0,
     });
 
     // Fish head path: local coordinates centered at y=0 (spine center).
     // The renderer wraps this in a <g transform="translate(0, spine_y)">.
     let head_path = format!(
         "M 0 {} L 0 {} Q {} 0 0 {} Z",
-        -head_half_h,
-        head_half_h,
-        head_q_extent,
-        -head_half_h,
+        -head_half_h, head_half_h, head_q_extent, -head_half_h,
     );
 
     // Spine line
     let spine = IshikawaLineLayout {
-        x1: -spine_length, y1: spine_y,
-        x2: 0.0, y2: spine_y,
+        x1: -spine_length,
+        y1: spine_y,
+        x2: 0.0,
+        y2: spine_y,
         stroke_width: 2.0,
     };
 
@@ -289,12 +329,26 @@ pub(super) fn compute_ishikawa_layout(
         "__ishikawa_content".to_string(),
         NodeLayout {
             id: "__ishikawa_content".to_string(),
-            x: min_x, y: min_y, width, height,
-            label: TextBlock { lines: vec![TextLine::plain(String::new())], width: 0.0, height: 0.0 },
+            x: min_x,
+            y: min_y,
+            width,
+            height,
+            label: TextBlock {
+                lines: vec![TextLine::plain(String::new())],
+                width: 0.0,
+                height: 0.0,
+            },
             shape: crate::ir::NodeShape::Rectangle,
             style: crate::ir::NodeStyle::default(),
-            link: None, anchor_subgraph: None, hidden: false,
-            icon: None, img: None, img_w: None, img_h: None, sub_label: None, is_treemap_leaf: false,
+            link: None,
+            anchor_subgraph: None,
+            hidden: false,
+            icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
+            sub_label: None,
+            is_treemap_leaf: false,
         },
     );
 
@@ -330,11 +384,19 @@ fn empty_layout(graph: &Graph) -> Layout {
         acc_descr: None,
         diagram: DiagramData::Ishikawa(IshikawaLayout {
             head_path: String::new(),
-            head_x: 0.0, head_y: 0.0,
-            spine: IshikawaLineLayout { x1: 0.0, y1: 0.0, x2: 0.0, y2: 0.0, stroke_width: 0.0 },
+            head_x: 0.0,
+            head_y: 0.0,
+            spine: IshikawaLineLayout {
+                x1: 0.0,
+                y1: 0.0,
+                x2: 0.0,
+                y2: 0.0,
+                stroke_width: 0.0,
+            },
             branches: Vec::new(),
             labels: Vec::new(),
-            width: 100.0, height: 50.0,
+            width: 100.0,
+            height: 50.0,
         }),
         width: 100.0,
         height: 50.0,
