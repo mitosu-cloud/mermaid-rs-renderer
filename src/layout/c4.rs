@@ -171,6 +171,7 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
             style: crate::ir::EdgeStyle::Solid,
             override_style: crate::ir::EdgeStyleOverride::default(),
             curve: None,
+            central_connection: None,
         });
     }
 

@@ -78,6 +78,18 @@ pub enum SequenceActivationKind {
     Deactivate,
 }
 
+/// Central connection marker on a sequence diagram message.
+/// Draws a small circle at the actor lifeline where the arrow connects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SequenceCentralConnection {
+    /// Circle at the target actor: `Alice->>()John`
+    Target,
+    /// Circle at the source actor: `Alice()->>John`
+    Source,
+    /// Circles at both ends: `Alice()->>()John`
+    Both,
+}
+
 #[derive(Debug, Clone)]
 pub struct SequenceActivation {
     pub participant: String,
@@ -383,6 +395,8 @@ pub struct Edge {
     pub arch_port_from: Option<ArchPort>,
     /// Architecture diagram port constraint on the target node (L/R/T/B).
     pub arch_port_to: Option<ArchPort>,
+    /// Sequence diagram central connection marker.
+    pub central_connection: Option<SequenceCentralConnection>,
 }
 
 /// Port direction for architecture diagram edges.
@@ -418,6 +432,8 @@ pub enum EdgeDecoration {
 pub enum EdgeArrowhead {
     OpenTriangle,
     ClassDependency,
+    FilledHead,
+    CrossHead,
 }
 
 /// Curve interpolation types for edge paths, matching official Mermaid v11.

@@ -2,6 +2,7 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 use crate::config::LayoutConfig;
+use crate::parser::decode_mermaid_entities;
 use crate::text_metrics;
 use crate::theme::Theme;
 
@@ -88,6 +89,10 @@ pub(super) fn measure_label_with_font_size(
     wrap: bool,
     font_family: &str,
 ) -> TextBlock {
+    // Decode mermaid entity codes (#9829; → ♥, #infin; → ∞) before measurement
+    let text = decode_mermaid_entities(text);
+    let text = text.as_str();
+
     // Intercept HTML-formatted labels – convert to markdown so styling
     // and line-breaks are preserved regardless of how we were called.
     if has_html_formatting(text) {

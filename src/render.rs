@@ -325,6 +325,14 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 color,
                 color
             ));
+            svg.push_str(&format!(
+                "<marker id=\"filled-head-seq-{idx}\" refX=\"15.5\" refY=\"7\" markerWidth=\"20\" markerHeight=\"28\" orient=\"auto\"><path d=\"M 18,7 L9,13 L14,7 L9,1 Z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/></marker>",
+                color, color
+            ));
+            svg.push_str(&format!(
+                "<marker id=\"crosshead-seq-{idx}\" markerWidth=\"15\" markerHeight=\"8\" orient=\"auto\" refX=\"4\" refY=\"4.5\"><path fill=\"none\" stroke=\"{}\" stroke-width=\"1pt\" d=\"M 1,2 L 6,7 M 6,2 L 1,7\"/></marker>",
+                color
+            ));
         }
         if is_state {
             svg.push_str(&format!(
@@ -786,7 +794,17 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let (endpoint_pad_x, endpoint_pad_y) = endpoint_label_padding(layout.kind);
             let marker_id = color_ids.get(&stroke).copied().unwrap_or(0);
             let marker_end = if edge.arrow_end {
-                format!("marker-end=\"url(#arrow-seq-{marker_id})\"")
+                match edge.arrow_end_kind {
+                    Some(crate::ir::EdgeArrowhead::FilledHead) => {
+                        format!("marker-end=\"url(#filled-head-seq-{marker_id})\"")
+                    }
+                    Some(crate::ir::EdgeArrowhead::CrossHead) => {
+                        format!("marker-end=\"url(#crosshead-seq-{marker_id})\"")
+                    }
+                    _ => {
+                        format!("marker-end=\"url(#arrow-seq-{marker_id})\"")
+                    }
+                }
             } else {
                 String::new()
             };
@@ -808,6 +826,26 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 "<path id=\"{edge_id}\" class=\"edgePath\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" {} {} {} stroke-linecap=\"round\" stroke-linejoin=\"round\" />",
                 d, stroke, stroke_width, marker_end, marker_start, dash
             ));
+
+            // Central connection circles for sequence diagrams
+            if let Some(cc) = edge.central_connection {
+                use crate::ir::SequenceCentralConnection;
+                let r = 5.0;
+                if let Some(&(sx, sy)) = edge.points.first() {
+                    if matches!(cc, SequenceCentralConnection::Source | SequenceCentralConnection::Both) {
+                        svg.push_str(&format!(
+                            "<circle cx=\"{sx:.2}\" cy=\"{sy:.2}\" r=\"{r}\" fill=\"{stroke}\" stroke=\"{stroke}\" stroke-width=\"1\"/>"
+                        ));
+                    }
+                }
+                if let Some(&(ex, ey)) = edge.points.last() {
+                    if matches!(cc, SequenceCentralConnection::Target | SequenceCentralConnection::Both) {
+                        svg.push_str(&format!(
+                            "<circle cx=\"{ex:.2}\" cy=\"{ey:.2}\" r=\"{r}\" fill=\"{stroke}\" stroke=\"{stroke}\" stroke-width=\"1\"/>"
+                        ));
+                    }
+                }
+            }
 
             if let Some(point) = edge.points.first().copied()
                 && let Some(decoration) = edge.start_decoration
@@ -1067,7 +1105,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         Some(crate::ir::EdgeArrowhead::ClassDependency) => {
                             format!("marker-end=\"url(#arrow-class-dep-{marker_id})\"")
                         }
-                        None => format!("marker-end=\"url(#arrow-{marker_id})\""),
+                        _ => format!("marker-end=\"url(#arrow-{marker_id})\""),
                     },
                     _ => format!("marker-end=\"url(#arrow-{marker_id})\""),
                 }
@@ -1086,7 +1124,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         Some(crate::ir::EdgeArrowhead::ClassDependency) => {
                             format!("marker-start=\"url(#arrow-class-dep-start-{marker_id})\"")
                         }
-                        None => format!("marker-start=\"url(#arrow-start-{marker_id})\""),
+                        _ => format!("marker-start=\"url(#arrow-start-{marker_id})\""),
                     },
                     _ => format!("marker-start=\"url(#arrow-start-{marker_id})\""),
                 }
@@ -6509,28 +6547,28 @@ fn render_sequence_actor_shape(
             }
         }
         NodeShape::Queue => {
-            // Queue: a cylinder rotated 90 degrees (horizontal pill with right elliptical cap).
+            // Queue: horizontal cylinder shape matching JS mermaid svgDraw.js
             let x = node.x;
             let y = node.y;
             let w = node.width;
             let h = node.height;
-            let cap_w = 8.0;
-            // Main rectangle body
-            svg.push_str(&format!(
-                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{bw:.2}\" height=\"{h:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                bw = w - cap_w, fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
-            ));
-            // Right elliptical cap
-            let rx = cap_w;
             let ry = h / 2.0;
-            let cap_cx = x + w - cap_w;
-            let cap_cy = y + h / 2.0;
+            let rx = ry / (2.5 + h / 50.0);
+            let body_w = w - 2.0 * rx;
+            let fill = &theme.sequence_actor_fill;
+            let stroke = &theme.sequence_actor_border;
+            // Main cylinder outline: left arc, horizontal top, right arc, close
             svg.push_str(&format!(
-                "<ellipse cx=\"{cap_cx:.2}\" cy=\"{cap_cy:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
-                fill = theme.sequence_actor_fill, stroke = theme.sequence_actor_border
+                "<path d=\"M {sx:.2},{sy:.2} a {rx:.2},{ry:.2} 0 0 0 0,{h:.2} h {bw:.2} a {rx:.2},{ry:.2} 0 0 0 0,-{h:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                sx = x, sy = y + ry, bw = body_w
+            ));
+            // Inner arc on the right end (visible curve line)
+            svg.push_str(&format!(
+                "<path d=\"M {ex:.2},{ey:.2} a {rx:.2},{ry:.2} 0 0 0 0,{h:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+                ex = x + body_w, ey = y + ry
             ));
             if !hide_label {
-                let cx = x + (w - cap_w) / 2.0;
+                let cx = x + w / 2.0;
                 let cy = y + h / 2.0;
                 svg.push_str(&text_block_svg(cx, cy, &node.label, theme, config, false, node.style.text_color.as_deref()));
             }
@@ -6565,7 +6603,7 @@ fn render_sequence_actor_shape(
             } else {
                 // Rectangle (participant, ActorBox)
                 svg.push_str(&format!(
-                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
+                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.0\"/>",
                     node.x, node.y, node.width, node.height,
                     theme.sequence_actor_fill, theme.sequence_actor_border
                 ));
@@ -6798,7 +6836,7 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
             node.style.stroke_width.unwrap_or(1.0)
         ),
         crate::ir::NodeShape::ActorBox => format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
             y,
             w,
@@ -6950,20 +6988,20 @@ fn shape_svg_inner(node: &crate::layout::NodeLayout, theme: &Theme, config: &Lay
         }
         crate::ir::NodeShape::Subroutine => {
             let stroke_width = node.style.stroke_width.unwrap_or(1.0);
-            let inset = 6.0;
+            let inset = 8.0;
             let mut svg = format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"6\" ry=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
                 x, y, w, h, fill, stroke, stroke_width
             );
-            let y1 = y + 2.0;
-            let y2 = y + h - 2.0;
             let x1 = x + inset;
             let x2 = x + w - inset;
             svg.push_str(&format!(
-                "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x1:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{join}/>"
+                "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x1:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{join}/>",
+                y2 = y + h
             ));
             svg.push_str(&format!(
-                "<line x1=\"{x2:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{join}/>"
+                "<line x1=\"{x2:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{join}/>",
+                y2 = y + h
             ));
             svg
         }
@@ -7784,7 +7822,7 @@ mod tests {
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
-                curve: None, arch_port_from: None, arch_port_to: None,
+                curve: None, arch_port_from: None, arch_port_to: None, central_connection: None,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());

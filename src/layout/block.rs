@@ -171,6 +171,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             style: edge.style,
             override_style,
             curve: None,
+            central_connection: None,
         });
     }
 

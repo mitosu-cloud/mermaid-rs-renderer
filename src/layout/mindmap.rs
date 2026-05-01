@@ -437,6 +437,7 @@ pub(super) fn compute_mindmap_layout(
             style: crate::ir::EdgeStyle::Solid,
             override_style,
             curve: None,
+            central_connection: None,
         });
     }
 

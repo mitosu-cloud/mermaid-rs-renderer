@@ -2,6 +2,14 @@ use super::*;
 
 type Rect = (f32, f32, f32, f32);
 
+/// Measure a sequence diagram message label WITHOUT wrapping, matching JS
+/// default `wrap: false`.  This ensures the full single-line text width is
+/// used for actor gap calculations and edge label sizing.
+fn measure_seq_message_label(text: &str, theme: &Theme, config: &LayoutConfig) -> TextBlock {
+    let font_size = theme.font_size.max(16.0);
+    measure_label_with_font_size(text, font_size, config, false, theme.font_family.as_str())
+}
+
 const SEQUENCE_LABEL_PAD_X: f32 = 3.0;
 const SEQUENCE_LABEL_PAD_Y: f32 = 2.0;
 const SEQUENCE_ENDPOINT_LABEL_PAD_X: f32 = 2.5;
@@ -15,6 +23,15 @@ const SEQUENCE_CENTER_LABEL_TANGENT_LINEAR_WEIGHT: f32 = 0.22;
 const SEQUENCE_CENTER_LABEL_TANGENT_QUAD_WEIGHT: f32 = 0.95;
 const SEQUENCE_CENTER_LABEL_TANGENT_SOFT_LIMIT: f32 = 1.2;
 const SEQUENCE_CENTER_LABEL_TANGENT_FAR_WEIGHT: f32 = 3.2;
+
+/// JS default sequence diagram configuration values
+const SEQ_ACTOR_MIN_WIDTH: f32 = 150.0;
+const SEQ_ACTOR_HEIGHT: f32 = 65.0;
+const SEQ_ACTOR_MARGIN: f32 = 50.0;
+const SEQ_DIAGRAM_MARGIN_X: f32 = 50.0;
+/// JS default: conf.wrapPadding = 15 → 2*15 = 30 added to message width
+const SEQ_WRAP_PADDING: f32 = 30.0;
+const SEQ_DIAGRAM_MARGIN_Y: f32 = 10.0;
 
 #[derive(Clone, Copy)]
 enum SequenceLabelPlacementMode {
@@ -40,40 +57,85 @@ pub(super) fn compute_sequence_layout(
 
     let mut label_blocks: HashMap<String, TextBlock> = HashMap::new();
     let mut max_label_height: f32 = 0.0;
-    let min_actor_width = (theme.font_size * 4.0).max(80.0);
+    let min_actor_width = SEQ_ACTOR_MIN_WIDTH;
     let mut participant_widths: HashMap<String, f32> = HashMap::new();
-    let mut width_total = 0.0f32;
     for id in &participants {
         let node = graph.nodes.get(id).expect("participant missing");
         let label = measure_label(&node.label, theme, config);
         max_label_height = max_label_height.max(label.height);
         let width = (label.width + theme.font_size * 1.2).max(min_actor_width);
         participant_widths.insert(id.clone(), width);
-        width_total += width;
         label_blocks.insert(id.clone(), label);
     }
 
     let participant_count = participants.len();
-    let actor_height = (max_label_height + theme.font_size * 1.6).max(48.0);
-    let avg_actor_width = if participant_count > 0 {
-        width_total / participant_count as f32
-    } else {
-        min_actor_width
-    };
-    let mut actor_gap = (theme.font_size * 1.0).max(12.0);
-    if avg_actor_width > 140.0 {
-        actor_gap *= 0.85;
-    }
-    if participant_count >= 7 {
-        actor_gap *= 0.72;
-    } else if participant_count >= 5 {
-        actor_gap *= 0.8;
+    let actor_height = (max_label_height + theme.font_size * 1.6).max(SEQ_ACTOR_HEIGHT);
+
+    // Build participant index map for message-width-based spacing
+    let participant_index: HashMap<String, usize> = participants
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.clone(), i))
+        .collect();
+
+    // Compute max message width needed per gap (between adjacent actors)
+    let gap_count = if participant_count > 1 { participant_count - 1 } else { 0 };
+    let mut max_message_width_per_gap = vec![0.0f32; gap_count];
+    for edge in &graph.edges {
+        let label_width = edge
+            .label
+            .as_ref()
+            .map(|l| measure_seq_message_label(l, theme, config).width + SEQ_WRAP_PADDING)
+            .unwrap_or(0.0);
+        if label_width <= 0.0 {
+            continue;
+        }
+        let from_idx = participant_index.get(&edge.from).copied();
+        let to_idx = participant_index.get(&edge.to).copied();
+        if let (Some(fi), Some(ti)) = (from_idx, to_idx) {
+            if fi == ti {
+                // Self-message: split width across adjacent gaps
+                let half = label_width / 2.0;
+                if fi > 0 {
+                    max_message_width_per_gap[fi - 1] =
+                        max_message_width_per_gap[fi - 1].max(half);
+                }
+                if fi < gap_count {
+                    max_message_width_per_gap[fi] =
+                        max_message_width_per_gap[fi].max(half);
+                }
+            } else {
+                let lo = fi.min(ti);
+                let hi = fi.max(ti);
+                let spans = hi - lo;
+                let per_gap = label_width / spans as f32;
+                for g in lo..hi {
+                    max_message_width_per_gap[g] =
+                        max_message_width_per_gap[g].max(per_gap);
+                }
+            }
+        }
     }
 
-    // Add consistent margins to center the diagram
-    let margin = 8.0;
-    let mut cursor_x = margin;
-    for id in &participants {
+    // Calculate per-gap margin (JS: calculateActorMargins)
+    let mut per_gap_margin = vec![SEQ_ACTOR_MARGIN; gap_count];
+    for i in 0..gap_count {
+        let left_w = participant_widths
+            .get(&participants[i])
+            .copied()
+            .unwrap_or(min_actor_width);
+        let right_w = participant_widths
+            .get(&participants[i + 1])
+            .copied()
+            .unwrap_or(min_actor_width);
+        let needed = max_message_width_per_gap[i] + SEQ_ACTOR_MARGIN - left_w / 2.0 - right_w / 2.0;
+        per_gap_margin[i] = per_gap_margin[i].max(needed);
+    }
+
+    let margin_x = SEQ_DIAGRAM_MARGIN_X;
+    let margin_y = SEQ_DIAGRAM_MARGIN_Y;
+    let mut cursor_x = margin_x;
+    for (p_idx, id) in participants.iter().enumerate() {
         let node = graph.nodes.get(id).expect("participant missing");
         let actor_width = participant_widths
             .get(id)
@@ -89,7 +151,7 @@ pub(super) fn compute_sequence_layout(
             NodeLayout {
                 id: id.clone(),
                 x: cursor_x,
-                y: margin,
+                y: margin_y,
                 width: actor_width,
                 height: actor_height,
                 label,
@@ -109,7 +171,12 @@ pub(super) fn compute_sequence_layout(
                 kanban_priority: None,
             },
         );
-        cursor_x += actor_width + actor_gap;
+        let gap = if p_idx < gap_count {
+            per_gap_margin[p_idx]
+        } else {
+            0.0
+        };
+        cursor_x += actor_width + gap;
     }
 
     let base_spacing = (theme.font_size * 2.1).max(18.0);
@@ -119,13 +186,13 @@ pub(super) fn compute_sequence_layout(
         .map(|edge| {
             let mut row_h = 0.0f32;
             if let Some(label) = &edge.label {
-                row_h = row_h.max(measure_label(label, theme, config).height);
+                row_h = row_h.max(measure_seq_message_label(label, theme, config).height);
             }
             if let Some(label) = &edge.start_label {
-                row_h = row_h.max(measure_label(label, theme, config).height);
+                row_h = row_h.max(measure_seq_message_label(label, theme, config).height);
             }
             if let Some(label) = &edge.end_label {
-                row_h = row_h.max(measure_label(label, theme, config).height);
+                row_h = row_h.max(measure_seq_message_label(label, theme, config).height);
             }
             // Keep enough vertical clearance so message labels can stay close to
             // their own edge without immediately colliding with neighboring rows.
@@ -158,7 +225,7 @@ pub(super) fn compute_sequence_layout(
         notes_by_index[idx].push(note);
     }
 
-    let mut message_cursor = margin + actor_height + theme.font_size * 2.2;
+    let mut message_cursor = margin_y + actor_height + theme.font_size * 2.2;
     let mut message_ys = Vec::new();
     let mut sequence_notes = Vec::new();
     for idx in 0..=graph.edges.len() {
@@ -219,15 +286,15 @@ pub(super) fn compute_sequence_layout(
         let from = nodes.get(&edge.from).expect("from node missing");
         let to = nodes.get(&edge.to).expect("to node missing");
         let y = message_ys.get(idx).copied().unwrap_or(message_cursor);
-        let label = edge.label.as_ref().map(|l| measure_label(l, theme, config));
+        let label = edge.label.as_ref().map(|l| measure_seq_message_label(l, theme, config));
         let start_label = edge
             .start_label
             .as_ref()
-            .map(|l| measure_label(l, theme, config));
+            .map(|l| measure_seq_message_label(l, theme, config));
         let end_label = edge
             .end_label
             .as_ref()
-            .map(|l| measure_label(l, theme, config));
+            .map(|l| measure_seq_message_label(l, theme, config));
 
         let points = if edge.from == edge.to {
             let pad = config.node_spacing.max(20.0) * 0.6;
@@ -263,6 +330,7 @@ pub(super) fn compute_sequence_layout(
             style: edge.style,
             override_style,
             curve: None,
+            central_connection: edge.central_connection,
         });
     }
 
@@ -278,8 +346,12 @@ pub(super) fn compute_sequence_layout(
             if frame.start_idx >= frame.end_idx || frame.start_idx >= message_ys.len() {
                 continue;
             }
+            // Use lifeline center positions (not full actor box edges) for frame
+            // bounds, matching JS behavior where frames span between actor centers
+            // with boxMargin padding.
             let mut min_x = f32::INFINITY;
             let mut max_x = f32::NEG_INFINITY;
+            let self_msg_pad = config.node_spacing.max(20.0) * 0.6;
             for edge in graph
                 .edges
                 .iter()
@@ -287,24 +359,31 @@ pub(super) fn compute_sequence_layout(
                 .take(frame.end_idx.saturating_sub(frame.start_idx))
             {
                 if let Some(node) = nodes.get(&edge.from) {
-                    min_x = min_x.min(node.x);
-                    max_x = max_x.max(node.x + node.width);
+                    let center = node.x + node.width / 2.0;
+                    min_x = min_x.min(center);
+                    max_x = max_x.max(center);
+                    // Self-messages extend to the right of the actor
+                    if edge.from == edge.to {
+                        max_x = max_x.max(center + self_msg_pad);
+                    }
                 }
                 if let Some(node) = nodes.get(&edge.to) {
-                    min_x = min_x.min(node.x);
-                    max_x = max_x.max(node.x + node.width);
+                    let center = node.x + node.width / 2.0;
+                    min_x = min_x.min(center);
+                    max_x = max_x.max(center);
                 }
             }
             if !min_x.is_finite() || !max_x.is_finite() {
                 for node in nodes.values() {
-                    min_x = min_x.min(node.x);
-                    max_x = max_x.max(node.x + node.width);
+                    let center = node.x + node.width / 2.0;
+                    min_x = min_x.min(center);
+                    max_x = max_x.max(center);
                 }
             }
             if !min_x.is_finite() || !max_x.is_finite() {
                 continue;
             }
-            let frame_pad_x = theme.font_size * 0.7;
+            let frame_pad_x = 10.0; // JS default: conf.boxMargin
             let frame_x = min_x - frame_pad_x;
             let frame_width = (max_x - min_x) + frame_pad_x * 2.0;
 
@@ -326,7 +405,7 @@ pub(super) fn compute_sequence_layout(
             }
             let header_offset = theme.font_size * 0.6;
             let top_offset = (2.0 * base_spacing - header_offset).max(base_spacing);
-            let bottom_offset = header_offset;
+            let bottom_offset = base_spacing * 0.6;
             let frame_y = min_y - top_offset;
             let frame_height = (max_y - min_y).max(0.0) + top_offset + bottom_offset;
 
@@ -373,27 +452,27 @@ pub(super) fn compute_sequence_layout(
                         // so it does not collide with the first message row.
                         frame_y + label_box_h + theme.font_size * 0.45
                     } else {
-                        // Keep else/and section labels on the divider's upper side
-                        // to reduce collisions with the following message row text.
+                        // Position section labels BELOW the divider line,
+                        // matching JS behavior (divider_y + boxMargin + boxTextMargin).
                         dividers
                             .get(section_idx - 1)
                             .copied()
                             .unwrap_or(frame_y + label_offset)
-                            - (theme.font_size * 0.35)
+                            + (theme.font_size * 0.9)
                     };
                     let side_pad = theme.font_size * 0.45;
                     let label_x = if section_idx == 0 {
                         let preferred =
                             frame_x + label_box_w + theme.font_size * 1.6 + block.width / 2.0;
-                        let min_x = frame_x + block.width / 2.0 + theme.font_size * 0.4;
-                        let max_x =
+                        let lo = frame_x + block.width / 2.0 + theme.font_size * 0.4;
+                        let hi =
                             frame_x + frame_width - block.width / 2.0 - theme.font_size * 0.4;
-                        preferred.clamp(min_x, max_x)
+                        preferred.clamp(lo.min(hi), lo.max(hi))
                     } else {
                         let preferred = frame_x + side_pad + block.width / 2.0;
-                        let min_x = frame_x + block.width / 2.0 + side_pad;
-                        let max_x = frame_x + frame_width - block.width / 2.0 - side_pad;
-                        preferred.clamp(min_x, max_x)
+                        let lo = frame_x + block.width / 2.0 + side_pad;
+                        let hi = frame_x + frame_width - block.width / 2.0 - side_pad;
+                        preferred.clamp(lo.min(hi), lo.max(hi))
                     };
                     section_labels.push(SequenceLabel {
                         x: label_x,
@@ -417,7 +496,7 @@ pub(super) fn compute_sequence_layout(
         }
     }
 
-    let lifeline_start = margin + actor_height;
+    let lifeline_start = margin_y + actor_height;
     let mut last_message_y = message_ys
         .last()
         .copied()
@@ -735,9 +814,9 @@ pub(super) fn compute_sequence_layout(
         max_y = 1.0;
     }
 
-    let margin = 8.0;
-    let shift_x = margin - min_x;
-    let shift_y = margin - min_y;
+    let bounds_margin = 8.0;
+    let shift_x = bounds_margin - min_x;
+    let shift_y = bounds_margin - min_y;
     if shift_x.abs() > 1e-3 || shift_y.abs() > 1e-3 {
         for node in nodes.values_mut() {
             node.x += shift_x;
@@ -798,12 +877,14 @@ pub(super) fn compute_sequence_layout(
             number.x += shift_x;
             number.y += shift_y;
         }
+        min_x += shift_x;
+        min_y += shift_y;
         max_x += shift_x;
         max_y += shift_y;
     }
 
-    let width = (max_x - min_x + margin * 2.0).max(1.0);
-    let height = (max_y - min_y + margin * 2.0).max(1.0);
+    let width = (max_x - min_x + bounds_margin * 2.0).max(1.0);
+    let height = (max_y - min_y + bounds_margin * 2.0).max(1.0);
 
     Layout {
         kind: graph.kind,

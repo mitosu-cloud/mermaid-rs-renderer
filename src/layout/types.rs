@@ -105,6 +105,7 @@ pub struct EdgeLayout {
     pub style: crate::ir::EdgeStyle,
     pub override_style: crate::ir::EdgeStyleOverride,
     pub curve: Option<crate::ir::CurveType>,
+    pub central_connection: Option<crate::ir::SequenceCentralConnection>,
 }
 
 #[derive(Debug, Clone)]

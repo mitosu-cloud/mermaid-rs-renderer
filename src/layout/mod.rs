@@ -1575,6 +1575,7 @@ fn compute_flowchart_layout(
             start_label_anchor: None,
             end_label_anchor: None,
             curve: edge.curve,
+            central_connection: None,
         });
     }
 
@@ -2014,6 +2015,7 @@ fn assign_positions_manual(
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
             });
             prev = dummy_id;
         }
@@ -2036,6 +2038,7 @@ fn assign_positions_manual(
             curve: None,
             arch_port_from: None,
             arch_port_to: None,
+            central_connection: None,
         });
     }
 
@@ -5800,9 +5803,11 @@ fn shape_size(
 
     match shape {
         crate::ir::NodeShape::Diamond => {
-            // Mermaid renders diamonds as squares sized off the larger
-            // dimension rather than stretching width/height independently.
-            let size = base_width.max(base_height) * DIAMOND_SCALE;
+            // A square diamond (rotated 45°) must have diagonal >= tw + th
+            // to inscribe a rectangle of (tw × th).  Add padding so text
+            // doesn't touch the edges.
+            let inner_pad = config.node_padding_y;
+            let size = base_width + base_height + inner_pad * 2.0;
             width = size;
             height = size;
         }
@@ -5975,7 +5980,7 @@ mod tests {
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
-                curve: None, arch_port_from: None, arch_port_to: None,
+                curve: None, arch_port_from: None, arch_port_to: None, central_connection: None,
         });
         let layout = compute_layout(&graph, &Theme::modern(), &LayoutConfig::default());
         let a = layout.nodes.get("A").unwrap();
@@ -6004,7 +6009,7 @@ mod tests {
             style: crate::ir::EdgeStyle::Solid,
                 markdown_label: false,
                 id: None,
-                curve: None, arch_port_from: None, arch_port_to: None,
+                curve: None, arch_port_from: None, arch_port_to: None, central_connection: None,
         });
 
         graph.edge_style_default = Some(crate::ir::EdgeStyleOverride {
@@ -6103,7 +6108,7 @@ mod tests {
             style,
             markdown_label: false,
             id: None,
-            curve: None, arch_port_from: None, arch_port_to: None,
+            curve: None, arch_port_from: None, arch_port_to: None, central_connection: None,
         }
     }
 

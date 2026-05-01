@@ -281,6 +281,7 @@ pub(super) fn compute_architecture_layout(
             style: edge.style,
             override_style,
             curve: None,
+            central_connection: None,
         });
     }
 

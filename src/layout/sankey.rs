@@ -327,6 +327,7 @@ pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &Layou
                 label_color: None,
             },
             curve: None,
+            central_connection: None,
         });
         sankey_links.push(SankeyLinkLayout {
             source: from_id,

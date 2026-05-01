@@ -579,6 +579,7 @@ fn add_flowchart_edge(line: &str, graph: &mut Graph, subgraph_stack: &[usize]) -
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
             });
         }
     }
@@ -1131,6 +1132,34 @@ fn parse_sequence_participant(
         return None;
     }
 
+    // Handle @{ "type": "..." } metadata syntax: participant Alice@{ "type": "boundary" }
+    // Also supports optional "as" alias after: participant Alice@{ "type": "boundary" } as A
+    let (rest, meta_shape, meta_alias) = if let Some(at_pos) = rest.find("@{") {
+        let before_at = rest[..at_pos].trim();
+        let after_at = &rest[at_pos + 2..];
+        if let Some(brace_end) = after_at.find('}') {
+            let json_content = after_at[..brace_end].trim();
+            let after_brace = after_at[brace_end + 1..].trim();
+            let meta_shape = parse_sequence_participant_type(json_content);
+            let meta_alias = parse_sequence_participant_alias(json_content);
+            // Check for " as Alias" after the closing brace
+            let (rest_str, alias_from_as) = if let Some(stripped) = after_brace.strip_prefix("as ").or_else(|| after_brace.strip_prefix("as\t")) {
+                (before_at, Some(stripped.trim().to_string()))
+            } else {
+                (before_at, None)
+            };
+            (rest_str, meta_shape, meta_alias.or(alias_from_as))
+        } else {
+            (rest, None, None)
+        }
+    } else {
+        (rest, None, None)
+    };
+
+    if let Some(s) = meta_shape {
+        shape = s;
+    }
+
     let lower_rest = rest.to_ascii_lowercase();
     if let Some(as_idx) = lower_rest.find(" as ") {
         let label_part = rest[..as_idx].trim();
@@ -1143,12 +1172,66 @@ fn parse_sequence_participant(
         return Some((id, Some(display_label), shape));
     }
 
+    if let Some(alias) = meta_alias {
+        let id = strip_quotes(rest);
+        return Some((id, Some(alias), shape));
+    }
+
     if rest.starts_with('"') && rest.ends_with('"') {
         let label = strip_quotes(rest);
         return Some((label.clone(), Some(label), shape));
     }
 
     Some((strip_quotes(rest), None, shape))
+}
+
+/// Parse the "type" field from `@{ ... }` metadata JSON content.
+fn parse_sequence_participant_type(json: &str) -> Option<crate::ir::NodeShape> {
+    // Match "type" : "value" or type: "value" or type: 'value'
+    let type_val = extract_json_string_value(json, "type")?;
+    match type_val.as_str() {
+        "actor" => Some(crate::ir::NodeShape::StickFigure),
+        "participant" => Some(crate::ir::NodeShape::ActorBox),
+        "boundary" => Some(crate::ir::NodeShape::Boundary),
+        "control" => Some(crate::ir::NodeShape::Control),
+        "entity" => Some(crate::ir::NodeShape::Entity),
+        "database" => Some(crate::ir::NodeShape::Cylinder),
+        "collections" => Some(crate::ir::NodeShape::Collections),
+        "queue" => Some(crate::ir::NodeShape::Queue),
+        _ => None,
+    }
+}
+
+/// Parse the "alias" field from `@{ ... }` metadata JSON content.
+fn parse_sequence_participant_alias(json: &str) -> Option<String> {
+    extract_json_string_value(json, "alias")
+}
+
+/// Extract a string value for a given key from a simple JSON/YAML-like metadata string.
+/// Handles: "key": "value", "key": 'value', key: "value", key: 'value'
+fn extract_json_string_value(json: &str, key: &str) -> Option<String> {
+    // Try patterns: "key" : "val", "key": "val", key: "val", key : "val"
+    for pattern in [
+        format!("\"{}\"", key),
+        key.to_string(),
+    ] {
+        if let Some(key_pos) = json.find(&pattern) {
+            let after_key = json[key_pos + pattern.len()..].trim();
+            let after_colon = after_key.strip_prefix(':')?.trim();
+            // Extract value in quotes (double or single)
+            let (quote, rest) = if after_colon.starts_with('"') {
+                ('"', &after_colon[1..])
+            } else if after_colon.starts_with('\'') {
+                ('\'', &after_colon[1..])
+            } else {
+                continue;
+            };
+            if let Some(end) = rest.find(quote) {
+                return Some(rest[..end].to_string());
+            }
+        }
+    }
+    None
 }
 
 fn is_color_token(token: &str) -> bool {
@@ -1230,10 +1313,14 @@ fn parse_sequence_message(
     Option<String>,
     crate::ir::EdgeStyle,
     Option<crate::ir::SequenceActivationKind>,
+    Option<crate::ir::EdgeArrowhead>,
+    Option<crate::ir::SequenceCentralConnection>,
 )> {
     let tokens = [
-        "-->>+", "->>+", "-->+", "->+", "-->>-", "->>-", "-->-", "->-", "<--+", "<-+", "<--", "<-",
-        "-->>", "->>", "-->", "->",
+        "-->>+", "->>+", "--)+", "-)+", "--x+", "-x+", "-->+", "->+",
+        "-->>-", "->>-", "--)-", "-)-", "--x-", "-x-", "-->-", "->-",
+        "<--+", "<-+", "<--", "<-",
+        "-->>", "->>", "--)", "-)", "--x", "-x", "-->", "->",
     ];
     for token in tokens {
         if let Some(pos) = line.find(token) {
@@ -1248,6 +1335,23 @@ fn parse_sequence_message(
             if token.starts_with('<') {
                 std::mem::swap(&mut from, &mut to);
             }
+
+            // Detect and strip central connection markers: "()" before/after actor names
+            let from_central = from.ends_with("()");
+            if from_central {
+                from.truncate(from.len() - 2);
+            }
+            let to_central = to.starts_with("()");
+            if to_central {
+                to = to[2..].to_string();
+            }
+            let central_connection = match (from_central, to_central) {
+                (false, true) => Some(crate::ir::SequenceCentralConnection::Target),
+                (true, false) => Some(crate::ir::SequenceCentralConnection::Source),
+                (true, true) => Some(crate::ir::SequenceCentralConnection::Both),
+                (false, false) => None,
+            };
+
             let trimmed = token.trim_start_matches('<').trim_end_matches(['+', '-']);
             let style = if trimmed.starts_with("--") {
                 crate::ir::EdgeStyle::Dotted
@@ -1261,7 +1365,16 @@ fn parse_sequence_message(
             } else {
                 None
             };
-            return Some((from, to, label, style, activation));
+            let arrowhead_kind = if trimmed.ends_with(">>") {
+                Some(crate::ir::EdgeArrowhead::OpenTriangle)
+            } else if trimmed.ends_with(')') {
+                Some(crate::ir::EdgeArrowhead::FilledHead)
+            } else if trimmed.ends_with('x') {
+                Some(crate::ir::EdgeArrowhead::CrossHead)
+            } else {
+                None
+            };
+            return Some((from, to, label, style, activation, arrowhead_kind, central_connection));
         }
     }
     None
@@ -1302,6 +1415,104 @@ fn parse_sequence_note(
     }
 
     Some((position, participants, label.to_string()))
+}
+
+/// Decode mermaid entity codes in text.
+/// Mermaid uses `#code;` syntax (without `&`):
+///   - `#9829;` → ♥ (numeric Unicode codepoint)
+///   - `#infin;` → ∞ (HTML named entity)
+pub fn decode_mermaid_entities(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(hash_pos) = rest.find('#') {
+        result.push_str(&rest[..hash_pos]);
+        let after_hash = &rest[hash_pos + 1..];
+        if let Some(semi_pos) = after_hash.find(';') {
+            let entity_name = &after_hash[..semi_pos];
+            if let Some(ch) = resolve_mermaid_entity(entity_name) {
+                result.push(ch);
+                rest = &after_hash[semi_pos + 1..];
+                continue;
+            }
+        }
+        // Not a valid entity — keep the '#' literally
+        result.push('#');
+        rest = after_hash;
+    }
+    result.push_str(rest);
+    result
+}
+
+fn resolve_mermaid_entity(name: &str) -> Option<char> {
+    // Numeric: #9829; → char from codepoint
+    if let Ok(code) = name.parse::<u32>() {
+        return char::from_u32(code);
+    }
+    // Named HTML entities
+    match name {
+        "amp" => Some('&'),
+        "lt" => Some('<'),
+        "gt" => Some('>'),
+        "quot" => Some('"'),
+        "apos" => Some('\''),
+        "nbsp" => Some('\u{00A0}'),
+        "copy" => Some('©'),
+        "reg" => Some('®'),
+        "trade" => Some('™'),
+        "infin" => Some('∞'),
+        "hearts" | "heartsuit" => Some('♥'),
+        "spades" | "spadesuit" => Some('♠'),
+        "clubs" | "clubsuit" => Some('♣'),
+        "diams" | "diamondsuit" => Some('♦'),
+        "laquo" => Some('«'),
+        "raquo" => Some('»'),
+        "larr" => Some('←'),
+        "rarr" => Some('→'),
+        "uarr" => Some('↑'),
+        "darr" => Some('↓'),
+        "harr" => Some('↔'),
+        "mdash" => Some('—'),
+        "ndash" => Some('–'),
+        "hellip" => Some('…'),
+        "times" => Some('×'),
+        "divide" => Some('÷'),
+        "plusmn" => Some('±'),
+        "deg" => Some('°'),
+        "ne" | "NotEqual" => Some('≠'),
+        "le" | "leq" => Some('≤'),
+        "ge" | "geq" => Some('≥'),
+        "sum" => Some('∑'),
+        "prod" => Some('∏'),
+        "alpha" => Some('α'),
+        "beta" => Some('β'),
+        "gamma" => Some('γ'),
+        "delta" => Some('δ'),
+        "epsilon" => Some('ε'),
+        "theta" => Some('θ'),
+        "lambda" => Some('λ'),
+        "mu" => Some('μ'),
+        "pi" => Some('π'),
+        "sigma" => Some('σ'),
+        "tau" => Some('τ'),
+        "phi" => Some('φ'),
+        "omega" => Some('ω'),
+        "Delta" => Some('Δ'),
+        "Sigma" => Some('Σ'),
+        "Omega" => Some('Ω'),
+        "loz" => Some('◊'),
+        "star" => Some('☆'),
+        "check" => Some('✓'),
+        "cross" => Some('✗'),
+        "excl" => Some('!'),
+        "quest" => Some('?'),
+        "semi" => Some(';'),
+        "num" => Some('#'),
+        "comma" => Some(','),
+        "period" => Some('.'),
+        "colon" => Some(':'),
+        "pipe" => Some('|'),
+        _ => None,
+    }
 }
 
 fn split_label(input: &str) -> (String, Option<String>) {
@@ -1443,6 +1654,7 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
             });
             continue;
         }
@@ -1780,6 +1992,7 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
             });
             continue;
         }
@@ -2237,6 +2450,7 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
             });
         } else {
             stack.clear();
@@ -2405,6 +2619,7 @@ fn parse_journey_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
                 });
             }
             last_task = Some(node_id);
@@ -2647,6 +2862,7 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
                 });
             } else if let Some(prev) = last_task.take() {
                 graph.edges.push(crate::ir::Edge {
@@ -2668,6 +2884,7 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
                 });
             }
 
@@ -2870,6 +3087,7 @@ fn parse_requirement_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
             });
             continue;
         }
@@ -3851,6 +4069,7 @@ fn parse_sankey_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
         });
     }
 
@@ -3990,6 +4209,7 @@ fn parse_zenuml_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
             });
         }
     }
@@ -4111,6 +4331,7 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
                     });
                 }
             }
@@ -4219,6 +4440,7 @@ fn parse_packet_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
                 });
             }
             last_node = Some(node_id);
@@ -4437,6 +4659,7 @@ fn parse_architecture_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: port_from,
                 arch_port_to: port_to,
+                central_connection: None,
             });
         }
     }
@@ -4680,6 +4903,7 @@ fn parse_treemap_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
                 });
             }
         } else {
@@ -5135,6 +5359,7 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection: None,
                 });
                 continue;
             }
@@ -5481,7 +5706,7 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
-        if let Some((from, to, label, style, activation)) = parse_sequence_message(line) {
+        if let Some((from, to, label, style, activation, arrowhead_kind, central_connection)) = parse_sequence_message(line) {
             if !order.contains(&from) {
                 order.push(from.clone());
             }
@@ -5498,9 +5723,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 end_label: None,
                 directed: true,
                 arrow_start: false,
-                arrow_end: true,
+                arrow_end: arrowhead_kind.is_some(),
                 arrow_start_kind: None,
-                arrow_end_kind: None,
+                arrow_end_kind: arrowhead_kind,
                 start_decoration: None,
                 end_decoration: None,
                 style,
@@ -5509,6 +5734,7 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 curve: None,
                 arch_port_from: None,
                 arch_port_to: None,
+                central_connection,
             });
             if let Some(kind) = activation
                 && let Some(last) = graph.edges.len().checked_sub(1)
