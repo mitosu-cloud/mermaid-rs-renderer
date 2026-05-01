@@ -3367,3 +3367,263 @@ The earlier "stereotype symbols missing" reports from iter #52 were agent misrea
 
 **Visual defects in RS**
 - None. Three-frame nesting (loop > alt + opt) renders correctly with alt's else-divider and proper containment. Iter #19/#31 nesting fixes verified on this complex example. No element overlaps.
+
+## classDiagram-relationships-with-labels — Pass 1 findings — 2026-04-29T23:27:50Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 938.27 x 258.00 (aspect 3.64). RS viewBox is 1724.98 x 515.70 (aspect 3.34), roughly 1.84x wider and 2.00x taller.
+- Layout topology: JS places the 8 independent relationships as 8 columns with all sources on the top row and all targets on the bottom row. RS creates three vertical ranks: classA/classM on rank 0, classB/classC/classE/classG/classI/classK/classN/classO on rank 1, and classD/classF/classH/classJ/classL/classP on rank 2. This is visibly a different graph.
+- Edge shape: JS uses vertical cubic paths for every relation, e.g. `M48.797,92 ... C... L48.797,148.75`; RS uses straight `M..L` for edges 0,1,2,3,4,6 and multi-segment curved detours for dashed edges 5 and 7. The dashed dependency and dashed link swing through the middle of unrelated columns.
+- Inter-element spacing ratios: JS source-target center gap is 158 px over an 84 px node height (1.88x). RS top-to-middle and middle-to-bottom center gaps are about 154 px over a 104 px node height (1.48x), but the extra rank doubles the total vertical span. JS column centers are ~119 px apart; RS centers range from ~103 px to >400 px because unrelated pairs are cross-coupled.
+- Label-vs-container fit: JS labels sit centered in the single rank gap at y=129, one per column. RS labels for classC/classD and later non-hierarchy relations are centered between rank 1 and rank 2 or on long detours, so they no longer align with the source row used by JS.
+- State of the art comparison summary: displayed side by side, these would not look like the same diagram. The dominant defect is Rust-only class rank manipulation plus label-gap relaxation turning independent two-node relations into a three-rank, reordered layout.
+
+**Structural diffs**
+- Missing elements in RS: none for the 16 class labels or 8 relationships.
+- Extra elements in RS: none semantically; RS has a different marker/rect implementation.
+- Mismatched attributes: JS class boxes are rough class-box paths about 69 x 84 centered at y=50/208; RS boxes are rects about 58-69 x 104 with many nodes at y=154/309. JS viewBox 938.27 x 258.00; RS viewBox 1724.98 x 515.70.
+- Mismatched edge defaults: JS classRenderer-v2 builds a dagre graph with `rankdir = db.getDirection()`, `nodesep = conf.nodeSpacing ?? 50`, `ranksep = conf.rankSpacing ?? 50`, `marginx = 8`, `marginy = 8`, edge `curve = interpolateToCurve(conf.curve, curveLinear)`, and all relations participate equally in dagre ranking. RS uses generic flowchart manual layout, adaptive spacing, class min-height, a class-only hierarchy rank lift when any open-triangle relation exists, then edge label gap relaxation and custom routing.
+
+**Visual defects in RS**
+- Topology defect: classC/classE/classG/classI/classK/classO are one rank too low compared with JS; classD/classF/classH/classJ/classL/classP are two ranks below the JS source row because edge-label relaxation pushes targets after the hierarchy rank lift.
+- Edge detour defect: classK -> classL and classO -> classP are routed as long multi-bend curves through unrelated columns rather than vertical column edges.
+- No text appears clipped or invisible in the current RS SVG, but labels are attached to a visibly different layout.
+
+## classDiagram-relationships-with-labels — Changes applied — 2026-04-29T23:27:50Z
+
+- `src/layout/mod.rs` — removed the class-only hierarchy rank adjustment from `assign_positions_manual`; Mermaid JS does not promote all non-hierarchy class relations when one inheritance/realization edge is present, and that promotion was the root cause of the extra rank before label-gap relaxation.
+
+## classDiagram-relationships-with-labels — Changes applied — 2026-04-29T23:32:11Z
+
+- `src/layout/mod.rs` — initialized class-diagram cross-axis positions from ordered rank buckets before barycenter sweeps. The old seed used zero-based width-derived centers, so equal-crossing class ranks were reordered by measured node width instead of Mermaid's declaration/edge order.
+
+## classDiagram-relationships-with-labels — Pass 2 findings — 2026-04-29T23:32:11Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 938.27 x 258.00 (aspect 3.64). RS is now 966.92 x 274.38 (aspect 3.52), within about +3% width and +6% height. Before the fix RS was 1724.98 x 515.70.
+- Layout topology: RS now matches JS's gross topology: 8 independent columns, sources on the top row and targets on the bottom row. Column order is now classA/classB, classC/classD, classE/classF, classG/classH, classI/classJ, classK/classL, classM/classN, classO/classP, matching JS.
+- Edge shape: RS edges are now vertical and column-local. JS still emits cubic `M..C..C..L` paths through the center label rank, while RS emits mostly straight `M..L` paths with the same endpoints/columns.
+- Inter-element spacing ratios: JS source-target center gap is 158 px over an 84 px node height (1.88x). RS source-target center gap is 154.38 px over a 104 px node height (1.48x). RS class boxes remain taller, but the rank topology and label band are aligned.
+- Label-vs-container fit: RS center labels sit in one row at y=141.19, one per column. Label rects fit inside the viewBox and do not overlap adjacent labels at the current spacing.
+- State of the art comparison summary: displayed side by side, these now look recognizably like the same diagram. Remaining differences are styling/shape-size and path-curve differences, not the previous layout-pipeline failure.
+
+**Structural diffs**
+- Missing elements in RS: none for the 16 class labels or 8 relationships.
+- Extra elements in RS: none semantically; RS renders class boxes as plain rects and label backgrounds as SVG rects, while JS uses rough class-box paths and foreignObject labels.
+- Mismatched attributes: RS viewBox remains slightly larger (966.92 x 274.38 vs 938.27 x 258.00). RS class boxes are about 58-69 x 104; JS class boxes are about 69 x 84. JS paths are cubic; RS paths are straight vertical segments.
+
+**Visual defects in RS**
+- No rank/topology defect remains for this fixture.
+- Remaining visible differences: RS class boxes are taller and less rough-styled than JS, and RS edge paths are straight rather than cubic. These are separate node-shape/rendering defaults from the rank-order bug fixed here.
+
+## classDiagram-relationships-with-labels — Follow-up fixes — 2026-04-30T01:22:14Z
+
+- `src/parser.rs` — class labels now include Mermaid's empty member/method compartment dividers (`---`, `---`) even when the class has no declared members. JS `classBox` renders those two divider lines by default when `hideEmptyMembersBox` is false.
+- `src/layout/mod.rs` — empty class compartments no longer trigger the wider "has body content" padding; this keeps the added divider sentinels from inflating empty class box widths.
+- `src/render.rs` — class diamond decorations at an edge end now use the edge direction instead of being rotated 180 degrees back into the edge label band. This removes the label/end-symbol overlap on composition and aggregation edges.
+
+## classDiagram-relationships-with-labels — Marker visibility follow-up — 2026-04-30T03:42:15Z
+
+- Root cause: class edges render before class boxes. After the diamond direction fix, class end symbols pointed toward the target class as Mermaid expects, but the edge endpoint still sat exactly on the target box border. The symbol extent therefore projected into the class box and was covered by the later node fill.
+- `src/layout/mod.rs` — empty class boxes now use Mermaid's 84 px default height instead of the previous 104 px Rust-only minimum, and labeled class edges reserve a uniform extra rank gap when the diagram has visible class relation symbols. The uniform gap keeps target classes on the same rank instead of staggering rows by marker length.
+- `src/render.rs` — class edge paths are shortened only at endpoints that carry class markers/decorations, so the marker/decorator occupies the space between the path endpoint and the class border instead of being painted underneath the node.
+
+## classDiagram-relationships-with-labels — Open marker direction follow-up — 2026-04-30T03:53:22Z
+
+- Root cause: Rust's class open-triangle end marker used the extension-start polygon (`M 1 7 L 18 13 V 1 Z`) even for `--|>` / `..|>` end markers. Mermaid JS defines extension end separately as `M 1,1 V 13 L18,7 Z`, so classA/classM had the right marker id and endpoint trimming but the wrong visible triangle orientation.
+- `src/render.rs` — `arrow-class-open-*` end markers now use Mermaid's extension-end polygon while keeping the existing start marker polygon for extension-start cases.
+- `src/render.rs` — added a regression test that renders `A --|> B` and asserts the generated class open end marker uses the extension-end path.
+
+## classDiagram-two-way-relations — Two-sided marker follow-up — 2026-04-30T04:46:54Z
+
+- Root cause: the Rust class relation parser matched the shorter `<|--` token inside Mermaid's two-sided `<|--|>` operator, so `Animal <|--|> Zebra` was parsed with only `arrow_start` and lost the end open triangle. The same token-list shape could drop the far-side marker for other two-sided class relation combinations.
+- `src/parser.rs` — class relation tokens are now generated from Mermaid's grammar shape: optional left relation type + line type + optional right relation type. Arrowhead kind detection is side-specific (`<|` vs `<`, `|>` vs `>`), instead of using any `|` in the whole token.
+- `src/parser.rs` and `src/render.rs` — added regressions for `Animal <|--|> Zebra` so both open markers survive parsing and rendering.
+- Re-rendered `tests/mermaid-js-comparison/output/classDiagram-two-way-relations-rs.svg`; the edge now emits both `marker-start="url(#arrow-class-open-start-0)"` and `marker-end="url(#arrow-class-open-0)"`, with the line shortened between the two symbols.
+
+## classDiagram-notes-on-diagram — Pass 1 findings — 2026-04-30T20:56:44Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 416.73 x 186.00 (aspect 2.24). RS is 96.45 x 100.00 (aspect 0.96). RS is not the same size class; it only contains the class box.
+- Layout topology: JS has two yellow note boxes on the top rank, `note0` on the left and `note1` above `MyClass`, with `MyClass` below `note1`. RS has only `MyClass`; the entire notes rank is absent.
+- Edge shape: JS has a dotted connector path `edgeNote1` from `note1` down to `MyClass` (`M316.25,44L...L316.25,94`). RS has no connector edge for the class note.
+- Inter-element spacing ratios: JS note-to-class vertical gap is about 50 px from note bottom to class top. RS has no note elements, so the note/class spacing ratio is undefined and visually missing.
+- Label-vs-container fit: JS note labels fit inside yellow note boxes (`This is a general note` in a 165.77 x 36 note; `This is a note for a class` in a 184.97 x 36 note). RS has no note containers or note labels.
+- State of the art comparison summary: displayed side by side, these do not look like the same diagram. RS omits the two yellow notes and the dotted note-to-class connector.
+
+**Structural diffs**
+- Missing elements in RS: yellow `note0` containing `This is a general note`; yellow `note1` containing `This is a note for a class`; dotted connector `edgeNote1` from `note1` to `MyClass`.
+- Extra elements in RS: none semantically; RS only renders the class.
+- Mismatched attributes: RS viewBox is much smaller (96.45 x 100.00 vs 416.73 x 186.00) because omitted note nodes are not included in layout bounds.
+
+**Visual defects in RS**
+- The note labels are completely absent.
+- The yellow note backgrounds (`#fff5ad`) and note borders (`#aaaa33`) are absent.
+- The dotted note connector is absent.
+
+## classDiagram-notes-on-diagram — Changes applied — 2026-04-30T21:01:22Z
+
+- `src/ir.rs:662` — added a `NodeShape::Note` shape so class notes can be real layout nodes instead of being forced through class-box rendering.
+- `src/parser.rs:794` and `src/parser.rs:1786` — parsed class `note "..."` and `note for Class "..."` lines into `noteN` graph nodes, and generated a dotted `edgeNoteN` connector for class-attached notes.
+- `src/parser.rs:1941` — skipped class-compartment label rewriting for note nodes so note text is preserved.
+- `src/layout/mod.rs:7904` — gave note nodes Mermaid-style compact padding independent of class-box compartment sizing.
+- `src/render.rs:1597` and `src/render.rs:7300` — rendered note labels left-aligned inside yellow note rectangles using the note theme colors.
+- `src/parser.rs:8037` and `src/render.rs:8437` — added parser and render regressions for class notes and their dotted connector.
+
+## classDiagram-notes-on-diagram — Pass 2 findings — 2026-04-30T21:02:03Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 416.73 x 186.00 (aspect 2.24). RS is now 431.54 x 182.40 (aspect 2.37), within about +4% width and -2% height.
+- Layout topology: RS now matches JS's gross topology: two note boxes on the top rank, the attached note above `MyClass`, and `MyClass` below it.
+- Edge shape: JS uses a near-vertical cubic connector from `note1` to `MyClass`; RS uses a near-vertical straight dotted connector. The visual direction and endpoints are equivalent for this fixture.
+- Inter-element spacing ratios: JS note bottom to class top is about 50 px. RS note bottom to class top is also about 50 px.
+- Label-vs-container fit: RS note labels fit inside yellow note boxes with horizontal padding; `MyClass` fits in the class box.
+- State of the art comparison summary: displayed side by side, these now read as the same diagram for the missing-note issue. Remaining differences are the usual renderer styling differences: JS rough paths/foreignObject labels versus RS plain rect/text.
+
+**Structural diffs**
+- Missing elements in RS: none for the two notes, their labels, or the attached-note connector.
+- Extra elements in RS: none semantically.
+- Mismatched attributes: RS emits note rectangles and text directly, while JS emits rough path rectangles and HTML labels. RS connector id is `edge-0` rather than JS `edgeNote1` because the renderer currently normalizes edge DOM ids.
+
+**Visual defects in RS**
+- The previously missing yellow notes and dotted connector are present.
+- Minor remaining visual differences: RS note boxes are plain rectangles rather than rough paths, and the connector is straight rather than cubic.
+
+## classDiagram-styling-individual-nodes — Pass 1 findings — 2026-04-30T21:53:29Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 220.27 x 100.00 (aspect 2.20). RS viewBox is 203.18 x 100.00 (aspect 2.03), so the size class is similar.
+- Layout topology: both diagrams place `Animal` and `Mineral` side by side on one row. The topology is already aligned.
+- Edge shape: this fixture has no edges, so the difference is entirely node styling.
+- Inter-element spacing ratios: node-to-node spacing and node heights are close enough for this fixture; the visible defect is not layout spacing.
+- Label-vs-container fit: labels fit inside both class boxes. However, RS renders `Mineral` text in the default dark color while JS applies the `color:#fff` style to the node label span.
+- State of the art comparison summary: displayed side by side, these would not look like the same diagram because RS ignores the individual class style declarations: fills, strokes, stroke widths, text color, and dash pattern all remain default.
+
+**Structural diffs**
+- Missing styled attributes in RS: `Animal` should use `fill:#f9f`, `stroke:#333`, and `stroke-width:4px`.
+- Missing styled attributes in RS: `Mineral` should use `fill:#bbf`, `stroke:#f66`, `stroke-width:2px`, `color:#fff`, and `stroke-dasharray: 5 5`.
+- Mismatched divider attributes: JS applies each class style to the class divider paths, including styled stroke color, stroke width, and `Mineral`'s dash pattern. RS divider lines remain `stroke="#7B88A8"` and `stroke-width="1.0"`.
+
+**Visual defects in RS**
+- `Animal` and `Mineral` class boxes use the default pale fill and border instead of the requested node-specific style.
+- `Mineral` label text is dark on a default pale background instead of white on the styled blue fill.
+- `Mineral` lacks the dashed class border and dashed compartment divider lines.
+
+## classDiagram-styling-individual-nodes — Changes applied — 2026-04-30T21:55:52Z
+
+- `src/parser.rs:1845` — class diagrams now route direct `style <class> ...` declarations through the existing shared node-style parser, so `fill`, `stroke`, `stroke-width`, `color`, and `stroke-dasharray` are retained for layout/rendering.
+- `src/render.rs:6292` — class divider lines now inherit the node stroke width and dash pattern in addition to the stroke color, matching how Mermaid JS applies individual node styles to class compartment dividers.
+- `src/parser.rs:8075` and `src/render.rs:8448` — added regression coverage for parsing individual class styles and rendering styled class dividers/text.
+
+## classDiagram-styling-individual-nodes — Pass 2 findings — 2026-04-30T21:57:02Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 220.27 x 100.00 (aspect 2.20). RS remains 203.18 x 100.00 (aspect 2.03), within the same compact two-class size class.
+- Layout topology: both diagrams place `Animal` and `Mineral` side by side on one row. The topology matches.
+- Edge shape: this fixture has no edges.
+- Inter-element spacing ratios: RS class boxes remain slightly narrower than JS rough class boxes, but the relative one-row spacing is visually similar and no node or label is crowded.
+- Label-vs-container fit: all labels fit inside their class boxes. RS now renders `Mineral` text as `fill="#fff"`, matching the JS `color:#fff` style.
+- State of the art comparison summary: displayed side by side, these now read as the same styled fixture for the requested attributes. Remaining differences are the existing renderer differences: JS uses rough class-box paths and foreignObject labels, while RS emits plain SVG rect/text.
+
+**Structural diffs**
+- Missing styled attributes in RS: none for the fixture styles. `Animal` now has `fill="#f9f"`, `stroke="#333"`, and `stroke-width="4"`. `Mineral` now has `fill="#bbf"`, `stroke="#f66"`, `stroke-width="2"`, `stroke-dasharray="5 5"`, and white text.
+- Extra elements in RS: none semantically. RS still emits generic marker defs even though this fixture has no edges.
+- Mismatched attributes: RS writes style attributes directly on rect/line/text elements, while JS expresses the same styles through class/style CSS plus rough path geometry.
+
+**Visual defects in RS**
+- The previously missing per-node fill, stroke, stroke width, text color, and dash styling is present.
+- The previously default class divider lines now inherit the styled stroke color, stroke width, and dash pattern.
+- No text clipping, overlap, or styling-related invisibility was found.
+
+## classDiagram-class-with-labels — Pass 1 findings — 2026-04-30T23:54:37Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 184.69 x 234.00 (aspect 0.79). RS viewBox is 500.37 x 247.60 (aspect 2.02), about 2.7x wider and visibly in a different size class.
+- Layout topology: JS has two class boxes stacked vertically: `Animal with a label` above `Car with *! symbols`, connected by one downward dependency edge. RS has four class boxes: raw `Animal` and `Car` connected on the right, plus two extra unconnected raw-declaration boxes on the top row.
+- Edge shape: JS uses a vertical cubic path from `Animal` to `Car` (`M92.344,92...C...L92.344,136`). RS uses a near-vertical straight path between the wrong boxes (`Animal` and `Car`) at x≈459. The edge itself is not the main problem; its endpoints are attached to the duplicate id-only boxes.
+- Inter-element spacing ratios: JS top-to-bottom class center gap is 134 px over 84 px class height (1.60x). RS spreads the extra raw-label boxes horizontally across a 500 px canvas, so the meaningful label boxes are not part of the edge topology at all.
+- Label-vs-container fit: labels fit inside all RS boxes, but two RS labels are raw Mermaid declarations (`Animal["Animal with a label"]` and `Car["Car with *! symbols"]`) instead of semantic class labels.
+- State of the art comparison summary: displayed side by side, these do not look like the same diagram. RS is parsing `class Id["label"]` as a class id named `Id["label"]`, then separately creating id-only `Id` nodes when the edge references them.
+
+**Structural diffs**
+- Missing elements in RS: none for the visible text, but the intended labels are attached to the wrong node ids.
+- Extra elements in RS: two extra class boxes, one labeled `Animal["Animal with a label"]` at x=8..188 and one labeled `Car["Car with *! symbols"]` at x=238..376.
+- Mismatched attributes: RS has four class rectangles and four class text groups; JS has two class nodes. RS canvas width is 500.37 vs JS 184.69 because the duplicate nodes expand the graph bounds.
+
+**Visual defects in RS**
+- Duplicate semantic classes: `Animal` and `Animal["Animal with a label"]` are rendered as separate boxes; same for `Car`.
+- The edge connects the id-only boxes, leaving the intended label boxes unconnected.
+- The raw Mermaid label syntax is visible in the SVG, which should never happen for this fixture.
+
+## classDiagram-class-with-labels — Changes applied — 2026-04-30T23:56:11Z
+
+- `src/parser.rs:753` — class declarations now parse Mermaid's `class Id["label"]` form as id `Id` plus label text, instead of treating the full bracket expression as the class id.
+- `src/parser.rs:803` — class body detection now ignores `{` characters inside quoted/bracketed labels so labels such as `["With {Brackets}"]` do not get mistaken for class bodies.
+- `src/parser.rs:838` and `src/parser.rs:936` — relation-side class id normalization can also strip a bracket label if one appears inline, preventing another path to duplicate nodes.
+- `src/parser.rs:1973` — inline classes from declarations like `class C1["label"]:::hot` are now applied to the resolved class id.
+- `src/parser.rs:8098` — added regressions for the duplicate-node fixture and labeled declarations with inline class styling.
+
+## classDiagram-class-with-labels — Pass 2 findings — 2026-04-30T23:57:06Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 184.69 x 234.00 (aspect 0.79). RS is now 180.66 x 234.00 (aspect 0.77), within about 2% width and the same portrait size class. Before the fix RS was 500.37 x 247.60.
+- Layout topology: RS now matches JS's gross topology: two class boxes stacked vertically, `Animal with a label` above `Car with *! symbols`, with one downward dependency edge between them.
+- Edge shape: JS emits a vertical cubic path with all control points on x=92.344; RS emits a straight vertical `M..L` path at x=90.328. Because both are visually vertical and share the same top/bottom gap, this is not a meaningful visual mismatch for this fixture.
+- Inter-element spacing ratios: JS center gap is 134 px over 84 px class height (1.60x). RS center gap is 134 px over 84 px class height (1.60x).
+- Label-vs-container fit: both class labels fit with reasonable horizontal margin. The raw `Id["label"]` syntax is no longer visible.
+- State of the art comparison summary: displayed side by side, these now look like the same diagram for the duplicate-node defect. Remaining differences are the known renderer style differences: JS rough paths/foreignObject labels vs RS plain rect/text.
+
+**Structural diffs**
+- Missing elements in RS: none for the two class labels or the single edge.
+- Extra elements in RS: no duplicate class boxes remain; the previous `Animal["Animal with a label"]` and `Car["Car with *! symbols"]` boxes are gone.
+- Mismatched attributes: RS direct class rectangles are slightly narrower than JS rough class-box paths, and RS edge id is renderer-normalized as `edge-0` instead of JS's `id_Animal_Car_1`.
+
+**Visual defects in RS**
+- The duplicate semantic classes are gone.
+- The edge now connects the labeled class boxes instead of id-only duplicates.
+- No raw Mermaid label syntax, text clipping, overlap, or label/container overflow was found.
+
+## classDiagram-class-labels-with-backticks — Pass 1 findings — 2026-05-01T01:53:45Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 138.86 x 234.00 (aspect 0.59). RS viewBox is 456.91 x 234.00 (aspect 1.95), about 3.3x wider and visibly in a different size class.
+- Layout topology: JS has two class boxes stacked vertically: `Animal Class!` above `Car Class`, connected by one downward dependency edge. RS has four class boxes: two unconnected declaration boxes labeled `Animal Class!` and `Car Class` on the left/top, plus two backtick-labeled boxes connected on the right.
+- Edge shape: JS uses a vertical cubic path from `Animal Class!` to `Car Class` (`M69.43,92...C...L69.43,136`). RS uses a near-vertical straight path between the wrong backtick-preserving boxes at x≈381.
+- Inter-element spacing ratios: JS top-to-bottom class center gap is 134 px over 84 px class height (1.60x). RS duplicates the classes and spreads the duplicate declaration boxes across the top row, so the meaningful labels are disconnected from the edge.
+- Label-vs-container fit: labels fit inside the boxes, but RS shows literal backtick characters in the connected duplicate nodes (`\`Animal Class!\`` and `\`Car Class\``), which JS does not render.
+- State of the art comparison summary: displayed side by side, these do not look like the same diagram. RS strips backticks for `class \`Name\`` declarations but preserves them for relation endpoints, producing duplicate ids.
+
+**Structural diffs**
+- Missing elements in RS: none for visible text, but the intended declaration nodes are not used by the edge.
+- Extra elements in RS: two extra connected boxes labeled with literal backticks: `\`Animal Class!\`` and `\`Car Class\``.
+- Mismatched attributes: RS has four class rectangles/text groups and a 456.91 px-wide canvas; JS has two class nodes and a 138.86 px-wide canvas.
+
+**Visual defects in RS**
+- Duplicate semantic classes: `Animal Class!` and `\`Animal Class!\`` are separate nodes; same for `Car Class`.
+- The edge connects the backtick-preserving duplicates instead of the declaration nodes.
+- Literal backtick syntax is visible in the rendered labels.
+
+## classDiagram-class-labels-with-backticks — Changes applied — 2026-05-01T01:55:13Z
+
+- `src/parser.rs:945` — class relation endpoint normalization now strips quote delimiters, including Mermaid backtick literal-name delimiters, before creating/looking up class ids.
+- `src/parser.rs:8146` — added a regression for `class \`Animal Class!\`` plus a backticked relation to ensure declarations and relations share the same ids and do not create duplicate boxes.
+
+## classDiagram-class-labels-with-backticks — Pass 2 findings — 2026-05-01T01:55:58Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 138.86 x 234.00 (aspect 0.59). RS is now 133.18 x 234.00 (aspect 0.57), within about 4% width and the same portrait size class. Before the fix RS was 456.91 x 234.00.
+- Layout topology: RS now matches JS's gross topology: `Animal Class!` above `Car Class`, one downward dependency edge, no extra disconnected declaration boxes.
+- Edge shape: JS emits a vertical cubic path with all control points on x=69.43; RS emits a straight vertical `M..L` path at x=66.59. Both render as a vertical connector in the same gap.
+- Inter-element spacing ratios: JS center gap is 134 px over 84 px class height (1.60x). RS center gap is also 134 px over 84 px class height (1.60x).
+- Label-vs-container fit: both class labels fit. Literal backtick characters are no longer visible in RS labels.
+- State of the art comparison summary: displayed side by side, these now look like the same diagram for the extra-node defect. Remaining differences are the known renderer style differences: JS rough paths/foreignObject labels vs RS plain rect/text.
+
+**Structural diffs**
+- Missing elements in RS: none for the two class labels or the single edge.
+- Extra elements in RS: no duplicate class boxes remain; the previous literal-backtick nodes are gone.
+- Mismatched attributes: RS direct class rectangles are slightly narrower than JS rough class-box paths, and RS edge id is renderer-normalized as `edge-0` instead of JS's `id_Animal Class!_Car Class_1`.
+
+**Visual defects in RS**
+- The duplicate semantic classes are gone.
+- The edge now connects the declaration nodes.
+- No literal backtick syntax, text clipping, overlap, or label/container overflow was found.

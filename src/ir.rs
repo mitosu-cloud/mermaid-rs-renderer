@@ -659,6 +659,7 @@ pub enum NodeShape {
     TrapezoidAlt,
     Asymmetric,
     MindmapDefault,
+    Note,
     Text,
     // Sequence-diagram actor types
     StickFigure, // actor keyword — stick-figure person

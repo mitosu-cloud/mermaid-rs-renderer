@@ -149,7 +149,11 @@ const CYLINDER_SCALE: f32 = 1.1;
 const HEXAGON_WIDTH_SCALE: f32 = 1.2;
 const HEXAGON_HEIGHT_SCALE: f32 = 1.1;
 const TRAPEZOID_WIDTH_SCALE: f32 = 1.2;
-const CLASS_MIN_HEIGHT_SCALE: f32 = 6.5;
+const CLASS_MIN_HEIGHT_SCALE: f32 = 5.25;
+const CLASS_EDGE_OPEN_MARKER_EXTENT: f32 = 17.0;
+const CLASS_EDGE_DEPENDENCY_MARKER_EXTENT: f32 = 6.0;
+const CLASS_EDGE_DECORATION_EXTENT: f32 = 18.0;
+const CLASS_EDGE_GENERIC_ARROW_EXTENT: f32 = 8.0;
 const REQUIREMENT_MIN_WIDTH_SCALE: f32 = 9.5;
 const KANBAN_MIN_WIDTH_SCALE: f32 = 11.0;
 const KANBAN_MIN_HEIGHT_SCALE: f32 = 2.6;
@@ -2054,63 +2058,7 @@ fn assign_positions_manual(
         .collect();
     let edge_labels = edge_labels_vec;
     let rank_edges = rank_edges_for_manual_layout(graph, layout_node_ids, &layout_edges);
-    let mut ranks = compute_ranks_subset(layout_node_ids, &rank_edges, &graph.node_order);
-    if graph.kind == crate::ir::DiagramKind::Class {
-        let mut hierarchy_nodes: HashSet<String> = HashSet::new();
-        for edge in &layout_edges {
-            let has_open_triangle = matches!(
-                edge.arrow_start_kind,
-                Some(crate::ir::EdgeArrowhead::OpenTriangle)
-            ) || matches!(
-                edge.arrow_end_kind,
-                Some(crate::ir::EdgeArrowhead::OpenTriangle)
-            );
-            if has_open_triangle {
-                hierarchy_nodes.insert(edge.from.clone());
-                hierarchy_nodes.insert(edge.to.clone());
-            }
-        }
-        if !hierarchy_nodes.is_empty() {
-            let min_hierarchy_rank = hierarchy_nodes
-                .iter()
-                .filter_map(|id| ranks.get(id).copied())
-                .min()
-                .unwrap_or(0);
-            let mut pending_updates: Vec<(String, usize)> = Vec::new();
-            for node_id in layout_node_ids {
-                if hierarchy_nodes.contains(node_id) {
-                    continue;
-                }
-                let mut sum = 0.0f32;
-                let mut count = 0usize;
-                for edge in &layout_edges {
-                    if edge.from == *node_id {
-                        if let Some(rank) = ranks.get(&edge.to) {
-                            sum += *rank as f32;
-                            count += 1;
-                        }
-                    } else if edge.to == *node_id
-                        && let Some(rank) = ranks.get(&edge.from)
-                    {
-                        sum += *rank as f32;
-                        count += 1;
-                    }
-                }
-                if count == 0 {
-                    continue;
-                }
-                let avg_neighbor_rank = (sum / count as f32).round().max(0.0) as usize;
-                let target_rank = avg_neighbor_rank.max(min_hierarchy_rank + 1);
-                let current_rank = ranks.get(node_id).copied().unwrap_or(0);
-                if target_rank > current_rank {
-                    pending_updates.push((node_id.clone(), target_rank));
-                }
-            }
-            for (node_id, rank) in pending_updates {
-                ranks.insert(node_id, rank);
-            }
-        }
-    }
+    let ranks = compute_ranks_subset(layout_node_ids, &rank_edges, &graph.node_order);
     let mut max_rank = 0usize;
     for rank in ranks.values() {
         max_rank = max_rank.max(*rank);
@@ -2486,15 +2434,35 @@ fn assign_positions_manual(
     }
 
     let mut cross_pos: HashMap<String, f32> = HashMap::new();
-    for bucket in &rank_nodes {
-        for (idx, node_id) in bucket.iter().enumerate() {
-            if let Some(node) = nodes.get(node_id) {
-                let center = if is_horizontal(graph.direction) {
-                    node.y + node.height / 2.0
-                } else {
-                    node.x + node.width / 2.0
-                };
-                cross_pos.insert(node_id.clone(), center + idx as f32 * 0.01);
+    if graph.kind == crate::ir::DiagramKind::Class {
+        for bucket in &rank_nodes {
+            let mut cursor = 0.0f32;
+            for node_id in bucket {
+                if let Some(node) = nodes.get(node_id) {
+                    let half = if is_horizontal(graph.direction) {
+                        node.height / 2.0
+                    } else {
+                        node.width / 2.0
+                    };
+                    let center = cursor + half;
+                    cross_pos.insert(node_id.clone(), center);
+                    if !node.hidden {
+                        cursor += half * 2.0 + config.node_spacing;
+                    }
+                }
+            }
+        }
+    } else {
+        for bucket in &rank_nodes {
+            for (idx, node_id) in bucket.iter().enumerate() {
+                if let Some(node) = nodes.get(node_id) {
+                    let center = if is_horizontal(graph.direction) {
+                        node.y + node.height / 2.0
+                    } else {
+                        node.x + node.width / 2.0
+                    };
+                    cross_pos.insert(node_id.clone(), center + idx as f32 * 0.01);
+                }
             }
         }
     }
@@ -7248,6 +7216,35 @@ fn shift_node_cross(node: &mut NodeLayout, horizontal: bool, delta: f32) {
     }
 }
 
+fn class_edge_arrow_extent(arrow: bool, kind: Option<crate::ir::EdgeArrowhead>) -> f32 {
+    if !arrow {
+        return 0.0;
+    }
+    match kind {
+        Some(crate::ir::EdgeArrowhead::OpenTriangle) => CLASS_EDGE_OPEN_MARKER_EXTENT,
+        Some(crate::ir::EdgeArrowhead::ClassDependency) => CLASS_EDGE_DEPENDENCY_MARKER_EXTENT,
+        None => CLASS_EDGE_GENERIC_ARROW_EXTENT,
+    }
+}
+
+fn class_edge_decoration_extent(decoration: Option<crate::ir::EdgeDecoration>) -> f32 {
+    match decoration {
+        Some(crate::ir::EdgeDecoration::Diamond)
+        | Some(crate::ir::EdgeDecoration::DiamondFilled) => CLASS_EDGE_DECORATION_EXTENT,
+        Some(crate::ir::EdgeDecoration::Circle) | Some(crate::ir::EdgeDecoration::Cross) => {
+            CLASS_EDGE_GENERIC_ARROW_EXTENT
+        }
+        _ => 0.0,
+    }
+}
+
+fn class_edge_symbol_gap(edge: &crate::ir::Edge) -> f32 {
+    class_edge_arrow_extent(edge.arrow_start, edge.arrow_start_kind)
+        .max(class_edge_decoration_extent(edge.start_decoration))
+        + class_edge_arrow_extent(edge.arrow_end, edge.arrow_end_kind)
+            .max(class_edge_decoration_extent(edge.end_decoration))
+}
+
 fn relax_edge_span_constraints(
     graph: &Graph,
     layout_edges: &[crate::ir::Edge],
@@ -7271,6 +7268,15 @@ fn relax_edge_span_constraints(
     let passes = objective.edge_relax_passes.max(1);
     let step_limit = (config.rank_spacing + config.node_spacing).max(EDGE_RELAX_STEP_MIN);
     let mut label_cache: HashMap<String, TextBlock> = HashMap::new();
+    let class_symbol_gap_floor = if graph.kind == crate::ir::DiagramKind::Class
+        && layout_edges
+            .iter()
+            .any(|edge| class_edge_symbol_gap(edge) > 0.0)
+    {
+        CLASS_EDGE_DECORATION_EXTENT
+    } else {
+        0.0
+    };
 
     for _ in 0..passes {
         let mut changed = false;
@@ -7374,6 +7380,9 @@ fn relax_edge_span_constraints(
             }
             if has_start_label && has_end_label {
                 required_main_gap += theme.font_size * DUAL_ENDPOINT_EXTRA_PAD_SCALE;
+            }
+            if graph.kind == crate::ir::DiagramKind::Class {
+                required_main_gap += class_edge_symbol_gap(edge).max(class_symbol_gap_floor);
             }
             let max_main_gap = (config.rank_spacing + config.node_spacing) * MAX_MAIN_GAP_FACTOR;
             required_main_gap = required_main_gap.min(max_main_gap);
@@ -7873,8 +7882,16 @@ fn shape_padding_factors(shape: crate::ir::NodeShape) -> (f32, f32) {
     }
 }
 
-fn has_divider_line(label: &TextBlock) -> bool {
-    label.lines.iter().any(|line| line.text().trim() == "---")
+fn has_class_body_content(label: &TextBlock) -> bool {
+    label
+        .lines
+        .iter()
+        .skip_while(|line| line.text().trim() != "---")
+        .skip(1)
+        .any(|line| {
+            let text = line.text();
+            text.trim() != "---" && !text.trim().is_empty()
+        })
 }
 
 fn shape_size(
@@ -7884,10 +7901,23 @@ fn shape_size(
     theme: &Theme,
     kind: crate::ir::DiagramKind,
 ) -> (f32, f32) {
+    if shape == crate::ir::NodeShape::Note {
+        let pad_x = config.node_padding_x.min(6.0);
+        let pad_y = config.node_padding_y.min(6.0);
+        return (
+            (label.width + pad_x * 2.0).max(1.0),
+            (label.height + pad_y * 2.0).max(1.0),
+        );
+    }
+
     let (pad_x_factor, pad_y_factor) = shape_padding_factors(shape);
     let (kind_pad_x_scale, kind_pad_y_scale) = match kind {
         crate::ir::DiagramKind::Class => {
-            let pad_x_scale = if has_divider_line(label) { 0.85 } else { 0.4 };
+            let pad_x_scale = if has_class_body_content(label) {
+                0.85
+            } else {
+                0.4
+            };
             (pad_x_scale, 0.8)
         }
         crate::ir::DiagramKind::Er => (1.05, 1.15),

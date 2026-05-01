@@ -364,7 +364,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             }
             if is_class {
                 svg.push_str(&format!(
-                "<marker id=\"arrow-class-open-{idx}\" viewBox=\"0 0 20 14\" refX=\"1\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 1 7 L 18 13 V 1 Z\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+                "<marker id=\"arrow-class-open-{idx}\" viewBox=\"0 0 20 14\" refX=\"1\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 1 1 V 13 L 18 7 Z\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
                 color
             ));
                 svg.push_str(&format!(
@@ -1119,14 +1119,15 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         };
         for (edge_idx, edge) in layout.edges.iter().enumerate() {
             let edge_curve = edge.curve.unwrap_or(config.flowchart.curve);
+            let render_points = class_symbol_render_points(edge, layout.kind);
             let d = {
-                let raw = points_to_curved_path(&edge.points, edge_curve);
+                let raw = points_to_curved_path(&render_points, edge_curve);
                 if config.look == crate::ir::DiagramLook::HandDrawn {
                     let seed = hand_drawn_seed(
-                        edge.points.first().map(|p| p.0).unwrap_or(0.0),
-                        edge.points.first().map(|p| p.1).unwrap_or(0.0),
-                        edge.points.last().map(|p| p.0).unwrap_or(0.0),
-                        edge.points.last().map(|p| p.1).unwrap_or(0.0),
+                        render_points.first().map(|p| p.0).unwrap_or(0.0),
+                        render_points.first().map(|p| p.1).unwrap_or(0.0),
+                        render_points.last().map(|p| p.0).unwrap_or(0.0),
+                        render_points.last().map(|p| p.1).unwrap_or(0.0),
                     );
                     hand_drawn_path_jitter(&raw, 1.0, seed)
                 } else {
@@ -1198,23 +1199,23 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
 
             if overlay_flowchart {
                 if edge.arrow_start {
-                    if let Some(point) = edge.points.first().copied() {
-                        let angle = edge_endpoint_angle(&edge.points, true);
+                    if let Some(point) = render_points.first().copied() {
+                        let angle = edge_endpoint_angle(&render_points, true);
                         overlay_arrows.push((true, point, angle, stroke.clone(), stroke_width));
                     }
                 }
                 if edge.arrow_end {
-                    if let Some(point) = edge.points.last().copied() {
-                        let angle = edge_endpoint_angle(&edge.points, false);
+                    if let Some(point) = render_points.last().copied() {
+                        let angle = edge_endpoint_angle(&render_points, false);
                         overlay_arrows.push((false, point, angle, stroke.clone(), stroke_width));
                     }
                 }
             }
 
-            if let Some(point) = edge.points.first().copied()
+            if let Some(point) = render_points.first().copied()
                 && let Some(decoration) = edge.start_decoration
             {
-                let angle = edge_endpoint_angle(&edge.points, true);
+                let angle = edge_endpoint_angle(&render_points, true);
                 svg.push_str(&edge_decoration_svg(
                     point,
                     angle,
@@ -1224,10 +1225,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     true,
                 ));
             }
-            if let Some(point) = edge.points.last().copied()
+            if let Some(point) = render_points.last().copied()
                 && let Some(decoration) = edge.end_decoration
             {
-                let angle = edge_endpoint_angle(&edge.points, false);
+                let angle = edge_endpoint_angle(&render_points, false);
                 svg.push_str(&edge_decoration_svg(
                     point,
                     angle,
@@ -1500,7 +1501,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 } else {
                     theme.font_size * config.label_line_height
                 };
-                svg.push_str(&divider_lines_svg(node, theme, divider_line_height));
+                svg.push_str(&divider_lines_svg(
+                    node,
+                    theme,
+                    divider_line_height,
+                    layout.kind == crate::ir::DiagramKind::Class,
+                ));
             }
             let center_x = node.x + node.width / 2.0;
             let center_y = node.y + node.height / 2.0;
@@ -1588,6 +1594,18 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                             )
                         }
                     })
+                } else if node.shape == crate::ir::NodeShape::Note {
+                    text_block_svg_with_font_size(
+                        node.x + 6.0,
+                        center_y,
+                        &node.label,
+                        theme,
+                        config,
+                        theme.font_size,
+                        "start",
+                        node.style.text_color.as_deref(),
+                        false,
+                    )
                 } else if node
                     .label
                     .lines
@@ -1646,7 +1664,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             }
             svg.push_str(&shape_svg(footbox, theme, config));
             let divider_line_height = theme.font_size * config.label_line_height;
-            svg.push_str(&divider_lines_svg(footbox, theme, divider_line_height));
+            svg.push_str(&divider_lines_svg(
+                footbox,
+                theme,
+                divider_line_height,
+                false,
+            ));
             let center_x = footbox.x + footbox.width / 2.0;
             let center_y = footbox.y + footbox.height / 2.0;
             let hide_label = footbox
@@ -1906,6 +1929,36 @@ fn curve_tangent_bezier(pts: &[(f32, f32)]) -> String {
     // tangents at both ends.
     if n == 4 {
         let (start, depart, approach, end) = (pts[0], pts[1], pts[2], pts[3]);
+        // Pass 9 Defect A fix: when all four points share the same axis
+        // (collinear vertical or horizontal) AND the depart/approach
+        // overshoot the start/end span, the router produced a degenerate
+        // path that would render as a Bezier wobble. Collapse to a clean
+        // straight `L` instead. Triggered for the
+        // stateDiagram-nested-composite-states `Second→[*]_First` edge
+        // where waypoints zigzagged ±6 px across a 7-px endpoint span.
+        let collinear_x = (start.0 - depart.0).abs() < 0.1
+            && (start.0 - approach.0).abs() < 0.1
+            && (start.0 - end.0).abs() < 0.1;
+        let collinear_y = (start.1 - depart.1).abs() < 0.1
+            && (start.1 - approach.1).abs() < 0.1
+            && (start.1 - end.1).abs() < 0.1;
+        if collinear_x || collinear_y {
+            let (lo, hi) = if collinear_x {
+                (start.1.min(end.1), start.1.max(end.1))
+            } else {
+                (start.0.min(end.0), start.0.max(end.0))
+            };
+            let depart_v = if collinear_x { depart.1 } else { depart.0 };
+            let approach_v = if collinear_x { approach.1 } else { approach.0 };
+            let depart_outside = depart_v < lo - 0.1 || depart_v > hi + 0.1;
+            let approach_outside = approach_v < lo - 0.1 || approach_v > hi + 0.1;
+            if depart_outside || approach_outside {
+                return format!(
+                    "M {:.3},{:.3} L {:.3},{:.3}",
+                    start.0, start.1, end.0, end.1
+                );
+            }
+        }
         return format!(
             "M {:.3},{:.3} C {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
             start.0, start.1, depart.0, depart.1, approach.0, approach.1, end.0, end.1
@@ -6214,7 +6267,12 @@ fn is_divider_text_line(line: &crate::layout::TextLine) -> bool {
     is_divider_line(&line.text())
 }
 
-fn divider_lines_svg(node: &crate::layout::NodeLayout, theme: &Theme, line_height: f32) -> String {
+fn divider_lines_svg(
+    node: &crate::layout::NodeLayout,
+    theme: &Theme,
+    line_height: f32,
+    extend_to_border: bool,
+) -> String {
     if !node
         .label
         .lines
@@ -6231,8 +6289,22 @@ fn divider_lines_svg(node: &crate::layout::NodeLayout, theme: &Theme, line_heigh
         .stroke
         .as_ref()
         .unwrap_or(&theme.primary_border_color);
-    let x1 = node.x + 6.0;
-    let x2 = node.x + node.width - 6.0;
+    let stroke_width = node
+        .style
+        .stroke_width
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "1.0".to_string());
+    let dash = node
+        .style
+        .stroke_dasharray
+        .as_ref()
+        .map(|value| format!(" stroke-dasharray=\"{}\"", value))
+        .unwrap_or_default();
+    let (x1, x2) = if extend_to_border {
+        (node.x, node.x + node.width)
+    } else {
+        (node.x + 6.0, node.x + node.width - 6.0)
+    };
 
     let mut svg = String::new();
     for (idx, line) in node.label.lines.iter().enumerate() {
@@ -6242,7 +6314,7 @@ fn divider_lines_svg(node: &crate::layout::NodeLayout, theme: &Theme, line_heigh
         let baseline_y = start_y + idx as f32 * line_height;
         let y = baseline_y - theme.font_size * 0.35;
         svg.push_str(&format!(
-            "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>",
+            "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}/>",
         ));
     }
 
@@ -7008,23 +7080,85 @@ fn link_attrs(link: &crate::ir::NodeLink) -> String {
     attrs
 }
 
+const CLASS_OPEN_MARKER_EXTENT: f32 = 17.0;
+const CLASS_DEPENDENCY_MARKER_EXTENT: f32 = 6.0;
+const CLASS_DECORATION_MARKER_EXTENT: f32 = 18.0;
+const CLASS_GENERIC_MARKER_EXTENT: f32 = 8.0;
+
+fn class_arrow_marker_extent(arrow: bool, kind: Option<crate::ir::EdgeArrowhead>) -> f32 {
+    if !arrow {
+        return 0.0;
+    }
+    match kind {
+        Some(crate::ir::EdgeArrowhead::OpenTriangle) => CLASS_OPEN_MARKER_EXTENT,
+        Some(crate::ir::EdgeArrowhead::ClassDependency) => CLASS_DEPENDENCY_MARKER_EXTENT,
+        None => CLASS_GENERIC_MARKER_EXTENT,
+    }
+}
+
+fn class_decoration_marker_extent(decoration: Option<crate::ir::EdgeDecoration>) -> f32 {
+    match decoration {
+        Some(crate::ir::EdgeDecoration::Diamond)
+        | Some(crate::ir::EdgeDecoration::DiamondFilled) => CLASS_DECORATION_MARKER_EXTENT,
+        Some(crate::ir::EdgeDecoration::Circle) | Some(crate::ir::EdgeDecoration::Cross) => {
+            CLASS_GENERIC_MARKER_EXTENT
+        }
+        _ => 0.0,
+    }
+}
+
+fn trim_polyline_endpoint(points: &mut [(f32, f32)], start: bool, amount: f32) {
+    if points.len() < 2 || amount <= 0.0 {
+        return;
+    }
+    let (endpoint_idx, neighbor_idx) = if start {
+        (0, 1)
+    } else {
+        (points.len() - 1, points.len() - 2)
+    };
+    let endpoint = points[endpoint_idx];
+    let neighbor = points[neighbor_idx];
+    let dx = neighbor.0 - endpoint.0;
+    let dy = neighbor.1 - endpoint.1;
+    let length = (dx * dx + dy * dy).sqrt();
+    if length <= 0.001 {
+        return;
+    }
+    let trim = amount.min(length * 0.9);
+    points[endpoint_idx] = (
+        endpoint.0 + dx / length * trim,
+        endpoint.1 + dy / length * trim,
+    );
+}
+
+fn class_symbol_render_points(
+    edge: &crate::layout::EdgeLayout,
+    kind: crate::ir::DiagramKind,
+) -> Vec<(f32, f32)> {
+    let mut points = edge.points.clone();
+    if kind != crate::ir::DiagramKind::Class || points.len() < 2 {
+        return points;
+    }
+
+    let start_trim = class_arrow_marker_extent(edge.arrow_start, edge.arrow_start_kind)
+        .max(class_decoration_marker_extent(edge.start_decoration));
+    let end_trim = class_arrow_marker_extent(edge.arrow_end, edge.arrow_end_kind)
+        .max(class_decoration_marker_extent(edge.end_decoration));
+    trim_polyline_endpoint(&mut points, true, start_trim);
+    trim_polyline_endpoint(&mut points, false, end_trim);
+    points
+}
+
 fn edge_decoration_svg(
     point: (f32, f32),
     angle_deg: f32,
     decoration: crate::ir::EdgeDecoration,
     stroke: &str,
     stroke_width: f32,
-    at_start: bool,
+    _at_start: bool,
 ) -> String {
     let (x, y) = point;
-    let mut angle = angle_deg;
-    if matches!(
-        decoration,
-        crate::ir::EdgeDecoration::Diamond | crate::ir::EdgeDecoration::DiamondFilled
-    ) && !at_start
-    {
-        angle += 180.0;
-    }
+    let angle = angle_deg;
     let join = " stroke-linejoin=\"round\" stroke-linecap=\"round\"";
     let shape = match decoration {
         crate::ir::EdgeDecoration::Circle => format!(
@@ -7174,6 +7308,22 @@ fn shape_svg_inner(
             stroke,
             node.style.stroke_width.unwrap_or(1.0)
         ),
+        crate::ir::NodeShape::Note => {
+            let note_fill = node
+                .style
+                .fill
+                .as_deref()
+                .unwrap_or(&theme.sequence_note_fill);
+            let note_stroke = node
+                .style
+                .stroke
+                .as_deref()
+                .unwrap_or(&theme.sequence_note_border);
+            format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"0\" ry=\"0\" fill=\"{note_fill}\" stroke=\"{note_stroke}\" stroke-width=\"{}\"{dash}{join}/>",
+                node.style.stroke_width.unwrap_or(1.0)
+            )
+        }
         crate::ir::NodeShape::ForkJoin => format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"2\" ry=\"2\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
@@ -8205,6 +8355,228 @@ mod tests {
         assert!(svg.contains("id=\"edge-0\""));
         assert!(svg.contains("data-edge-id=\"edge-0\""));
         assert!(svg.contains("data-label-kind=\"center\""));
+    }
+
+    #[test]
+    fn class_divider_lines_extend_to_node_border() {
+        let node = crate::layout::NodeLayout {
+            id: "ClassA".to_string(),
+            x: 10.0,
+            y: 20.0,
+            width: 120.0,
+            height: 90.0,
+            label: crate::layout::TextBlock {
+                lines: vec![
+                    crate::layout::TextLine::plain("ClassA".to_string()),
+                    crate::layout::TextLine::plain("---".to_string()),
+                    crate::layout::TextLine::plain("+field".to_string()),
+                    crate::layout::TextLine::plain("---".to_string()),
+                    crate::layout::TextLine::plain("+method()".to_string()),
+                ],
+                width: 120.0,
+                height: 90.0,
+            },
+            shape: crate::ir::NodeShape::Rectangle,
+            style: crate::ir::NodeStyle::default(),
+            link: None,
+            anchor_subgraph: None,
+            hidden: false,
+            icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
+            sub_label: None,
+            is_treemap_leaf: false,
+        };
+
+        let svg = divider_lines_svg(&node, &Theme::modern(), 20.0, true);
+
+        assert!(svg.contains("x1=\"10.00\""));
+        assert!(svg.contains("x2=\"130.00\""));
+        assert!(!svg.contains("x1=\"16.00\""));
+        assert!(!svg.contains("x2=\"124.00\""));
+    }
+
+    #[test]
+    fn rendered_class_diagram_dividers_touch_class_box_edges() {
+        fn attr_f32(element: &str, attr: &str) -> f32 {
+            let needle = format!("{attr}=\"");
+            let start = element.find(&needle).unwrap() + needle.len();
+            let end = start + element[start..].find('"').unwrap();
+            element[start..end].parse::<f32>().unwrap()
+        }
+
+        fn elements<'a>(svg: &'a str, tag: &str) -> Vec<&'a str> {
+            let needle = format!("<{tag} ");
+            let mut out = Vec::new();
+            let mut offset = 0;
+            while let Some(relative_start) = svg[offset..].find(&needle) {
+                let start = offset + relative_start;
+                let end = start + svg[start..].find('>').unwrap() + 1;
+                out.push(&svg[start..end]);
+                offset = end;
+            }
+            out
+        }
+
+        let parsed = crate::parser::parse_mermaid(
+            "classDiagram\nclass BankAccount\nBankAccount : +String owner\nBankAccount : +deposit(amount)",
+        )
+        .unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        let class_rect = elements(&svg, "rect")
+            .into_iter()
+            .find(|element| element.contains("stroke="))
+            .expect("class rectangle");
+        let rect_x = attr_f32(class_rect, "x");
+        let rect_right = rect_x + attr_f32(class_rect, "width");
+        let divider_lines: Vec<&str> = elements(&svg, "line")
+            .into_iter()
+            .filter(|element| element.contains("stroke-width=\"1.0\""))
+            .collect();
+
+        assert_eq!(divider_lines.len(), 2);
+        for line in divider_lines {
+            assert!((attr_f32(line, "x1") - rect_x).abs() < 0.01, "{line}");
+            assert!((attr_f32(line, "x2") - rect_right).abs() < 0.01, "{line}");
+        }
+    }
+
+    #[test]
+    fn class_divider_lines_inherit_node_stroke_style() {
+        let node = crate::layout::NodeLayout {
+            id: "StyledClass".to_string(),
+            x: 10.0,
+            y: 20.0,
+            width: 120.0,
+            height: 90.0,
+            label: crate::layout::TextBlock {
+                lines: vec![
+                    crate::layout::TextLine::plain("StyledClass".to_string()),
+                    crate::layout::TextLine::plain("---".to_string()),
+                    crate::layout::TextLine::plain("---".to_string()),
+                ],
+                width: 120.0,
+                height: 90.0,
+            },
+            shape: crate::ir::NodeShape::Rectangle,
+            style: crate::ir::NodeStyle {
+                stroke: Some("#f66".to_string()),
+                stroke_width: Some(2.0),
+                stroke_dasharray: Some("5 5".to_string()),
+                ..crate::ir::NodeStyle::default()
+            },
+            link: None,
+            anchor_subgraph: None,
+            hidden: false,
+            icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
+            sub_label: None,
+            is_treemap_leaf: false,
+        };
+
+        let svg = divider_lines_svg(&node, &Theme::modern(), 20.0, true);
+
+        assert_eq!(svg.matches("stroke=\"#f66\"").count(), 2);
+        assert_eq!(svg.matches("stroke-width=\"2\"").count(), 2);
+        assert_eq!(svg.matches("stroke-dasharray=\"5 5\"").count(), 2);
+    }
+
+    #[test]
+    fn rendered_class_style_lines_apply_class_box_and_text_styles() {
+        let parsed = crate::parser::parse_mermaid(
+            "classDiagram\nclass Animal\nclass Mineral\nstyle Animal fill:#f9f,stroke:#333,stroke-width:4px\nstyle Mineral fill:#bbf,stroke:#f66,stroke-width:2px,color:#fff,stroke-dasharray: 5 5",
+        )
+        .unwrap();
+        let theme = Theme::base();
+        let layout = compute_layout(&parsed.graph, &theme, &LayoutConfig::default());
+        let svg = render_svg(&layout, &theme, &LayoutConfig::default());
+
+        assert!(svg.contains("fill=\"#f9f\""));
+        assert!(svg.contains("stroke=\"#333\""));
+        assert!(svg.contains("stroke-width=\"4\""));
+        assert!(svg.contains("fill=\"#bbf\""));
+        assert!(svg.contains("stroke=\"#f66\""));
+        assert!(svg.contains("stroke-width=\"2\""));
+        assert!(svg.contains("stroke-dasharray=\"5 5\""));
+        assert!(svg.contains("fill=\"#fff\""));
+    }
+
+    #[test]
+    fn class_notes_render_as_yellow_notes_with_connector() {
+        let parsed = crate::parser::parse_mermaid(
+            "classDiagram\nnote \"This is a general note\"\nnote for MyClass \"This is a note for a class\"\nclass MyClass",
+        )
+        .unwrap();
+        let theme = Theme::base();
+        let layout = compute_layout(&parsed.graph, &theme, &LayoutConfig::default());
+        let svg = render_svg(&layout, &theme, &LayoutConfig::default());
+
+        assert!(svg.contains("This is a general note"));
+        assert!(svg.contains("This is a note for a class"));
+        let lower_svg = svg.to_ascii_lowercase();
+        assert!(lower_svg.contains("fill=\"#fff5ad\""));
+        assert!(lower_svg.contains("stroke=\"#aaaa33\""));
+        assert!(svg.contains("stroke-dasharray=\"2\""));
+    }
+
+    #[test]
+    fn class_symbol_render_points_trim_endpoint_to_leave_marker_visible() {
+        let edge = crate::layout::EdgeLayout {
+            from: "A".to_string(),
+            to: "B".to_string(),
+            label: None,
+            start_label: None,
+            end_label: None,
+            label_anchor: None,
+            start_label_anchor: None,
+            end_label_anchor: None,
+            points: vec![(0.0, 0.0), (0.0, 100.0)],
+            directed: true,
+            arrow_start: false,
+            arrow_end: true,
+            arrow_start_kind: None,
+            arrow_end_kind: Some(crate::ir::EdgeArrowhead::OpenTriangle),
+            start_decoration: None,
+            end_decoration: None,
+            sequence_arrow_end: None,
+            sequence_arrow_start: None,
+            style: crate::ir::EdgeStyle::Solid,
+            override_style: crate::ir::EdgeStyleOverride::default(),
+            curve: None,
+        };
+
+        let points = class_symbol_render_points(&edge, crate::ir::DiagramKind::Class);
+        assert_eq!(points[0], (0.0, 0.0));
+        assert!((points[1].1 - 83.0).abs() < 0.001);
+
+        let flowchart_points = class_symbol_render_points(&edge, crate::ir::DiagramKind::Flowchart);
+        assert_eq!(flowchart_points[1], (0.0, 100.0));
+    }
+
+    #[test]
+    fn class_open_end_marker_uses_extension_end_shape() {
+        let parsed = crate::parser::parse_mermaid("classDiagram\nA --|> B : inherits").unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(svg.contains("id=\"arrow-class-open-0\""));
+        assert!(svg.contains("<path d=\"M 1 1 V 13 L 18 7 Z\""));
+        assert!(svg.contains("marker-end=\"url(#arrow-class-open-0)\""));
+    }
+
+    #[test]
+    fn class_two_way_extension_renders_both_open_markers() {
+        let parsed = crate::parser::parse_mermaid("classDiagram\nAnimal <|--|> Zebra").unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(svg.contains("marker-start=\"url(#arrow-class-open-start-0)\""));
+        assert!(svg.contains("marker-end=\"url(#arrow-class-open-0)\""));
     }
 
     #[test]
