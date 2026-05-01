@@ -2,7 +2,8 @@ use crate::config::LayoutConfig;
 #[cfg(feature = "png")]
 use crate::config::RenderConfig;
 use crate::layout::label_placement::{
-    edge_endpoint_label_position, edge_label_padding, endpoint_label_padding,
+    CLASS_ENDPOINT_LABEL_FONT_SIZE, edge_endpoint_label_position, edge_label_padding,
+    endpoint_label_padding,
 };
 use crate::layout::{
     C4BoundaryLayout, C4Layout, C4RelLayout, C4ShapeLayout, DiagramData, ErrorLayout,
@@ -1316,6 +1317,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             } else {
                 1.0
             };
+            let endpoint_font_size = match layout.kind {
+                crate::ir::DiagramKind::State => Some(state_font_size),
+                crate::ir::DiagramKind::Class => Some(CLASS_ENDPOINT_LABEL_FONT_SIZE),
+                _ => None,
+            };
             let (endpoint_pad_x, endpoint_pad_y) = endpoint_label_padding(layout.kind);
             let (endpoint_fill_opacity, endpoint_stroke_opacity) = match layout.kind {
                 crate::ir::DiagramKind::State => (0.7, 0.25),
@@ -1361,7 +1367,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         stroke_opacity
                     ));
                 }
-                if layout.kind == crate::ir::DiagramKind::State {
+                if let Some(font_size) = endpoint_font_size {
                     svg.push_str(&format!(
                         "<g class=\"edgeLabel\" data-edge-id=\"{edge_id}\" data-label-kind=\"start\">"
                     ));
@@ -1371,7 +1377,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         label,
                         theme,
                         config,
-                        state_font_size,
+                        font_size,
                         "middle",
                         Some(label_color),
                         false,
@@ -1425,7 +1431,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         stroke_opacity
                     ));
                 }
-                if layout.kind == crate::ir::DiagramKind::State {
+                if let Some(font_size) = endpoint_font_size {
                     svg.push_str(&format!(
                         "<g class=\"edgeLabel\" data-edge-id=\"{edge_id}\" data-label-kind=\"end\">"
                     ));
@@ -1435,7 +1441,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         label,
                         theme,
                         config,
-                        state_font_size,
+                        font_size,
                         "middle",
                         Some(label_color),
                         false,

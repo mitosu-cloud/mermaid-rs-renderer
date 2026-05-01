@@ -13,6 +13,10 @@ const LABEL_ANCHOR_FRACTIONS: [f32; 5] = [0.5, 0.35, 0.65, 0.2, 0.8];
 const LABEL_ANCHOR_POS_EPS: f32 = 1.0;
 const LABEL_ANCHOR_DIR_EPS: f32 = 0.02;
 const LABEL_EXTRA_SEGMENT_ANCHORS: usize = 6;
+pub(crate) const CLASS_ENDPOINT_LABEL_FONT_SIZE: f32 = 11.0;
+const CLASS_ENDPOINT_TERMINAL_MARKER_SIZE: f32 = 10.0;
+const CLASS_ENDPOINT_TERMINAL_DISTANCE: f32 = 25.0;
+const CLASS_ENDPOINT_END_NUDGE: f32 = 5.0;
 const FLOWCHART_LABEL_CLEARANCE_PAD: f32 = 1.5;
 
 type Rect = (f32, f32, f32, f32);
@@ -3416,6 +3420,15 @@ fn edge_endpoint_label_position_with_avoid(
     if len <= f32::EPSILON {
         return None;
     }
+    if kind == DiagramKind::Class {
+        let pos = class_endpoint_label_position(edge, start)?;
+        if let Some(bound) = bounds {
+            return Some(clamp_label_center_to_bounds(
+                pos, label_w, label_h, pad_x, pad_y, bound,
+            ));
+        }
+        return Some(pos);
+    }
     let dir_x = dx / len;
     let dir_y = dy / len;
     let perp_x = -dir_y;
@@ -3496,6 +3509,52 @@ fn edge_endpoint_label_position_with_avoid(
         return Some(clamped);
     }
     Some(best_pos)
+}
+
+fn class_endpoint_label_position(edge: &EdgeLayout, start: bool) -> Option<(f32, f32)> {
+    let mut points = edge.points.clone();
+    if !start {
+        points.reverse();
+    }
+    let origin = *points.first()?;
+    let center = point_at_distance(
+        &points,
+        CLASS_ENDPOINT_TERMINAL_DISTANCE + CLASS_ENDPOINT_TERMINAL_MARKER_SIZE,
+    )?;
+    let angle = (origin.1 - center.1).atan2(origin.0 - center.0);
+    let offset = 10.0 + CLASS_ENDPOINT_TERMINAL_MARKER_SIZE * 0.5;
+    let mid_x = (origin.0 + center.0) * 0.5;
+    let mid_y = (origin.1 + center.1) * 0.5;
+    let x = angle.sin() * offset + mid_x;
+    let y = -angle.cos() * offset + mid_y;
+    if start {
+        Some((x, y))
+    } else {
+        Some((x - CLASS_ENDPOINT_END_NUDGE, y - CLASS_ENDPOINT_END_NUDGE))
+    }
+}
+
+fn point_at_distance(points: &[(f32, f32)], distance: f32) -> Option<(f32, f32)> {
+    let mut remaining = distance.max(0.0);
+    let mut last = *points.first()?;
+    for pair in points.windows(2) {
+        let start = pair[0];
+        let end = pair[1];
+        let dx = end.0 - start.0;
+        let dy = end.1 - start.1;
+        let len = (dx * dx + dy * dy).sqrt();
+        if len <= f32::EPSILON {
+            last = end;
+            continue;
+        }
+        if remaining <= len {
+            let t = remaining / len;
+            return Some((start.0 + dx * t, start.1 + dy * t));
+        }
+        remaining -= len;
+        last = end;
+    }
+    Some(last)
 }
 
 #[cfg(test)]
@@ -3875,9 +3934,67 @@ mod tests {
         )
         .expect("expected endpoint anchor");
         assert!(
-            pos.1 <= offset * 1.4 + 0.25,
-            "expected class endpoint label near endpoint, got y={}",
-            pos.1
+            (pos.0 + 15.0).abs() <= 0.25 && (pos.1 - 17.5).abs() <= 0.25,
+            "expected class endpoint label to follow Mermaid terminal formula, got {:?}",
+            pos
+        );
+    }
+
+    #[test]
+    fn class_end_endpoint_label_uses_mermaid_terminal_formula() {
+        let edge = EdgeLayout {
+            from: "A".into(),
+            to: "B".into(),
+            label: None,
+            start_label: None,
+            end_label: Some(crate::layout::TextBlock {
+                lines: vec![crate::layout::TextLine::plain("many".into())],
+                width: 26.4,
+                height: 16.5,
+            }),
+            label_anchor: None,
+            start_label_anchor: None,
+            end_label_anchor: None,
+            points: vec![(0.0, 0.0), (0.0, 120.0)],
+            directed: true,
+            arrow_start: false,
+            arrow_end: true,
+            arrow_start_kind: None,
+            arrow_end_kind: None,
+            start_decoration: None,
+            end_decoration: None,
+            sequence_arrow_end: None,
+            sequence_arrow_start: None,
+            style: crate::ir::EdgeStyle::Solid,
+            override_style: crate::ir::EdgeStyleOverride::default(),
+            curve: None,
+        };
+        let occupied: Vec<Rect> = Vec::new();
+        let occupied_grid = ObstacleGrid::new(48.0, &occupied);
+        let edge_obstacles: Vec<EdgeObstacle> = Vec::new();
+        let edge_grid = ObstacleGrid::new(48.0, &[]);
+        let pos = edge_endpoint_label_position_with_avoid(
+            &edge,
+            0,
+            false,
+            DiagramKind::Class,
+            3.8,
+            26.4,
+            16.5,
+            3.2,
+            1.6,
+            &occupied,
+            &occupied_grid,
+            0,
+            &edge_obstacles,
+            &edge_grid,
+            None,
+        )
+        .expect("expected endpoint anchor");
+        assert!(
+            (pos.0 - 10.0).abs() <= 0.25 && (pos.1 - 97.5).abs() <= 0.25,
+            "expected class end label above target endpoint, got {:?}",
+            pos
         );
     }
 

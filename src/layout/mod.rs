@@ -631,55 +631,65 @@ fn compute_flowchart_layout(
     }
 
     // Pre-measure all edge labels once (reused across layout, routing, and edge construction).
-    let measure_edge_field = |field: &Option<String>, markdown_label: bool| -> Option<TextBlock> {
-        field.as_ref().map(|label| {
-            if markdown_label {
-                return measure_markdown_label(label, theme, config);
-            }
-            if has_html_formatting(label) {
-                let normalized = normalize_html_label(label);
-                return measure_markdown_label(&normalized, theme, config);
-            }
-            let label_text = if graph.kind == crate::ir::DiagramKind::Requirement {
-                requirement_edge_label_text(label, config)
-            } else {
-                label.clone()
-            };
-            if graph.kind == crate::ir::DiagramKind::Flowchart
-                && !label_text.contains('\n')
-                && !label_text.contains("<br")
-                && label_text.chars().count() >= FLOWCHART_EDGE_LABEL_WRAP_TRIGGER_CHARS
-            {
-                let mut wrap_cfg = config.clone();
-                wrap_cfg.max_label_width_chars = wrap_cfg
-                    .max_label_width_chars
-                    .min(FLOWCHART_EDGE_LABEL_WRAP_MAX_CHARS);
-                measure_label_with_font_size(
-                    &label_text,
-                    theme.font_size.max(16.0),
-                    &wrap_cfg,
-                    true,
-                    theme.font_family.as_str(),
-                )
-            } else {
-                measure_label(&label_text, theme, config)
-            }
-        })
-    };
+    let measure_edge_field =
+        |field: &Option<String>, markdown_label: bool, endpoint_label: bool| -> Option<TextBlock> {
+            field.as_ref().map(|label| {
+                if markdown_label {
+                    return measure_markdown_label(label, theme, config);
+                }
+                if has_html_formatting(label) {
+                    let normalized = normalize_html_label(label);
+                    return measure_markdown_label(&normalized, theme, config);
+                }
+                let label_text = if graph.kind == crate::ir::DiagramKind::Requirement {
+                    requirement_edge_label_text(label, config)
+                } else {
+                    label.clone()
+                };
+                if endpoint_label && graph.kind == crate::ir::DiagramKind::Class {
+                    return measure_label_with_font_size(
+                        &label_text,
+                        label_placement::CLASS_ENDPOINT_LABEL_FONT_SIZE,
+                        config,
+                        false,
+                        theme.font_family.as_str(),
+                    );
+                }
+                if graph.kind == crate::ir::DiagramKind::Flowchart
+                    && !label_text.contains('\n')
+                    && !label_text.contains("<br")
+                    && label_text.chars().count() >= FLOWCHART_EDGE_LABEL_WRAP_TRIGGER_CHARS
+                {
+                    let mut wrap_cfg = config.clone();
+                    wrap_cfg.max_label_width_chars = wrap_cfg
+                        .max_label_width_chars
+                        .min(FLOWCHART_EDGE_LABEL_WRAP_MAX_CHARS);
+                    measure_label_with_font_size(
+                        &label_text,
+                        theme.font_size.max(16.0),
+                        &wrap_cfg,
+                        true,
+                        theme.font_family.as_str(),
+                    )
+                } else {
+                    measure_label(&label_text, theme, config)
+                }
+            })
+        };
     let edge_route_labels: Vec<Option<TextBlock>> = graph
         .edges
         .iter()
-        .map(|e| measure_edge_field(&e.label, e.markdown_label))
+        .map(|e| measure_edge_field(&e.label, e.markdown_label, false))
         .collect();
     let edge_start_labels: Vec<Option<TextBlock>> = graph
         .edges
         .iter()
-        .map(|e| measure_edge_field(&e.start_label, e.markdown_label))
+        .map(|e| measure_edge_field(&e.start_label, e.markdown_label, true))
         .collect();
     let edge_end_labels: Vec<Option<TextBlock>> = graph
         .edges
         .iter()
-        .map(|e| measure_edge_field(&e.end_label, e.markdown_label))
+        .map(|e| measure_edge_field(&e.end_label, e.markdown_label, true))
         .collect();
 
     let mut label_dummy_ids: Vec<Option<String>> = vec![None; graph.edges.len()];
@@ -7268,15 +7278,6 @@ fn relax_edge_span_constraints(
     let passes = objective.edge_relax_passes.max(1);
     let step_limit = (config.rank_spacing + config.node_spacing).max(EDGE_RELAX_STEP_MIN);
     let mut label_cache: HashMap<String, TextBlock> = HashMap::new();
-    let class_symbol_gap_floor = if graph.kind == crate::ir::DiagramKind::Class
-        && layout_edges
-            .iter()
-            .any(|edge| class_edge_symbol_gap(edge) > 0.0)
-    {
-        CLASS_EDGE_DECORATION_EXTENT
-    } else {
-        0.0
-    };
 
     for _ in 0..passes {
         let mut changed = false;
@@ -7349,10 +7350,20 @@ fn relax_edge_span_constraints(
                 .as_deref()
                 .filter(|label| !label.trim().is_empty())
             {
-                let label_block = label_cache
-                    .entry(label.to_string())
-                    .or_insert_with(|| measure_label(label, theme, config))
-                    .clone();
+                let label_block = if graph.kind == crate::ir::DiagramKind::Class {
+                    measure_label_with_font_size(
+                        label,
+                        label_placement::CLASS_ENDPOINT_LABEL_FONT_SIZE,
+                        config,
+                        false,
+                        theme.font_family.as_str(),
+                    )
+                } else {
+                    label_cache
+                        .entry(label.to_string())
+                        .or_insert_with(|| measure_label(label, theme, config))
+                        .clone()
+                };
                 let label_extent = if horizontal {
                     label_block.width
                 } else {
@@ -7366,10 +7377,20 @@ fn relax_edge_span_constraints(
                 .as_deref()
                 .filter(|label| !label.trim().is_empty())
             {
-                let label_block = label_cache
-                    .entry(label.to_string())
-                    .or_insert_with(|| measure_label(label, theme, config))
-                    .clone();
+                let label_block = if graph.kind == crate::ir::DiagramKind::Class {
+                    measure_label_with_font_size(
+                        label,
+                        label_placement::CLASS_ENDPOINT_LABEL_FONT_SIZE,
+                        config,
+                        false,
+                        theme.font_family.as_str(),
+                    )
+                } else {
+                    label_cache
+                        .entry(label.to_string())
+                        .or_insert_with(|| measure_label(label, theme, config))
+                        .clone()
+                };
                 let label_extent = if horizontal {
                     label_block.width
                 } else {
@@ -7382,7 +7403,7 @@ fn relax_edge_span_constraints(
                 required_main_gap += theme.font_size * DUAL_ENDPOINT_EXTRA_PAD_SCALE;
             }
             if graph.kind == crate::ir::DiagramKind::Class {
-                required_main_gap += class_edge_symbol_gap(edge).max(class_symbol_gap_floor);
+                required_main_gap += class_edge_symbol_gap(edge);
             }
             let max_main_gap = (config.rank_spacing + config.node_spacing) * MAX_MAIN_GAP_FACTOR;
             required_main_gap = required_main_gap.min(max_main_gap);
