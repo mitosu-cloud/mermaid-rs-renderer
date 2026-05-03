@@ -106,6 +106,12 @@ const FLOWCHART_PAD_MAIN: f32 = 40.0;
 const FLOWCHART_PAD_CROSS: f32 = 30.0;
 const FLOWCHART_PORT_ROUTE_BIAS_RATIO: f32 = 0.5;
 const FLOWCHART_PORT_ROUTE_BIAS_MAX_RATIO: f32 = 0.8;
+const ER_DEFAULT_NODE_SPACING: f32 = 140.0;
+const ER_DEFAULT_RANK_SPACING: f32 = 80.0;
+const ER_ENTITY_DIAGRAM_PADDING: f32 = 20.0;
+const ER_ENTITY_MIN_WIDTH: f32 = 100.0;
+const ER_ENTITY_MIN_HEIGHT: f32 = 75.0;
+pub(crate) const ER_ATTRIBUTE_ROW_HEIGHT: f32 = 42.75;
 const KANBAN_SUBGRAPH_PAD: f32 = 8.0;
 const STATE_SUBGRAPH_BASE_PAD: f32 = 30.0;
 /// Vertical padding for state composites — kept tighter than horizontal so
@@ -361,10 +367,16 @@ fn compute_flowchart_layout(
         effective_config.max_label_width_chars = effective_config.max_label_width_chars.max(32);
     }
     if graph.kind == crate::ir::DiagramKind::Er {
-        // ER diagrams are relationship-dense; tighter packing improves readability
-        // and significantly reduces long connector spans.
-        effective_config.node_spacing *= 0.80;
-        effective_config.rank_spacing *= 0.80;
+        // Mermaid's ER renderer feeds ELK through flowchart with ER-specific
+        // defaults (nodeSpacing=140, rankSpacing=80) instead of flowchart's
+        // generic spacing.
+        let defaults = LayoutConfig::default();
+        if (effective_config.node_spacing - defaults.node_spacing).abs() <= f32::EPSILON {
+            effective_config.node_spacing = ER_DEFAULT_NODE_SPACING;
+        }
+        if (effective_config.rank_spacing - defaults.rank_spacing).abs() <= f32::EPSILON {
+            effective_config.rank_spacing = ER_DEFAULT_RANK_SPACING;
+        }
         // Extra rank-order sweeps reduce crossing-prone left/right inversions
         // in dense relationship graphs.
         effective_config.flowchart.order_passes = effective_config.flowchart.order_passes.max(10);
@@ -473,7 +485,10 @@ fn compute_flowchart_layout(
         // and never auto-wrap on character count — only explicit <br/> / \n
         // breaks lines. Disable the 22-char auto-wrap for state nodes so
         // labels like "Your state with spaces in it" stay on one line.
-        let auto_wrap = graph.kind != crate::ir::DiagramKind::State;
+        let auto_wrap = !matches!(
+            graph.kind,
+            crate::ir::DiagramKind::State | crate::ir::DiagramKind::Er
+        );
         let label = if node.markdown_label {
             measure_markdown_label(&node.label, theme, &label_config)
         } else if has_html_formatting(&node.label) {
@@ -2039,7 +2054,10 @@ fn compute_flowchart_layout(
         height,
         acc_title: None,
         acc_descr: None,
-        diagram: DiagramData::Graph { state_notes },
+        diagram: DiagramData::Graph {
+            state_notes,
+            title: graph.diagram_title.clone(),
+        },
     }
 }
 
@@ -2068,7 +2086,7 @@ fn assign_positions_manual(
         .collect();
     let edge_labels = edge_labels_vec;
     let rank_edges = rank_edges_for_manual_layout(graph, layout_node_ids, &layout_edges);
-    let ranks = compute_ranks_subset(layout_node_ids, &rank_edges, &graph.node_order);
+    let ranks = compute_ranks_subset_for(graph, layout_node_ids, &rank_edges, &graph.node_order);
     let mut max_rank = 0usize;
     for rank in ranks.values() {
         max_rank = max_rank.max(*rank);
@@ -4813,7 +4831,7 @@ fn apply_preferred_aspect_ratio_layout(layout: &mut Layout, config: &LayoutConfi
         sub.width *= scale_x;
         sub.height *= scale_y;
     }
-    if let DiagramData::Graph { state_notes } = &mut layout.diagram {
+    if let DiagramData::Graph { state_notes, .. } = &mut layout.diagram {
         for note in state_notes {
             note.x *= scale_x;
             note.y *= scale_y;
@@ -4831,7 +4849,7 @@ fn apply_preferred_aspect_ratio_layout(layout: &mut Layout, config: &LayoutConfi
         &layout.edges,
         edge_margin_cap,
     );
-    if let DiagramData::Graph { state_notes } = &layout.diagram {
+    if let DiagramData::Graph { state_notes, .. } = &layout.diagram {
         for note in state_notes {
             max_x = max_x.max(note.x + note.width);
             max_y = max_y.max(note.y + note.height);
@@ -7736,6 +7754,7 @@ fn build_subgraph_layouts(
     config: &LayoutConfig,
 ) -> Vec<SubgraphLayout> {
     let mut subgraphs = Vec::new();
+    let mut layout_index_by_graph_index: Vec<Option<usize>> = vec![None; graph.subgraphs.len()];
     let pad_tree = SubgraphTree::build(graph);
     for (sub_idx, sub) in graph.subgraphs.iter().enumerate() {
         let mut min_x = f32::MAX;
@@ -7777,6 +7796,7 @@ fn build_subgraph_layouts(
         let width = base_width.max(min_label_width);
         let extra_width = width - base_width;
 
+        layout_index_by_graph_index[sub_idx] = Some(subgraphs.len());
         subgraphs.push(SubgraphLayout {
             label: sub.label.clone(),
             label_block,
@@ -7797,9 +7817,9 @@ fn build_subgraph_layouts(
         // visit actual parent-child pairs instead of every O(n²) combination.
         // Process from leaves up so that child bounds are final before parents
         // expand to contain them.
-        let mut all_descendants: Vec<Vec<usize>> = vec![Vec::new(); subgraphs.len()];
+        let mut all_descendants: Vec<Vec<usize>> = vec![Vec::new(); graph.subgraphs.len()];
         // Post-order traversal: collect leaves first, then parents.
-        let mut order: Vec<usize> = Vec::with_capacity(subgraphs.len());
+        let mut order: Vec<usize> = Vec::with_capacity(graph.subgraphs.len());
         let mut stack: Vec<(usize, bool)> =
             tree.top_level.iter().rev().map(|&i| (i, false)).collect();
         while let Some((idx, visited)) = stack.pop() {
@@ -7808,19 +7828,33 @@ fn build_subgraph_layouts(
                 continue;
             }
             stack.push((idx, true));
-            for &child in tree.children[idx].iter().rev() {
-                stack.push((child, false));
+            if let Some(children) = tree.children.get(idx) {
+                for &child in children.iter().rev() {
+                    stack.push((child, false));
+                }
             }
         }
 
         // Build transitive descendant lists bottom-up.
         for &idx in &order {
             let mut descs = Vec::new();
-            for &child in &tree.children[idx] {
-                descs.push(child);
-                descs.extend(all_descendants[child].iter().copied());
+            if let Some(children) = tree.children.get(idx) {
+                for &child in children {
+                    if layout_index_by_graph_index
+                        .get(child)
+                        .and_then(|idx| *idx)
+                        .is_some()
+                    {
+                        descs.push(child);
+                    }
+                    if let Some(child_descs) = all_descendants.get(child) {
+                        descs.extend(child_descs.iter().copied());
+                    }
+                }
             }
-            all_descendants[idx] = descs;
+            if let Some(slot) = all_descendants.get_mut(idx) {
+                *slot = descs;
+            }
         }
 
         // Expand each parent's bounds to contain all its descendants.
@@ -7829,7 +7863,16 @@ fn build_subgraph_layouts(
         // the region's grandchildren (inner states) and the region rects
         // themselves visibly overflow.
         for &i in &order {
+            let Some(parent_layout_idx) = layout_index_by_graph_index.get(i).and_then(|idx| *idx)
+            else {
+                continue;
+            };
             for &j in &all_descendants[i] {
+                let Some(child_layout_idx) =
+                    layout_index_by_graph_index.get(j).and_then(|idx| *idx)
+                else {
+                    continue;
+                };
                 let child_is_region = is_region_subgraph(&graph.subgraphs[j]);
                 let pad = if child_is_region {
                     // Regions already contain their own padding; the parent
@@ -7842,10 +7885,10 @@ fn build_subgraph_layouts(
                     12.0
                 };
                 let (child_x, child_y, child_w, child_h) = {
-                    let child = &subgraphs[j];
+                    let child = &subgraphs[child_layout_idx];
                     (child.x, child.y, child.width, child.height)
                 };
-                let parent = &mut subgraphs[i];
+                let parent = &mut subgraphs[parent_layout_idx];
                 let min_x = parent.x.min(child_x - pad);
                 let min_y = parent.y.min(child_y - pad);
                 let max_x = (parent.x + parent.width).max(child_x + child_w + pad);
@@ -7904,15 +7947,20 @@ fn shape_padding_factors(shape: crate::ir::NodeShape) -> (f32, f32) {
 }
 
 fn has_class_body_content(label: &TextBlock) -> bool {
+    class_body_line_count(label) > 0
+}
+
+fn class_body_line_count(label: &TextBlock) -> usize {
     label
         .lines
         .iter()
         .skip_while(|line| line.text().trim() != "---")
         .skip(1)
-        .any(|line| {
+        .filter(|line| {
             let text = line.text();
             text.trim() != "---" && !text.trim().is_empty()
         })
+        .count()
 }
 
 fn shape_size(
@@ -7928,6 +7976,18 @@ fn shape_size(
         return (
             (label.width + pad_x * 2.0).max(1.0),
             (label.height + pad_y * 2.0).max(1.0),
+        );
+    }
+
+    if kind == crate::ir::DiagramKind::Er
+        && shape == crate::ir::NodeShape::RoundRect
+        && !has_class_body_content(label)
+    {
+        let pad_x = ER_ENTITY_DIAGRAM_PADDING;
+        let pad_y = ER_ENTITY_DIAGRAM_PADDING * 1.5;
+        return (
+            (label.width + pad_x * 2.0).max(ER_ENTITY_MIN_WIDTH),
+            (label.height + pad_y * 2.0).max(ER_ENTITY_MIN_HEIGHT),
         );
     }
 
@@ -8097,6 +8157,13 @@ fn shape_size(
         height = height.max(min_height);
     }
 
+    if kind == crate::ir::DiagramKind::Er && shape == crate::ir::NodeShape::RoundRect {
+        let row_count = class_body_line_count(label);
+        if row_count > 0 {
+            height = height.max((row_count as f32 + 1.0) * ER_ATTRIBUTE_ROW_HEIGHT);
+        }
+    }
+
     (width, height)
 }
 
@@ -8240,6 +8307,91 @@ mod tests {
         assert!(
             labeled_edges > 0,
             "fixture must contain at least one labeled edge"
+        );
+    }
+
+    #[test]
+    fn er_attribute_rows_are_not_auto_wrapped_before_rendering() {
+        let source = "erDiagram\nPERSON {\nstring driversLicense PK \"The license #\"\nstring(99) firstName \"Only 99 characters are allowed\"\n}";
+        let parsed = parse_mermaid(source).expect("failed to parse ER fixture");
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let person = layout.nodes.get("PERSON").expect("PERSON node");
+        let lines: Vec<String> = person
+            .label
+            .lines
+            .iter()
+            .map(|line| line.text().into_owned())
+            .collect();
+
+        assert!(lines.contains(&"string driversLicense PK \"The license #\"".to_string()));
+        assert!(
+            lines.contains(&"string(99) firstName \"Only 99 characters are allowed\"".to_string())
+        );
+        assert!(!lines.iter().any(|line| line == "license #\""));
+    }
+
+    #[test]
+    fn er_uses_mermaid_spacing_defaults() {
+        let source = "erDiagram\nCUSTOMER ||--o{ ORDER : places";
+        let parsed = parse_mermaid(source).expect("failed to parse ER fixture");
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let customer = layout.nodes.get("CUSTOMER").expect("CUSTOMER node");
+        let order = layout.nodes.get("ORDER").expect("ORDER node");
+        let vertical_gap = order.y - (customer.y + customer.height);
+
+        assert!(
+            vertical_gap >= ER_DEFAULT_RANK_SPACING,
+            "ER default rank gap {vertical_gap:.2}px should honor Mermaid's {ER_DEFAULT_RANK_SPACING}px spacing"
+        );
+    }
+
+    #[test]
+    fn flowchart_layout_tolerates_empty_subgraph_layout_slots() {
+        let parsed = parse_mermaid(
+            "flowchart TB\nsubgraph Empty[\"Empty\"]\nend\nsubgraph Filled[\"Filled\"]\nA[Alpha]\nend\nEmpty --> Filled",
+        )
+        .unwrap();
+        assert!(parsed.graph.subgraphs[0].nodes.is_empty());
+
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(layout.width > 0.0);
+        assert!(layout.height > 0.0);
+    }
+
+    #[test]
+    fn er_empty_entities_use_mermaid_box_size() {
+        let source = "erDiagram\n\"This **is** _Markdown_\"";
+        let parsed = parse_mermaid(source).expect("failed to parse ER fixture");
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let node = layout
+            .nodes
+            .get("This **is** _Markdown_")
+            .expect("markdown ER node");
+
+        assert!(
+            node.height >= 83.0 && node.height <= 85.0,
+            "empty ER entity height {:.2}px should match Mermaid's 84px no-attribute erBox",
+            node.height
+        );
+        assert!(
+            node.width >= ER_ENTITY_MIN_WIDTH,
+            "empty ER entity width {:.2}px should honor Mermaid's minEntityWidth",
+            node.width
+        );
+    }
+
+    #[test]
+    fn er_attribute_entities_use_mermaid_row_height() {
+        let source = "erDiagram\nCUSTOMER {\nstring name\nstring custNumber\nstring sector\n}";
+        let parsed = parse_mermaid(source).expect("failed to parse ER fixture");
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let node = layout.nodes.get("CUSTOMER").expect("CUSTOMER node");
+
+        assert!(
+            node.height >= 170.0 && node.height <= 172.0,
+            "ER entity height {:.2}px should reserve one Mermaid row for the header and each attribute",
+            node.height
         );
     }
 

@@ -232,6 +232,25 @@ fn extract_yaml_frontmatter(input: &str) -> (Option<serde_json::Value>, &str) {
     (None, input)
 }
 
+fn extract_yaml_frontmatter_title(input: &str) -> Option<String> {
+    let trimmed = input.trim_start();
+    if !trimmed.starts_with("---") {
+        return None;
+    }
+    let after_open = &trimmed[3..];
+    let after_open = after_open
+        .strip_prefix('\n')
+        .unwrap_or(after_open.strip_prefix("\r\n").unwrap_or(after_open));
+    let close_pos = after_open.find("\n---")?;
+    let yaml_block = &after_open[..close_pos];
+    let yaml_val = serde_yaml::from_str::<serde_json::Value>(yaml_block).ok()?;
+    yaml_val
+        .get("title")
+        .and_then(|value| value.as_str())
+        .map(|title| title.trim().to_string())
+        .filter(|title| !title.is_empty())
+}
+
 fn preprocess_input(input: &str) -> Result<(Vec<String>, Option<serde_json::Value>)> {
     let (yaml_config, input) = extract_yaml_frontmatter(input);
     let mut init_config: Option<serde_json::Value> = yaml_config;
@@ -304,6 +323,7 @@ fn parse_flowchart(input: &str) -> Result<ParseOutput> {
     let mut subgraph_stack: Vec<usize> = Vec::new();
 
     let (lines, init_config) = preprocess_input(input)?;
+    let lines = join_flowchart_multiline_statements(lines);
 
     for raw_line in lines {
         for line in split_statements(&raw_line) {
@@ -434,6 +454,77 @@ fn parse_flowchart(input: &str) -> Result<ParseOutput> {
     }
 
     Ok(ParseOutput { graph, init_config })
+}
+
+fn join_flowchart_multiline_statements(lines: Vec<String>) -> Vec<String> {
+    let mut joined = Vec::with_capacity(lines.len());
+    let mut current: Option<String> = None;
+
+    for line in lines {
+        if let Some(acc) = current.as_mut() {
+            acc.push('\n');
+            acc.push_str(line.trim());
+            if !flowchart_statement_needs_continuation(acc) {
+                joined.push(current.take().unwrap());
+            }
+            continue;
+        }
+
+        if flowchart_statement_needs_continuation(&line) {
+            current = Some(line);
+        } else {
+            joined.push(line);
+        }
+    }
+
+    if let Some(acc) = current {
+        joined.push(acc);
+    }
+
+    joined
+}
+
+fn flowchart_statement_needs_continuation(line: &str) -> bool {
+    let mut square_depth = 0i32;
+    let mut paren_depth = 0i32;
+    let mut curly_depth = 0i32;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+
+    for ch in line.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+
+        if let Some(q) = quote {
+            if ch == q {
+                quote = None;
+            }
+            continue;
+        }
+
+        if ch == '"' || ch == '\'' {
+            quote = Some(ch);
+            continue;
+        }
+
+        match ch {
+            '[' => square_depth += 1,
+            ']' if square_depth > 0 => square_depth -= 1,
+            '(' => paren_depth += 1,
+            ')' if paren_depth > 0 => paren_depth -= 1,
+            '{' => curly_depth += 1,
+            '}' if curly_depth > 0 => curly_depth -= 1,
+            _ => {}
+        }
+    }
+
+    quote.is_some() || square_depth > 0 || paren_depth > 0 || curly_depth > 0
 }
 
 /// Parse a standalone edge metadata line like `e1@{ curve: "linear" }`.
@@ -2089,10 +2180,87 @@ fn is_er_card_char(ch: char) -> bool {
     matches!(ch, '|' | 'o' | '{' | '}')
 }
 
+fn er_cardinality_token_at_end(input: &str) -> Option<(&str, &str)> {
+    const TOKENS: &[&str] = &[
+        "zero or more",
+        "zero or many",
+        "one or more",
+        "one or many",
+        "zero or one",
+        "one or zero",
+        "only one",
+        "many(0)",
+        "many(1)",
+        "many",
+        "0+",
+        "1+",
+        "1",
+    ];
+    let trimmed = input.trim_end();
+    let lower = trimmed.to_ascii_lowercase();
+    for token in TOKENS {
+        if lower == *token {
+            return Some(("", &trimmed[trimmed.len() - token.len()..]));
+        }
+        if lower.ends_with(token) {
+            let start = trimmed.len().saturating_sub(token.len());
+            let before = trimmed[..start].trim_end();
+            if trimmed[..start]
+                .chars()
+                .last()
+                .is_some_and(|ch| ch.is_whitespace())
+            {
+                return Some((before, &trimmed[start..]));
+            }
+        }
+    }
+    None
+}
+
+fn er_cardinality_token_at_start(input: &str) -> Option<(&str, &str)> {
+    const TOKENS: &[&str] = &[
+        "zero or more",
+        "zero or many",
+        "one or more",
+        "one or many",
+        "zero or one",
+        "one or zero",
+        "only one",
+        "many(0)",
+        "many(1)",
+        "many",
+        "0+",
+        "1+",
+        "1",
+    ];
+    let trimmed = input.trim_start();
+    let lower = trimmed.to_ascii_lowercase();
+    for token in TOKENS {
+        if lower == *token {
+            return Some((&trimmed[..token.len()], ""));
+        }
+        if lower.starts_with(token) {
+            let end = token.len();
+            let after = trimmed[end..].trim_start();
+            if trimmed[end..]
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_whitespace())
+            {
+                return Some((&trimmed[..end], after));
+            }
+        }
+    }
+    None
+}
+
 fn split_er_cardinality_left(input: &str) -> (String, Option<String>) {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return (String::new(), None);
+    }
+    if let Some((entity, token)) = er_cardinality_token_at_end(trimmed) {
+        return (entity.trim().to_string(), Some(token.trim().to_string()));
     }
     let chars: Vec<char> = trimmed.chars().collect();
     let len = chars.len();
@@ -2118,6 +2286,9 @@ fn split_er_cardinality_right(input: &str) -> (String, Option<String>) {
     if trimmed.is_empty() {
         return (String::new(), None);
     }
+    if let Some((token, entity)) = er_cardinality_token_at_start(trimmed) {
+        return (entity.trim().to_string(), Some(token.trim().to_string()));
+    }
     let chars: Vec<char> = trimmed.chars().collect();
     let len = chars.len();
     if len >= 2 {
@@ -2136,33 +2307,101 @@ fn split_er_cardinality_right(input: &str) -> (String, Option<String>) {
 }
 
 fn normalize_er_cardinality(token: &str) -> (String, Option<crate::ir::EdgeDecoration>) {
-    let trimmed = token.trim();
-    match trimmed {
-        "||" | "|" => (
+    let trimmed = token.trim().to_ascii_lowercase();
+    match trimmed.as_str() {
+        "||" | "|" | "one" | "only one" | "1" => (
             "1".to_string(),
             Some(crate::ir::EdgeDecoration::CrowsFootOne),
         ),
-        "o|" | "|o" | "o" => (
+        "o|" | "|o" | "o" | "zero or one" | "one or zero" => (
             "0..1".to_string(),
             Some(crate::ir::EdgeDecoration::CrowsFootZeroOne),
         ),
-        "|{" | "}|" => (
+        "|{" | "}|" | "one or more" | "one or many" | "many(1)" | "1+" => (
             "1..*".to_string(),
             Some(crate::ir::EdgeDecoration::CrowsFootMany),
         ),
-        "o{" | "}o" | "}" | "{" => (
+        "o{" | "}o" | "}" | "{" | "zero or more" | "zero or many" | "many(0)" | "many" | "0+" => (
             "0..*".to_string(),
             Some(crate::ir::EdgeDecoration::CrowsFootZeroMany),
         ),
-        _ => (trimmed.to_string(), None),
+        _ => (token.trim().to_string(), None),
     }
+}
+
+fn split_er_inline_classes(classes: Vec<String>) -> Vec<String> {
+    classes
+        .into_iter()
+        .flat_map(|class| {
+            class
+                .split(',')
+                .map(|name| name.trim().to_string())
+                .collect::<Vec<_>>()
+        })
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
+fn parse_er_entity_ref(token: &str) -> (String, Option<String>, Vec<String>) {
+    let (base, classes) = split_inline_classes(token);
+    let classes = split_er_inline_classes(classes);
+    let base = base.trim();
+    if let Some(open_idx) = base.find('[')
+        && base.ends_with(']')
+    {
+        let id = strip_quotes(base[..open_idx].trim());
+        let alias = strip_quotes(base[open_idx + 1..base.len() - 1].trim());
+        if !id.is_empty() {
+            let label = if alias.is_empty() { None } else { Some(alias) };
+            return (id, label, classes);
+        }
+    }
+    (strip_quotes(base), None, classes)
+}
+
+fn ensure_er_node(graph: &mut Graph, id: &str, label: Option<String>, classes: &[String]) {
+    graph.ensure_node_md(id, label, Some(crate::ir::NodeShape::RoundRect), true);
+    apply_node_classes(graph, id, classes);
+}
+
+fn apply_er_default_classes(graph: &mut Graph) {
+    let ids: Vec<String> = graph.nodes.keys().cloned().collect();
+    for id in ids {
+        let classes = graph.node_classes.entry(id).or_default();
+        if !classes.iter().any(|class| class == "default") {
+            classes.insert(0, "default".to_string());
+        }
+    }
+}
+
+fn find_er_relation_separator(relation_part: &str) -> Option<(usize, usize, crate::ir::EdgeStyle)> {
+    if let Some(idx) = relation_part.find("--") {
+        return Some((idx, 2, crate::ir::EdgeStyle::Solid));
+    }
+    if let Some(idx) = relation_part.find("..") {
+        return Some((idx, 2, crate::ir::EdgeStyle::Dotted));
+    }
+    if let Some(idx) = relation_part.find(".-") {
+        return Some((idx, 2, crate::ir::EdgeStyle::Dotted));
+    }
+    if let Some(idx) = relation_part.find("-.") {
+        return Some((idx, 2, crate::ir::EdgeStyle::Dotted));
+    }
+    let lower = relation_part.to_ascii_lowercase();
+    if let Some(idx) = lower.find(" optionally to ") {
+        return Some((idx, " optionally to ".len(), crate::ir::EdgeStyle::Dotted));
+    }
+    if let Some(idx) = lower.find(" to ") {
+        return Some((idx, " to ".len(), crate::ir::EdgeStyle::Solid));
+    }
+    None
 }
 
 fn parse_er_relation_line(
     line: &str,
 ) -> Option<(
-    String,
-    String,
+    (String, Option<String>, Vec<String>),
+    (String, Option<String>, Vec<String>),
     Option<String>,
     Option<String>,
     Option<String>,
@@ -2170,7 +2409,7 @@ fn parse_er_relation_line(
     Option<crate::ir::EdgeDecoration>,
     crate::ir::EdgeStyle,
 )> {
-    let (relation_part, label) = if let Some((before, after)) = line.split_once(':') {
+    let (relation_part, label) = if let Some((before, after)) = line.rsplit_once(':') {
         let label = after.trim();
         let label = if label.is_empty() {
             None
@@ -2182,15 +2421,9 @@ fn parse_er_relation_line(
         (line.trim(), None)
     };
 
-    let (sep, style) = if let Some(idx) = relation_part.find("--") {
-        (idx, crate::ir::EdgeStyle::Solid)
-    } else if let Some(idx) = relation_part.find("..") {
-        (idx, crate::ir::EdgeStyle::Dotted)
-    } else {
-        return None;
-    };
+    let (sep, sep_len, style) = find_er_relation_separator(relation_part)?;
     let left_part = relation_part[..sep].trim();
-    let right_part = relation_part[sep + 2..].trim();
+    let right_part = relation_part[sep + sep_len..].trim();
     if left_part.is_empty() || right_part.is_empty() {
         return None;
     }
@@ -2199,8 +2432,10 @@ fn parse_er_relation_line(
     if left_entity.is_empty() || right_entity.is_empty() {
         return None;
     }
-    let left_id = strip_quotes(left_entity.trim());
-    let right_id = strip_quotes(right_entity.trim());
+    let left_ref = parse_er_entity_ref(left_entity.trim());
+    let right_ref = parse_er_entity_ref(right_entity.trim());
+    let left_id = left_ref.0.as_str();
+    let right_id = right_ref.0.as_str();
     if left_id.is_empty() || right_id.is_empty() {
         return None;
     }
@@ -2213,8 +2448,8 @@ fn parse_er_relation_line(
         .map(|(label, dec)| (Some(label), dec))
         .unwrap_or((None, None));
     Some((
-        left_id,
-        right_id,
+        left_ref,
+        right_ref,
         label,
         left_label,
         right_label,
@@ -2228,6 +2463,7 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
     let mut graph = Graph::new();
     graph.kind = DiagramKind::Er;
     graph.direction = Direction::TopDown;
+    graph.diagram_title = extract_yaml_frontmatter_title(input);
     let (lines, init_config) = preprocess_input(input)?;
 
     let mut members: HashMap<String, Vec<String>> = HashMap::new();
@@ -2244,6 +2480,25 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
         }
         if let Some(direction) = parse_direction_line(line) {
             graph.direction = direction;
+            continue;
+        }
+        if lower.starts_with("title ") {
+            let title = line.get(5..).unwrap_or("").trim();
+            if !title.is_empty() {
+                graph.diagram_title = Some(strip_quotes(title));
+            }
+            continue;
+        }
+        if line.starts_with("classDef") {
+            parse_class_def(line, &mut graph);
+            continue;
+        }
+        if line.starts_with("class ") {
+            parse_class_line(line, &mut graph);
+            continue;
+        }
+        if line.starts_with("style ") {
+            parse_style_line(line, &mut graph);
             continue;
         }
 
@@ -2267,8 +2522,8 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
         }
 
         if let Some((
-            left,
-            right,
+            (left, left_label, left_classes),
+            (right, right_label, right_classes),
             label,
             _left_label,
             _right_label,
@@ -2277,8 +2532,8 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
             style,
         )) = parse_er_relation_line(line)
         {
-            graph.ensure_node(&left, None, Some(crate::ir::NodeShape::RoundRect));
-            graph.ensure_node(&right, None, Some(crate::ir::NodeShape::RoundRect));
+            ensure_er_node(&mut graph, &left, left_label, &left_classes);
+            ensure_er_node(&mut graph, &right, right_label, &right_classes);
             // Don't use start_label/end_label for ER diagrams - crow's foot symbols convey cardinality
             graph.edges.push(crate::ir::Edge {
                 from: left,
@@ -2306,10 +2561,9 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
         }
 
         if let Some(open_idx) = line.find('{') {
-            let name = line[..open_idx].trim();
-            let name = strip_quotes(name);
+            let (name, label, classes) = parse_er_entity_ref(line[..open_idx].trim());
             if !name.is_empty() {
-                graph.ensure_node(&name, None, Some(crate::ir::NodeShape::RoundRect));
+                ensure_er_node(&mut graph, &name, label, &classes);
                 current_entity = Some(name.clone());
                 let tail = line[open_idx + 1..].trim();
                 if let Some(close_idx) = tail.find('}') {
@@ -2325,11 +2579,13 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
-        let entity = strip_quotes(line);
+        let (entity, label, classes) = parse_er_entity_ref(line);
         if !entity.is_empty() {
-            graph.ensure_node(&entity, None, Some(crate::ir::NodeShape::RoundRect));
+            ensure_er_node(&mut graph, &entity, label, &classes);
         }
     }
+
+    apply_er_default_classes(&mut graph);
 
     for (id, node) in graph.nodes.iter_mut() {
         let mut lines = Vec::new();
@@ -6391,7 +6647,7 @@ fn parse_subgraph_header(input: &str) -> (Option<String>, String, Vec<String>, b
 }
 
 fn parse_node_only(line: &str) -> Option<NodeTokenParts> {
-    if line.contains("--") {
+    if mask_bracket_content(line).contains("--") {
         return None;
     }
     let (id, label, shape, classes, md) = parse_node_token(line);
@@ -7886,6 +8142,31 @@ A["foo & bar"] & B --> C"#;
     }
 
     #[test]
+    fn parse_node_label_with_dash_dash_inside_subgraph() {
+        let input = "flowchart TB\nsubgraph PT[\"Teardown\"]\nTD[\"kill processes;<br/>(--leave-up skips this)\"]\nend";
+        let parsed = parse_mermaid(input).unwrap();
+
+        assert!(parsed.graph.nodes.contains_key("TD"));
+        assert_eq!(
+            parsed.graph.nodes["TD"].label,
+            "kill processes;<br/>(--leave-up skips this)"
+        );
+        assert_eq!(parsed.graph.subgraphs[0].nodes, vec!["TD"]);
+    }
+
+    #[test]
+    fn parse_multiline_flowchart_node_label() {
+        let input = "flowchart TB\nsubgraph P7[\"Phase 7\"]\nMD[\"MetaDeployment hello-fed<br/>vcs: [vc-a1,\n  vc-b1]<br/>deploy: hello-world\"]\nend";
+        let parsed = parse_mermaid(input).unwrap();
+
+        assert!(parsed.graph.nodes.contains_key("MD"));
+        assert_eq!(parsed.graph.subgraphs[0].nodes, vec!["MD"]);
+        assert!(parsed.graph.nodes["MD"].label.contains("vc-a1,\nvc-b1"));
+        assert!(!parsed.graph.nodes.contains_key("vc"));
+        assert!(!parsed.graph.nodes.contains_key("world"));
+    }
+
+    #[test]
     fn parse_nested_subgraphs() {
         let input = "flowchart LR\nsubgraph Outer\n  subgraph Inner\n    A --> B\n  end\nend";
         let parsed = parse_mermaid(input).unwrap();
@@ -8270,6 +8551,92 @@ A["foo & bar"] & B --> C"#;
         let customer = parsed.graph.nodes.get("CUSTOMER").unwrap();
         assert!(customer.label.contains("CUSTOMER"));
         assert!(customer.label.contains("string id"));
+    }
+
+    #[test]
+    fn parse_er_styling_lines_and_inline_classes_do_not_create_entities() {
+        let input = "erDiagram\nPERSON:::foo ||--|| HOUSE:::bar : has\nclassDef foo stroke:#f00\nclassDef bar stroke:#0f0\nstyle HOUSE fill:#bbf";
+        let parsed = parse_mermaid(input).unwrap();
+
+        assert_eq!(parsed.graph.nodes.len(), 2);
+        assert!(parsed.graph.nodes.contains_key("PERSON"));
+        assert!(parsed.graph.nodes.contains_key("HOUSE"));
+        assert!(!parsed.graph.nodes.contains_key("classDef foo stroke:#f00"));
+        assert!(!parsed.graph.nodes.contains_key("style HOUSE fill:#bbf"));
+
+        let person_classes = parsed.graph.node_classes.get("PERSON").unwrap();
+        assert_eq!(person_classes.first().map(String::as_str), Some("default"));
+        assert!(person_classes.iter().any(|class_name| class_name == "foo"));
+        let house_classes = parsed.graph.node_classes.get("HOUSE").unwrap();
+        assert!(house_classes.iter().any(|class_name| class_name == "bar"));
+        assert_eq!(
+            parsed
+                .graph
+                .node_styles
+                .get("HOUSE")
+                .and_then(|style| style.fill.as_deref()),
+            Some("#bbf")
+        );
+    }
+
+    #[test]
+    fn parse_er_entity_aliases_share_relation_ids() {
+        let input = "erDiagram\np[Person] {\nstring firstName\n}\na[\"Customer Account\"] {\nstring email\n}\np ||--o| a : has";
+        let parsed = parse_mermaid(input).unwrap();
+
+        assert_eq!(parsed.graph.nodes.len(), 2);
+        assert!(parsed.graph.nodes.contains_key("p"));
+        assert!(parsed.graph.nodes.contains_key("a"));
+        assert!(!parsed.graph.nodes.contains_key("p[Person]"));
+        assert_eq!(
+            parsed.graph.nodes.get("p").unwrap().label,
+            "Person\n---\nstring firstName"
+        );
+        assert_eq!(
+            parsed.graph.nodes.get("a").unwrap().label,
+            "Customer Account\n---\nstring email"
+        );
+        assert_eq!(parsed.graph.edges.len(), 1);
+        assert_eq!(parsed.graph.edges[0].from, "p");
+        assert_eq!(parsed.graph.edges[0].to, "a");
+    }
+
+    #[test]
+    fn parse_er_word_cardinality_relationships() {
+        let input = "erDiagram\nCAR 1 to zero or more NAMED-DRIVER : allows\nPERSON many(0) optionally to 0+ NAMED-DRIVER : is";
+        let parsed = parse_mermaid(input).unwrap();
+
+        assert_eq!(parsed.graph.nodes.len(), 3);
+        assert_eq!(parsed.graph.edges.len(), 2);
+        assert_eq!(parsed.graph.edges[0].from, "CAR");
+        assert_eq!(parsed.graph.edges[0].to, "NAMED-DRIVER");
+        assert_eq!(parsed.graph.edges[0].style, crate::ir::EdgeStyle::Solid);
+        assert_eq!(
+            parsed.graph.edges[0].start_decoration,
+            Some(crate::ir::EdgeDecoration::CrowsFootOne)
+        );
+        assert_eq!(
+            parsed.graph.edges[0].end_decoration,
+            Some(crate::ir::EdgeDecoration::CrowsFootZeroMany)
+        );
+        assert_eq!(parsed.graph.edges[1].style, crate::ir::EdgeStyle::Dotted);
+        assert_eq!(
+            parsed.graph.edges[1].start_decoration,
+            Some(crate::ir::EdgeDecoration::CrowsFootZeroMany)
+        );
+        assert_eq!(
+            parsed.graph.edges[1].end_decoration,
+            Some(crate::ir::EdgeDecoration::CrowsFootZeroMany)
+        );
+    }
+
+    #[test]
+    fn parse_er_frontmatter_title_with_config() {
+        let input = "---\ntitle: Order example\nconfig:\n  layout: elk\n---\nerDiagram\nCUSTOMER ||--o{ ORDER : places";
+        let parsed = parse_mermaid(input).unwrap();
+
+        assert_eq!(parsed.graph.diagram_title.as_deref(), Some("Order example"));
+        assert!(parsed.init_config.is_some());
     }
 
     #[test]

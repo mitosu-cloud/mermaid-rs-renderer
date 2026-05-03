@@ -310,6 +310,7 @@ pub(super) fn compute_architecture_layout(
         acc_descr: None,
         diagram: DiagramData::Graph {
             state_notes: Vec::new(),
+            title: None,
         },
     }
 }

@@ -237,7 +237,10 @@ pub(super) fn compute_ranks_subset_for(
     edges: &[crate::ir::Edge],
     node_order: &HashMap<String, usize>,
 ) -> HashMap<String, usize> {
-    if graph.kind == crate::ir::DiagramKind::State {
+    if matches!(
+        graph.kind,
+        crate::ir::DiagramKind::State | crate::ir::DiagramKind::Er
+    ) {
         super::network_simplex::compute_ranks_network_simplex(node_ids, edges, node_order)
     } else {
         compute_ranks_subset(node_ids, edges, node_order)

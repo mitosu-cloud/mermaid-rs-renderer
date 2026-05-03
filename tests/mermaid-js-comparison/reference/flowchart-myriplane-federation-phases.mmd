@@ -1,0 +1,158 @@
+flowchart TB
+
+  %% ============================================================
+  %% Phase 0 — Reset
+  %% ============================================================
+  subgraph P0["Phase 0 — Reset (--reset)"]
+      direction TB
+      R1["Kill prior myriplane processes"]
+      R2["docker compose down -v<br/>(per-instance)"]
+      R3["rm -rf etcd-dev-etc-fed0/<br/>rm -rf etcd-dev-etc-fed1/"]
+      R4["docker volume rm<br/>etcd-dev-etc-fed{0,1}_*"]
+      R1 --> R2 --> R3 --> R4
+  end
+
+  %% ============================================================
+  %% Phase 1 — etcd
+  %% ============================================================
+  subgraph P1["Phase 1 — etcd"]
+      direction LR
+      E0["etcd0/1/2-fed0<br/>:22479,:22480"]
+      E1["etcd0/1/2-fed1<br/>:22489,:22490"]
+  end
+
+  %% ============================================================
+  %% Phase 2 — Federation up
+  %% ============================================================
+  subgraph P2["Phase 2 — myriplane bootstrap + join"]
+      direction TB
+      A["fed0 myriplane<br/>:25655 (bootstrap)"]
+      B["fed1 myriplane<br/>:25665 (joins fed0)"]
+      A -- "Raft join (HTTPS)" --> B
+      A -- "fingerprint set updated (1 peers)<br/>via Raft-replicated cert_fingerprint" --> B
+      B -. "fingerprint set updated (1 peers)" .-> A
+  end
+
+  %% ============================================================
+  %% Phase 3-4 — Login + cluster import
+  %% ============================================================
+  subgraph P34["Phase 3+4 — admin login &amp; cluster import"]
+      direction TB
+      L["myrictl login admin<br/>(both members, pass1234)"]
+      subgraph CI["import-cluster (kubeconfig per cluster)"]
+          direction LR
+          K1[("~/.kube/fed0cluster1<br/>-kmaster1")]
+          K2[("~/.kube/fed0cluster2<br/>-kmaster1")]
+          K3[("~/.kube/fed1cluster1<br/>-kmaster1")]
+          K4[("~/.kube/fed1cluster2<br/>-kmaster1")]
+      end
+      L --> CI
+  end
+
+  %% ============================================================
+  %% Phase 5 — Tenant + 8 VCs
+  %% ============================================================
+  subgraph P5["Phase 5 — Tenant + VCs (apply YAML on each member)"]
+      direction TB
+      T0["fed0 tenant 'fedten'<br/>uuid: A...<br/>VCs: vc-a1,vc-a2 / vc-a3,vc-a4"]
+      T1["fed1 tenant 'fedten'<br/>uuid: B... (different)<br/>VCs: vc-b1,vc-b2 / vc-b3,vc-b4"]
+      note1>"same tenant NAME,<br/>different UUIDs —<br/>federation tenantName fallback handles it"]
+  end
+
+  %% ============================================================
+  %% Phase 6 — Wait for VCs to be deployable
+  %% ============================================================
+  subgraph P6["Phase 6 — wait for vc-a1 + vc-b1 deployable"]
+      direction LR
+      W1{{"poll list-vcs Status<br/>accept anything except<br/>{Queuing, Creating, ''}"}}
+  end
+
+  %% ============================================================
+  %% Phase 7 — Apply MetaDeployment on fed0
+  %% ============================================================
+  subgraph P7["Phase 7 — apply MetaDeployment on fed0"]
+      direction TB
+      MD["MetaDeployment hello-fed<br/>tenantName: fedten<br/>clusters: [fed0cluster1, fed1cluster1]<br/>vcs: [vc-a1,
+  vc-b1]<br/>deploy: hello-world (busybox)"]
+  end
+
+  %% ============================================================
+  %% Phase 8 — Cross-fed reconcile
+  %% ============================================================
+  subgraph P8["Phase 8 — cross-federation deployment"]
+      direction TB
+
+      subgraph FED0R["on fed0"]
+          direction TB
+          F0a["PatchMetaDeployment<br/>writes local + CRDT publish"]
+          F0b["controller iterates fed0's tenant VCs"]
+          F0c["vc-a1 → DEPLOY hello-world<br/>vc-a2/a3/a4 → skip (vcSpec filter)"]
+          F0a --> F0b --> F0c
+      end
+
+      subgraph GS["gossip"]
+          direction LR
+          G["gossip propagates MD spec<br/>fed0 → fed1 (~1 s)"]
+      end
+
+      subgraph FED1R["on fed1"]
+          direction TB
+          F1a["mddelta materializes MD locally"]
+          F1b["SetMDChangeCallback fires<br/>→ RequestMDCheck immediately"]
+          F1c["reconcileSingleMD:<br/>LookupTenantByUUID(A...) FAILS<br/>→ fallback LookupTenantByName('fedten') OK"]
+          F1d["controller iterates fed1's tenant VCs"]
+          F1e["vc-b1 → DEPLOY hello-world<br/>vc-b2/b3/b4 → skip (vcSpec filter)"]
+          F1a --> F1b --> F1c --> F1d --> F1e
+      end
+
+      F0a --> G --> F1a
+  end
+
+  %% ============================================================
+  %% Phase 8b — kubectl polling
+  %% ============================================================
+  subgraph P8b["Phase 8 verify (kubectl poll)"]
+      direction LR
+      KV1{{"kubectl -kubeconfig fed0cluster1<br/>get pods -A -l app=hello-world"}}
+      KV2{{"kubectl -kubeconfig fed1cluster1<br/>get pods -A -l app=hello-world"}}
+  end
+
+  %% ============================================================
+  %% Phase 9 — Final snapshot
+  %% ============================================================
+  subgraph P9["Phase 9 — final kubectl snapshot"]
+      direction LR
+      R0["fed0cluster1:<br/>default-fedten-vc-a1-default<br/>hello-world-... 1/1 Running"]
+      R1c["fed1cluster1:<br/>default-fedten-vc-b1-default<br/>hello-world-... 1/1 Running"]
+  end
+
+  %% ============================================================
+  %% Teardown
+  %% ============================================================
+  subgraph PT["Teardown (trap on EXIT)"]
+      direction LR
+      TD["kill processes;<br/>etcd compose stack tears down;<br/>(--leave-up skips this)"]
+  end
+
+  %% ============================================================
+  %% Connections between phases
+  %% ============================================================
+  P0 --> P1
+  P1 --> P2
+  P2 --> P34
+  P34 --> P5
+  P5 --> P6
+  P6 --> P7
+  P7 --> P8
+  P8 --> P8b
+  P8b --> P9
+  P9 --> PT
+
+  T0 -.- note1
+  T1 -.- note1
+
+  %% styling
+  classDef phase fill:#e9eef7,stroke:#5b7ab5,stroke-width:1px,color:#000;
+  classDef note fill:#fff8d8,stroke:#a89200,color:#000;
+  class P0,P1,P2,P34,P5,P6,P7,P8,P8b,P9,PT phase;
+  class note1 note;

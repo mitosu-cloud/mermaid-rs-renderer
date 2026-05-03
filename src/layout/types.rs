@@ -566,7 +566,10 @@ pub struct VennLayout {
 
 #[derive(Debug, Clone)]
 pub enum DiagramData {
-    Graph { state_notes: Vec<StateNoteLayout> },
+    Graph {
+        state_notes: Vec<StateNoteLayout>,
+        title: Option<String>,
+    },
     Sequence(SequenceData),
     Pie(PieData),
     Quadrant(QuadrantLayout),

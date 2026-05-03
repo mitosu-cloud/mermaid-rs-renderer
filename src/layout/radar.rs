@@ -60,6 +60,7 @@ pub(super) fn compute_radar_layout(graph: &Graph, theme: &Theme, config: &Layout
         acc_descr: None,
         diagram: DiagramData::Graph {
             state_notes: Vec::new(),
+            title: None,
         },
     }
 }

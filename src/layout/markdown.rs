@@ -12,6 +12,35 @@ pub fn parse_markdown_spans(input: &str) -> Vec<TextSpan> {
     let mut i = 0;
 
     while i < len {
+        if chars[i] == '_' && is_underscore_open(&chars, i) {
+            if let Some(close_pos) = find_closing_underscore(&chars, i + 1) {
+                if !current.is_empty() {
+                    spans.push(TextSpan {
+                        text: current.clone(),
+                        style: current_style,
+                    });
+                    current.clear();
+                }
+
+                let inner: String = chars[i + 1..close_pos].iter().collect();
+                if !inner.is_empty() {
+                    spans.push(TextSpan {
+                        text: inner,
+                        style: SpanStyle {
+                            bold: false,
+                            italic: true,
+                        },
+                    });
+                }
+                i = close_pos + 1;
+                continue;
+            }
+
+            current.push('_');
+            i += 1;
+            continue;
+        }
+
         if chars[i] == '*' {
             // Count consecutive asterisks
             let _star_start = i;
@@ -92,6 +121,49 @@ pub fn parse_markdown_spans(input: &str) -> Vec<TextSpan> {
     spans
 }
 
+fn is_underscore_open(chars: &[char], pos: usize) -> bool {
+    let Some(&next) = chars.get(pos + 1) else {
+        return false;
+    };
+    if next == '_' || next.is_whitespace() {
+        return false;
+    }
+    if pos > 0 {
+        let prev = chars[pos - 1];
+        if prev == '_' || prev.is_alphanumeric() {
+            return false;
+        }
+    }
+    true
+}
+
+fn is_underscore_close(chars: &[char], pos: usize) -> bool {
+    if pos == 0 {
+        return false;
+    }
+    let prev = chars[pos - 1];
+    if prev == '_' || prev.is_whitespace() {
+        return false;
+    }
+    if let Some(&next) = chars.get(pos + 1)
+        && (next == '_' || next.is_alphanumeric())
+    {
+        return false;
+    }
+    true
+}
+
+fn find_closing_underscore(chars: &[char], start: usize) -> Option<usize> {
+    let mut i = start;
+    while i < chars.len() {
+        if chars[i] == '_' && is_underscore_close(chars, i) {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
 /// Find the position of a closing delimiter (sequence of `delim_len` asterisks)
 /// starting from position `start` in the character array.
 fn find_closing_delimiter(chars: &[char], start: usize, delim_len: usize) -> Option<usize> {
@@ -145,6 +217,23 @@ mod tests {
         assert_eq!(spans[0].text, "italic");
         assert!(!spans[0].style.bold);
         assert!(spans[0].style.italic);
+    }
+
+    #[test]
+    fn underscore_italic_text() {
+        let spans = parse_markdown_spans("This _is_ italic");
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[1].text, "is");
+        assert!(!spans[1].style.bold);
+        assert!(spans[1].style.italic);
+    }
+
+    #[test]
+    fn underscores_inside_words_are_literal() {
+        let spans = parse_markdown_spans("snake_case_name");
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].text, "snake_case_name");
+        assert!(!spans[0].style.italic);
     }
 
     #[test]

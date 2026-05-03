@@ -52,6 +52,16 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     } else {
         theme.font_size
     };
+    let graph_title = if let DiagramData::Graph { title, .. } = &layout.diagram {
+        title.as_deref()
+    } else {
+        None
+    };
+    let er_title_extra = if layout.kind == crate::ir::DiagramKind::Er && graph_title.is_some() {
+        48.0
+    } else {
+        0.0
+    };
     let (width, height, viewbox_x, viewbox_y, viewbox_width, viewbox_height) =
         if let DiagramData::Error(error) = &layout.diagram {
             (
@@ -156,7 +166,18 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         } else {
             let width = layout.width.max(1.0);
             let height = layout.height.max(1.0);
-            (width, height, 0.0, 0.0, width, height)
+            if er_title_extra > 0.0 {
+                (
+                    width,
+                    height + er_title_extra,
+                    0.0,
+                    -er_title_extra,
+                    width,
+                    height + er_title_extra,
+                )
+            } else {
+                (width, height, 0.0, 0.0, width, height)
+            }
         };
     let seq_data = if let DiagramData::Sequence(s) = &layout.diagram {
         Some(s)
@@ -296,6 +317,18 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         svg.push_str(&format!(
             "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
             theme.background
+        ));
+    }
+    if layout.kind == crate::ir::DiagramKind::Er
+        && let Some(title) = graph_title
+    {
+        svg.push_str(&format!(
+            "<text text-anchor=\"middle\" x=\"{:.2}\" y=\"-25\" class=\"erDiagramTitleText\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+            viewbox_x + viewbox_width / 2.0,
+            normalize_font_family(&theme.font_family),
+            theme.font_size,
+            theme.primary_text_color,
+            escape_xml(title)
         ));
     }
 
@@ -809,7 +842,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         ));
     }
 
-    if let DiagramData::Graph { state_notes } = &layout.diagram {
+    if let DiagramData::Graph { state_notes, .. } = &layout.diagram {
         for note in state_notes {
             let fill = theme.sequence_note_fill.as_str();
             let stroke = theme.sequence_note_border.as_str();
@@ -856,6 +889,8 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             ));
         }
     }
+
+    let mut er_decoration_overlays: Vec<String> = Vec::new();
 
     if is_sequence {
         for (edge_idx, edge) in layout.edges.iter().enumerate() {
@@ -1213,31 +1248,33 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 }
             }
 
+            let overlay_er_decoration = layout.kind == crate::ir::DiagramKind::Er;
             if let Some(point) = render_points.first().copied()
                 && let Some(decoration) = edge.start_decoration
             {
                 let angle = edge_endpoint_angle(&render_points, true);
-                svg.push_str(&edge_decoration_svg(
-                    point,
-                    angle,
-                    decoration,
-                    &stroke,
-                    stroke_width,
-                    true,
-                ));
+                let decoration_svg =
+                    edge_decoration_svg(point, angle, decoration, &stroke, stroke_width, true);
+                if overlay_er_decoration {
+                    er_decoration_overlays.push(decoration_svg);
+                } else {
+                    svg.push_str(&decoration_svg);
+                }
             }
             if let Some(point) = render_points.last().copied()
                 && let Some(decoration) = edge.end_decoration
             {
-                let angle = edge_endpoint_angle(&render_points, false);
-                svg.push_str(&edge_decoration_svg(
-                    point,
-                    angle,
-                    decoration,
-                    &stroke,
-                    stroke_width,
-                    false,
-                ));
+                let mut angle = edge_endpoint_angle(&render_points, false);
+                if overlay_er_decoration {
+                    angle += 180.0;
+                }
+                let decoration_svg =
+                    edge_decoration_svg(point, angle, decoration, &stroke, stroke_width, false);
+                if overlay_er_decoration {
+                    er_decoration_overlays.push(decoration_svg);
+                } else {
+                    svg.push_str(&decoration_svg);
+                }
             }
 
             if let Some(label) = edge.label.as_ref()
@@ -1659,6 +1696,13 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     stroke_width,
                 ));
             }
+        }
+        if layout.kind == crate::ir::DiagramKind::Er && !er_decoration_overlays.is_empty() {
+            svg.push_str("<g class=\"erEdgeDecorations\">");
+            for decoration in er_decoration_overlays {
+                svg.push_str(&decoration);
+            }
+            svg.push_str("</g>");
         }
 
         for footbox in seq_data.map(|s| s.footboxes.as_slice()).unwrap_or_default() {
@@ -6332,13 +6376,35 @@ struct ErAttribute {
     name: String,
     data_type: String,
     keys: Vec<String>,
+    comment: Option<String>,
 }
 
-fn parse_er_attributes(lines: &[crate::layout::TextLine]) -> (String, Vec<ErAttribute>) {
+fn split_er_attribute_comment(line: &str) -> (&str, Option<String>) {
+    let Some(first_quote) = line.find('"') else {
+        return (line, None);
+    };
+    let Some(last_quote) = line.rfind('"') else {
+        return (line, None);
+    };
+    if last_quote <= first_quote {
+        return (line, None);
+    }
+    let comment = line[first_quote + 1..last_quote].trim();
+    let comment = if comment.is_empty() {
+        None
+    } else {
+        Some(comment.to_string())
+    };
+    (line[..first_quote].trim_end(), comment)
+}
+
+fn parse_er_attributes(
+    lines: &[crate::layout::TextLine],
+) -> (crate::layout::TextLine, Vec<ErAttribute>) {
     let mut title = lines
         .first()
-        .map(|s| s.text().trim().to_string())
-        .unwrap_or_default();
+        .cloned()
+        .unwrap_or_else(|| crate::layout::TextLine::plain(String::new()));
     let mut attrs = Vec::new();
     let mut in_body = false;
     for line in lines.iter().skip(1) {
@@ -6349,7 +6415,7 @@ fn parse_er_attributes(lines: &[crate::layout::TextLine]) -> (String, Vec<ErAttr
         }
         if !in_body {
             if !line_str.trim().is_empty() {
-                title = line_str.trim().to_string();
+                title = line.clone();
             }
             continue;
         }
@@ -6357,9 +6423,10 @@ fn parse_er_attributes(lines: &[crate::layout::TextLine]) -> (String, Vec<ErAttr
         if trimmed.is_empty() {
             continue;
         }
+        let (attr_text, comment) = split_er_attribute_comment(trimmed);
         let mut keys = Vec::new();
         let mut parts: Vec<String> = Vec::new();
-        for token in trimmed.split_whitespace() {
+        for token in attr_text.split_whitespace() {
             let cleaned = token
                 .trim_matches(|ch: char| ch == ',' || ch == ';')
                 .to_ascii_uppercase();
@@ -6393,6 +6460,7 @@ fn parse_er_attributes(lines: &[crate::layout::TextLine]) -> (String, Vec<ErAttr
             name,
             data_type,
             keys,
+            comment,
         });
     }
     (title, attrs)
@@ -6437,15 +6505,16 @@ fn render_er_node(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> String {
+    const ER_ROW_ODD_FILL: &str = "hsl(240, 100%, 100%)";
+    const ER_ROW_EVEN_FILL: &str = "hsl(240, 100%, 97.2745098039%)";
+
     let (title, attrs) = parse_er_attributes(&node.label.lines);
     let font_size = theme.font_size;
     let line_height = font_size * config.label_line_height;
     let header_height = if attrs.is_empty() {
         node.height
     } else {
-        (line_height + font_size * 0.6)
-            .min(node.height * 0.5)
-            .max(line_height + 6.0)
+        crate::layout::ER_ATTRIBUTE_ROW_HEIGHT
     };
 
     let border = node
@@ -6453,22 +6522,35 @@ fn render_er_node(
         .stroke
         .as_ref()
         .unwrap_or(&theme.primary_border_color);
-    let body_fill = node.style.fill.as_ref().unwrap_or(&theme.background);
-    let header_fill = theme.cluster_background.as_str();
-    let grid_color = theme.cluster_border.as_str();
-    let header_text_color = theme.primary_text_color.as_str();
-    let name_text_color = theme.primary_text_color.as_str();
-    let type_text_color = theme.line_color.as_str();
+    let custom_fill = node.style.fill.as_deref();
+    let body_fill = custom_fill.unwrap_or(&theme.background);
+    let header_fill = custom_fill.unwrap_or(theme.cluster_background.as_str());
+    let grid_color = border.as_str();
+    let header_text_color = node
+        .style
+        .text_color
+        .as_deref()
+        .unwrap_or(theme.primary_text_color.as_str());
+    let name_text_color = header_text_color;
+    let type_text_color = header_text_color;
+    let stroke_width = node.style.stroke_width.unwrap_or(1.2);
+    let grid_stroke_width = node.style.stroke_width.unwrap_or(1.0);
+    let stroke_dasharray = node
+        .style
+        .stroke_dasharray
+        .as_deref()
+        .map(|dasharray| format!(" stroke-dasharray=\"{}\"", escape_xml(dasharray)))
+        .unwrap_or_default();
 
     let x = node.x;
     let y = node.y;
     let w = node.width;
     let h = node.height;
-    let radius = 6.0;
+    let radius = 0.0;
 
     let mut svg = String::new();
     svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"/>",
+        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{}/>",
         x,
         y,
         w,
@@ -6477,7 +6559,8 @@ fn render_er_node(
         radius,
         body_fill,
         border,
-        node.style.stroke_width.unwrap_or(1.2)
+        stroke_width,
+        stroke_dasharray
     ));
 
     svg.push_str(&format!(
@@ -6492,7 +6575,7 @@ fn render_er_node(
     ));
 
     let header_label = TextBlock {
-        lines: vec![crate::layout::TextLine::plain(title.clone())],
+        lines: vec![title.clone()],
         width: 0.0,
         height: 0.0,
     };
@@ -6515,6 +6598,7 @@ fn render_er_node(
     let mut max_type_width = 0.0f32;
     let mut max_name_width = 0.0f32;
     let mut max_badge_width = 0.0f32;
+    let mut max_comment_width = 0.0f32;
     for attr in &attrs {
         if !attr.data_type.is_empty() {
             if let Some(width) =
@@ -6542,92 +6626,109 @@ fn render_er_node(
             }
             max_badge_width = max_badge_width.max(row_badge_width);
         }
+        if let Some(comment) = attr.comment.as_deref()
+            && let Some(width) =
+                text_metrics::measure_text_width(comment, font_size, &theme.font_family)
+        {
+            max_comment_width = max_comment_width.max(width);
+        }
     }
 
-    let type_col_pad = font_size * 0.9;
-    let available = (w - pad_x * 2.0).max(font_size * 4.0);
-    let mut type_col_width = if max_type_width > 0.0 {
-        (max_type_width + type_col_pad * 2.0).min(available * 0.45)
+    let col_gap = font_size * 0.9;
+    let type_x = x + pad_x;
+    let name_x = if max_type_width > 0.0 {
+        type_x + max_type_width + col_gap
     } else {
-        0.0
+        type_x
     };
-    let min_name_width = (max_name_width + font_size * 0.6).min(available * 0.7);
-    let min_type_width = if max_type_width > 0.0 {
-        (font_size * 2.8).max(36.0)
-    } else {
-        0.0
-    };
-    if type_col_width < min_type_width {
-        type_col_width = min_type_width;
+    let keys_x = name_x + max_name_width + col_gap;
+    let comment_x = keys_x + max_badge_width + col_gap;
+    let show_keys_col = max_badge_width > 0.0 && keys_x < x + w - pad_x;
+    let show_comment_col = max_comment_width > 0.0 && comment_x < x + w - pad_x;
+
+    let mut row_height = crate::layout::ER_ATTRIBUTE_ROW_HEIGHT;
+    let body_height = (h - header_height).max(line_height);
+    let needed = attrs.len() as f32 * row_height;
+    if needed > body_height {
+        row_height = body_height / attrs.len() as f32;
     }
-    let mut col_x = x + w - pad_x - type_col_width;
-    let min_col_x = x + pad_x + max_badge_width + min_name_width;
-    if col_x < min_col_x {
-        col_x = min_col_x;
+
+    let row_even_fill = custom_fill.unwrap_or(ER_ROW_EVEN_FILL);
+    for idx in 0..attrs.len() {
+        let row_top = y + header_height + idx as f32 * row_height;
+        let (row_class, row_fill) = if idx % 2 == 0 {
+            ("odd", ER_ROW_ODD_FILL)
+        } else {
+            ("even", row_even_fill)
+        };
+        svg.push_str(&format!(
+            "<rect class=\"row-rect-{}\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\"/>",
+            row_class,
+            x,
+            row_top,
+            w,
+            row_height,
+            radius,
+            radius,
+            row_fill
+        ));
     }
-    let show_type_col = type_col_width > 0.0 && col_x < x + w - pad_x - 8.0;
 
     svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.0\" stroke-opacity=\"0.6\"/>",
+        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"{}\" stroke-opacity=\"0.6\"{}/>",
         x,
         y + header_height,
         x + w,
         y + header_height,
-        grid_color
+        grid_color,
+        grid_stroke_width,
+        stroke_dasharray
     ));
 
-    if show_type_col {
+    if max_type_width > 0.0 {
         svg.push_str(&format!(
-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.0\" stroke-opacity=\"0.45\"/>",
-            col_x,
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"{}\" stroke-opacity=\"0.45\"{}/>",
+            name_x - col_gap * 0.45,
             y + header_height,
-            col_x,
+            name_x - col_gap * 0.45,
             y + h,
-            grid_color
+            grid_color,
+            grid_stroke_width,
+            stroke_dasharray
         ));
     }
 
-    let mut row_height = line_height;
-    let body_height = (h - header_height).max(line_height);
-    if !attrs.is_empty() {
-        let needed = attrs.len() as f32 * row_height;
-        if needed > body_height {
-            row_height = body_height / attrs.len() as f32;
-        }
-    }
     for (idx, attr) in attrs.iter().enumerate() {
         let row_top = y + header_height + idx as f32 * row_height;
         let row_center = row_top + row_height / 2.0;
         if idx > 0 {
             svg.push_str(&format!(
-                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.0\" stroke-opacity=\"0.35\"/>",
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"{}\" stroke-opacity=\"0.35\"{}/>",
                 x,
                 row_top,
                 x + w,
                 row_top,
-                grid_color
+                grid_color,
+                grid_stroke_width,
+                stroke_dasharray
             ));
         }
 
-        let mut cursor_x = x + pad_x;
-        for key in attr.keys.iter().take(2) {
-            let fill = match key.as_str() {
-                "PK" => "#1D4ED8",
-                "FK" => "#0F766E",
-                "UK" => "#7C3AED",
-                _ => "#475569",
+        if !attr.data_type.is_empty() {
+            let type_label = TextBlock {
+                lines: vec![crate::layout::TextLine::plain(attr.data_type.clone())],
+                width: 0.0,
+                height: 0.0,
             };
-            let (badge_svg, badge_width) = er_badge_svg(
-                cursor_x,
+            svg.push_str(&text_block_svg_anchor(
+                type_x,
                 row_center,
-                key,
-                font_size,
-                fill,
-                "#FFFFFF",
-                &theme.font_family,
-            );
-            svg.push_str(&badge_svg);
-            cursor_x += badge_width + font_size * 0.4;
+                &type_label,
+                theme,
+                config,
+                "start",
+                Some(type_text_color),
+            ));
         }
 
         let name_label = TextBlock {
@@ -6636,7 +6737,7 @@ fn render_er_node(
             height: 0.0,
         };
         svg.push_str(&text_block_svg_anchor(
-            cursor_x,
+            name_x,
             row_center,
             &name_label,
             theme,
@@ -6645,19 +6746,42 @@ fn render_er_node(
             Some(name_text_color),
         ));
 
-        if show_type_col && !attr.data_type.is_empty() {
-            let type_label = TextBlock {
-                lines: vec![crate::layout::TextLine::plain(attr.data_type.clone())],
+        if show_keys_col {
+            let mut cursor_x = keys_x;
+            for key in attr.keys.iter().take(2) {
+                let fill = match key.as_str() {
+                    "PK" => "#1D4ED8",
+                    "FK" => "#0F766E",
+                    "UK" => "#7C3AED",
+                    _ => "#475569",
+                };
+                let (badge_svg, badge_width) = er_badge_svg(
+                    cursor_x,
+                    row_center,
+                    key,
+                    font_size,
+                    fill,
+                    "#FFFFFF",
+                    &theme.font_family,
+                );
+                svg.push_str(&badge_svg);
+                cursor_x += badge_width + font_size * 0.4;
+            }
+        }
+
+        if show_comment_col && let Some(comment) = attr.comment.as_deref() {
+            let comment_label = TextBlock {
+                lines: vec![crate::layout::TextLine::plain(comment.to_string())],
                 width: 0.0,
                 height: 0.0,
             };
             svg.push_str(&text_block_svg_anchor(
-                x + w - pad_x,
+                comment_x,
                 row_center,
-                &type_label,
+                &comment_label,
                 theme,
                 config,
-                "end",
+                "start",
                 Some(type_text_color),
             ));
         }
@@ -7191,23 +7315,25 @@ fn edge_decoration_svg(
         }
         // Crow's foot notation for ER diagrams
         crate::ir::EdgeDecoration::CrowsFootOne => format!(
-            "<path d=\"M 0 -6 L 0 6 M 5 -6 L 5 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
+            "<path d=\"M 9 -6 L 9 6 M 15 -6 L 15 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
             stroke, stroke_width
         ),
         crate::ir::EdgeDecoration::CrowsFootZeroOne => format!(
-            "<g><circle cx=\"-4\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 4 -6 L 4 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
+            "<g><circle cx=\"5\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 13 -6 L 13 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
             stroke, stroke_width, stroke, stroke_width
         ),
         crate::ir::EdgeDecoration::CrowsFootMany => format!(
-            "<path d=\"M 0 -6 L 0 6 M 0 0 L 8 -6 M 0 0 L 8 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
+            "<path d=\"M 2 -6 L 2 6 M 2 0 L 10 -6 M 2 0 L 10 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
             stroke, stroke_width
         ),
         crate::ir::EdgeDecoration::CrowsFootZeroMany => format!(
-            "<g><circle cx=\"-4\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 4 0 L 12 -6 M 4 0 L 12 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
+            "<g><circle cx=\"5\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 13 0 L 21 -6 M 13 0 L 21 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
             stroke, stroke_width, stroke, stroke_width
         ),
     };
-    format!("<g transform=\"translate({x:.2} {y:.2}) rotate({angle:.2})\">{shape}</g>")
+    format!(
+        "<g class=\"edgeDecoration\" data-edge-decoration=\"true\" transform=\"translate({x:.2} {y:.2}) rotate({angle:.2})\">{shape}</g>"
+    )
 }
 
 fn arrowhead_svg(point: (f32, f32), angle_deg: f32, stroke: &str, stroke_width: f32) -> String {
@@ -8317,6 +8443,7 @@ mod tests {
     use crate::config::LayoutConfig;
     use crate::ir::{Direction, Graph};
     use crate::layout::compute_layout;
+    use crate::parser::parse_mermaid;
 
     #[test]
     fn render_svg_basic() {
@@ -8361,6 +8488,151 @@ mod tests {
         assert!(svg.contains("id=\"edge-0\""));
         assert!(svg.contains("data-edge-id=\"edge-0\""));
         assert!(svg.contains("data-label-kind=\"center\""));
+    }
+
+    #[test]
+    fn er_entity_labels_render_markdown() {
+        let parsed = parse_mermaid("erDiagram\n\"This **is** _Markdown_\"").unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(svg.contains("font-weight=\"bold\""));
+        assert!(svg.contains("font-style=\"italic\""));
+        assert!(!svg.contains("**is**"));
+        assert!(!svg.contains("_Markdown_"));
+    }
+
+    #[test]
+    fn er_frontmatter_title_renders_above_diagram() {
+        let parsed = parse_mermaid(
+            "---\ntitle: Order example\n---\nerDiagram\nCUSTOMER ||--o{ ORDER : places",
+        )
+        .unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(svg.contains("class=\"erDiagramTitleText\""));
+        assert!(svg.contains(">Order example</text>"));
+        assert!(svg.contains("viewBox=\"0 -48"));
+    }
+
+    #[test]
+    fn er_attribute_rows_render_with_mermaid_row_height() {
+        let parsed =
+            parse_mermaid("erDiagram\nCUSTOMER {\nstring name\nstring custNumber\n}").unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(svg.contains("height=\"42.75\""));
+        assert!(svg.contains("height=\"128.25\""));
+    }
+
+    #[test]
+    fn er_attribute_rows_render_zebra_backgrounds() {
+        let parsed = parse_mermaid(
+            "erDiagram\nCUSTOMER {\nstring name\nstring custNumber\nstring sector\n}",
+        )
+        .unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(svg.contains("class=\"row-rect-odd\""));
+        assert!(svg.contains("class=\"row-rect-even\""));
+        assert!(svg.contains("fill=\"hsl(240, 100%, 100%)\""));
+        assert!(svg.contains("fill=\"hsl(240, 100%, 97.2745098039%)\""));
+
+        let row_pos = svg.find("class=\"row-rect-odd\"").expect("row rect");
+        let label_pos = svg.find(">name</tspan>").expect("attribute label");
+        assert!(
+            row_pos < label_pos,
+            "attribute row backgrounds should render underneath text"
+        );
+    }
+
+    #[test]
+    fn er_inline_styles_apply_to_box_and_label() {
+        let parsed = parse_mermaid(
+            "erDiagram\nid1 ||--|| id2 : label\nstyle id1 fill:#f9f,stroke:#333,stroke-width:4px\nstyle id2 fill:#bbf,stroke:#f66,stroke-width:2px,color:#fff,stroke-dasharray: 5 5",
+        )
+        .unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(
+            svg.contains(
+                "fill=\"#bbf\" stroke=\"#f66\" stroke-width=\"2\" stroke-dasharray=\"5 5\""
+            )
+        );
+        assert!(svg.contains("fill=\"#fff\"><tspan"));
+        assert!(
+            !svg.contains("fill=\"#FFFFDE\""),
+            "styled empty ER entities should not be repainted with the default header fill"
+        );
+    }
+
+    #[test]
+    fn er_inline_stroke_styles_apply_to_attribute_dividers() {
+        let parsed = parse_mermaid(
+            "erDiagram\nPERSON {\nstring name\nstring email\n}\nstyle PERSON fill:#bbf,stroke:#f66,stroke-width:2px,stroke-dasharray: 5 5",
+        )
+        .unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(svg.contains(
+            "y1=\"50.75\" x2=\"150.82\" y2=\"50.75\" stroke=\"#f66\" stroke-width=\"2\" stroke-opacity=\"0.6\" stroke-dasharray=\"5 5\""
+        ));
+    }
+
+    #[test]
+    fn er_default_class_stroke_width_keeps_dividers_on_border_color() {
+        let parsed = parse_mermaid(
+            "erDiagram\nCAR {\nstring registrationNumber\nstring make\n}\nclassDef default fill:#f9f,stroke-width:4px",
+        )
+        .unwrap();
+        let theme = Theme::modern();
+        let border = theme.primary_border_color.clone();
+        let layout = compute_layout(&parsed.graph, &theme, &LayoutConfig::default());
+        let svg = render_svg(&layout, &theme, &LayoutConfig::default());
+
+        assert!(svg.contains(&format!(
+            "fill=\"#f9f\" stroke=\"{}\" stroke-width=\"4\"",
+            border
+        )));
+        assert!(svg.contains("y1=\"50.75\" x2=\""));
+        assert!(svg.contains(&format!(
+            "y2=\"50.75\" stroke=\"{}\" stroke-width=\"4\"",
+            border
+        )));
+        assert!(
+            !svg.contains("stroke=\"#AAAA33\" stroke-width=\"4\""),
+            "ER default stroke-width styles should not turn divider lines into cluster-colored strokes"
+        );
+    }
+
+    #[test]
+    fn er_endpoint_decorations_render_above_nodes_and_away_from_target() {
+        let parsed = parse_mermaid("erDiagram\nid1 ||--|| id2 : label").unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        let id2_pos = svg.find(">id2</tspan>").expect("id2 label");
+        let overlay_pos = svg
+            .find("class=\"erEdgeDecorations\"")
+            .expect("ER decoration overlay");
+
+        assert!(
+            overlay_pos > id2_pos,
+            "ER endpoint decorations should be painted after entity nodes"
+        );
+        assert!(
+            svg.contains("rotate(270.00)"),
+            "target-end ER marker should point away from the target entity"
+        );
+        assert!(
+            svg.contains("M 9 -6 L 9 6 M 15 -6 L 15 6"),
+            "ER only-one bars should sit clear of the entity boundary"
+        );
     }
 
     #[test]

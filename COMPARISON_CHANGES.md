@@ -3627,3 +3627,402 @@ The earlier "stereotype symbols missing" reports from iter #52 were agent misrea
 - The duplicate semantic classes are gone.
 - The edge now connects the declaration nodes.
 - No literal backtick syntax, text clipping, overlap, or label/container overflow was found.
+## classDiagram-cardinality-on-relations — Pass 1 findings — 2026-05-01T02:04:53Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 376.51x258.00 (aspect 1.46); RS is 369.43x279.10 (aspect 1.32). Width is close, but RS is about 21px taller because the rank gap between the top and bottom class rows is over-expanded.
+- Layout topology: Both render the same three vertical relations in three columns, with the same class names and the same center label on `Galaxy --> Star`. The cardinality labels are present in RS, but sit in visibly different places.
+- Edge shape: JS paths are vertical cubic/segmented relation paths (`M...L...C...L`) from top classes to bottom classes; RS paths are also vertical cubic paths (`M...C...`). The gross edge shape is similar enough for this fixture; the visible defect is the terminal text geometry.
+- Inter-element spacing ratios: JS source-to-target center gap is about 158px for 84px-tall classes (1.88x class height). RS source-to-target center gap is about 179.1px (2.13x class height). JS terminal labels sit around y=109.5 and y=143.5, inside the edge gap; RS start labels baseline around y=100.46 and end labels baseline around y=185, colliding with class boxes.
+- Label-vs-container fit: The cardinality text itself fits its text box, but the boxes are too large and anchored incorrectly. RS renders endpoint labels with 16px text and 27.2px-high boxes, while JS uses `.edgeTerminals` at 11px with 16.5px-high foreignObject boxes.
+- State of the art comparison summary: Displayed side-by-side, these do not look like the same diagram. The class topology is the same, but the `1`, `*`, `1..*`, and `many` cardinalities are drawn as regular edge labels and overlap the classes instead of appearing as Mermaid terminal labels in the edge gap.
+
+**Structural diffs**
+- RS has no missing cardinality labels; `1`, `*`, `1..*`, and `many` are all present.
+- RS emits transparent `<rect data-label-kind="start/end">` backgrounds and 16px SVG `<text>` groups for endpoint labels. JS emits `.edgeTerminals` groups with 11px terminal text and no visible label background.
+- RS class relation rows are lower than JS because the layout gap relaxation reserves too much main-axis space for class endpoints and marker symbols.
+
+**Visual defects in RS**
+- `edge-0` start label `1`: rect y=82.86..110.06 overlaps the `Customer` class whose bottom is y=92.00.
+- `edge-1` start label `1`: rect y=82.86..110.06 overlaps the `Student` class whose bottom is y=92.00.
+- `edge-0` end label `*`: rect y=169.47..196.67 overlaps the `Ticket` class whose top is y=187.10.
+- `edge-1` end label `1..*`: rect y=169.04..196.24 overlaps the `Course` class whose top is y=187.10.
+- `edge-2` end label `many`: rect y=167.84..195.04 and text baseline y=185.44 intersect the `Star` class whose top is y=185.90. JS places `many` at about y=143.50, above the target class.
+
+## classDiagram-cardinality-on-relations — Changes applied — 2026-05-01T02:13:46Z
+
+- `src/layout/label_placement.rs:16` — Added the class terminal-label font size and Mermaid terminal-position constants for class endpoint labels.
+- `src/layout/label_placement.rs:3423` — Route class endpoint labels through a Mermaid-compatible terminal-label placement path instead of generic obstacle-avoidance anchors.
+- `src/layout/label_placement.rs:3518` — Implemented the terminal position calculation equivalent to Mermaid's `calcTerminalLabelPosition`, including reversed end-edge handling and the 5px end-label nudge.
+- `src/layout/label_placement.rs:3885` — Added regression coverage for start and end class endpoint label anchors.
+- `src/layout/mod.rs:649` — Measure class endpoint labels at the 11px `.edgeTerminals` size, so `1` and `many` use JS-sized terminal boxes during routing and render.
+- `src/layout/mod.rs:7353` — Use the same 11px class endpoint measurement when relaxing rank gaps for labels.
+- `src/layout/mod.rs:7405` — Reserve only the actual class edge marker extent instead of applying the diamond/decorator-sized floor to simple dependency arrows.
+- `src/render.rs:1320` — Render class endpoint labels at 11px, matching Mermaid's `.edgeTerminals` styling.
+
+## classDiagram-cardinality-on-relations — Pass 2 findings — 2026-05-01T02:15:37Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS viewBox is 376.51x258.00 (aspect 1.46); RS is now 369.43x260.28 (aspect 1.42). The size class now matches closely; RS is only about 7px narrower and 2px taller.
+- Layout topology: The three-column, two-row class layout matches JS. The bottom row is no longer pushed too far down: RS class-row center gap is about 155.85px for the first two relations and 160.27px for `Galaxy --> Star`, versus JS at 158px.
+- Edge shape: JS uses vertical paths with `M/L/C/L` commands whose control points stay on one vertical x coordinate; RS now uses straight vertical `M/L` paths. The command sequence still differs, but the rendered visible line is effectively the same vertical relation line.
+- Inter-element spacing ratios: JS source-to-target center gap is 158/84 = 1.88x class height. RS is 155.85/84 = 1.86x for `Customer`/`Student` and 160.27/84 = 1.91x for `Galaxy`, matching the JS spacing band.
+- Label-vs-container fit: Endpoint cardinalities now use 11px text and 19.7px-high invisible boxes. `1` labels sit below the source class border around y=109.5, and `*`, `1..*`, and `many` sit above the target classes. No endpoint label overlaps a class box.
+- State of the art comparison summary: Displayed side-by-side, these now read as the same diagram for the cardinality case. Remaining differences are mostly implementation style/structure: RS uses SVG text and invisible rects, while JS uses HTML `.edgeTerminals` foreignObjects.
+
+**Structural diffs**
+- RS still emits endpoint labels as SVG `<text>` inside `g.edgeLabel` plus transparent rects; JS emits `g.edgeTerminals` with foreignObject HTML. The rendered text size and placement now match the JS terminal-label geometry.
+- RS class boxes are straight SVG rects with inline stroke/fill; JS uses Mermaid's rough/hand-drawn path outlines and CSS classes. This is visible style plumbing but not a cardinality placement defect.
+- Absolute x positions differ slightly because RS class widths/column spacing are tighter: e.g. `Galaxy --> Star` is at x≈303.22 in RS versus x≈322.51 in JS, while the endpoint label remains correctly placed at edge x + 10 in both.
+
+**Visual defects in RS**
+- None for the cardinality labels. `1`, `*`, `1..*`, and `many` no longer overlap source/target class boundaries and now sit in the edge gap like JS.
+
+## entityRelationshipDiagram* — Pass 1 findings — 2026-05-01T15:12:22Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: the worst initial ER mismatches were parser-driven blowups. `default-class-definition` was JS 485.7x459.0 vs RS 1962.1x264.7 (RS/JS aspect 7.01x), `styling-relationships-with-classdef` was 485.7x459.0 vs 1644.4x264.7 (5.87x), and `entity-name-aliases` was 195.6x330.8 vs 568.7x230.3 (4.18x). Relationship-only examples were closer but still usually shorter than JS.
+- Layout topology: Rust was creating extra top-level ER boxes from `classDef`, `style`, inline `:::class` suffixes, and alias declarations like `p[Person]`. That changed the graph being laid out, not just the drawing style.
+- Edge shape: JS ER uses basis curves with Mermaid ER marker defs. Rust also renders curves/segments and crow-foot decorations, but several fixtures had missing edges because word-form relationships such as `1 to zero or more` and `optionally to` were parsed as entity text.
+- Inter-element spacing ratios: JS unified ER explicitly sets flowchart `nodeSpacing` to 140 and `rankSpacing` to 80 before layout. Rust's ER path inherited generic defaults and then scaled them down to 40/40, so even after parser fixes several RS diagrams remain vertically compressed versus JS.
+- Label-vs-container fit: ER attributes were stored as newline text and passed through generic wrapping. Long rows like `string driversLicense PK "The license #"` split into multiple rendered attributes, causing wrong row counts and missing/garbled key/comment cells.
+- State of the art comparison summary: Side-by-side, many initial ER outputs were not the same diagram. The dominant root causes were incorrect ER parser inputs to layout, followed by remaining JS/Rust layout-default and ER table-rendering differences.
+
+**Structural diffs**
+- RS initially emitted fake nodes for `classDef default fill:#f9f,stroke-width:4px`, `classDef foo stroke:#f00`, `style id1 ...`, and inline-class suffixes.
+- RS initially duplicated alias entities: `p[Person]` and `p` appeared as separate nodes, likewise `a["Customer Account"]` and `a`.
+- RS initially missed the two relationship edges in `relationships-with-aliases`, rendering `NAMED-DRIVER : allows` and `NAMED-DRIVER : is` as node text.
+- RS initially split quoted attribute comments and `PK, FK` rows after generic label wrapping, so ER table content no longer matched the source rows.
+
+**Visual defects in RS**
+- Extra fake styling nodes made style/class fixtures wide horizontal strips instead of JS's compact ER diagrams.
+- Alias fixtures had visible duplicate boxes and edges connected to the short IDs rather than the labeled table boxes.
+- Word-cardinality fixtures had no connecting lines at all because the relationships were not parsed as edges.
+- Attribute-key/comment fixtures displayed comments as stray row text instead of a comment column and lost the JS-style row geometry.
+
+## entityRelationshipDiagram* — Changes applied — 2026-05-01T15:12:22Z
+
+- `src/parser.rs:2092` — Added ER word-cardinality token parsing for Mermaid forms such as `zero or more`, `many(0)`, `0+`, and `1`.
+- `src/parser.rs:2218` — Normalized those word-cardinality tokens to the existing ER crow-foot decorations.
+- `src/parser.rs:2254` — Added ER entity-reference parsing for `:::class` suffixes and `id[Alias]` labels.
+- `src/parser.rs:2271` — Ensured ER nodes receive inline classes and a Mermaid-like `default` class entry without creating style text nodes.
+- `src/parser.rs:2286` — Recognized `to`, `optionally to`, `.-`, and `-.` as ER relationship separators.
+- `src/parser.rs:2321` — Split ER relationship labels from the last `:` so inline class syntax no longer breaks relation parsing.
+- `src/parser.rs:2393` — Routed ER `classDef`, `class`, and `style` statements through the existing style parsers instead of treating them as entities.
+- `src/layout/mod.rs:476` — Disabled generic auto-wrap for ER node labels so attribute rows remain intact until ER-specific rendering.
+- `src/render.rs:6338` — Parsed quoted ER attribute comments separately from type/name/key tokens.
+- `src/render.rs:6536` — Reworked ER attribute column rendering so type, name, key badges, and comments remain separate.
+- `src/parser.rs:8428` and `src/layout/mod.rs:8249` — Added regression tests for ER styling syntax, aliases, word cardinalities, and attribute-row preservation.
+
+## entityRelationshipDiagram* — Pass 2 findings — 2026-05-01T15:12:22Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: the parser-driven outliers improved substantially. `default-class-definition` is now JS 485.7x459.0 vs RS 418.5x365.5 (RS/JS aspect 1.08x), `styling-relationships-with-classdef` is also 418.5x365.5 (1.08x), and `entity-name-aliases` is now 214.0x289.9 (1.25x).
+- Layout topology: fixed for the severe cases. Style/class fixtures no longer contain fake style boxes; alias fixtures now use the canonical IDs with alias labels; word-cardinality fixtures now contain the expected two edges.
+- Edge shape: relationship edges and crow-foot markers are now present in previously missing-edge fixtures. Remaining edge-shape differences are the broader Rust routing/spacing differences, especially `order-example-with-title` and `elk-layout-configuration`.
+- Inter-element spacing ratios: several diagrams remain shorter than JS. For example `order-example-with-title` is still JS 434.0x518.0 vs RS 396.3x262.4, reflecting the unresolved JS ER spacing/default-layout gap.
+- Label-vs-container fit: attribute rows no longer fragment under wrapping, and comments/keys are parsed as distinct fields. Styling and markdown fidelity still lag JS in some single-node fixtures.
+- State of the art comparison summary: Visual match is partial. The largest parser-caused ER failures are mitigated, but full ER parity still needs layout-default alignment, title placement, markdown label rendering, and closer ER table/marker styling.
+
+**Structural diffs**
+- Fixed: `badStyleText=false` across all re-rendered ER RS outputs; no re-rendered ER SVG contains visible `classDef`, `style`, `stroke:#`, or `fill:#` text boxes from parser leakage.
+- Fixed: `relationships-with-aliases` now has 2 edge paths and 4 endpoint markers instead of 0 edges.
+- Fixed: `entity-name-aliases` now has the two alias table nodes plus one relationship edge instead of duplicate raw alias nodes.
+- Remaining: Rust emits native SVG text/rect ER tables while JS uses Mermaid ER/HTML label structures and marker defs; this is visible in row backgrounds, comments, markdown, and rough/hand-drawn styling.
+
+**Visual defects in RS**
+- `order-example-with-title` and `elk-layout-configuration` still have the wrong size class/topology: RS is roughly half the JS height and does not include the JS title band positioning.
+- `markdown-formatting-in-entity-names` still renders literal Markdown markers in RS (`This **is** _Markdown_`) instead of formatted text.
+- ER node tables remain stylistically different from JS: Rust uses a simplified header/body grid and badges for keys, while JS uses ER attribute columns with Mermaid styling.
+- Global ER spacing remains smaller/tighter than JS because Mermaid sets ER layout spacing to 140/80 while Rust still runs through the generic flowchart layout with ER-specific compaction.
+
+## entityRelationshipDiagram* — Continued findings — 2026-05-01T16:23:19Z
+
+**Inputs/defaults diff most likely to explain remaining gaps**
+- JS source check: `../mermaid/packages/mermaid/src/diagrams/er/erRenderer-unified.ts` sets ER flowchart layout defaults to `nodeSpacing = 140` and `rankSpacing = 80` before ELK layout.
+- Rust source check: `src/layout/mod.rs` was still deriving ER from the generic flowchart defaults and compacting them to `40/40`, leaving most relationship examples vertically compressed.
+- JS source check: `../mermaid/packages/mermaid/src/diagrams/er/erDb.ts` sets ER entity and relationship `labelType` to `markdown`.
+- Rust source check: ER nodes were inserted with plain labels, and the local markdown span parser did not recognize `_italic_`, so `This **is** _Markdown_` rendered literally.
+
+**Post-fix aggregate comparison**
+- Re-rendered all 16 `entityRelationshipDiagram*` RS SVGs with `./target/release/mmdr`.
+- Aggregate log-size viewBox error is now 4.83 across the 16 ER fixtures.
+- `markdown-formatting-in-entity-names` now emits bold/italic tspans and no literal `**is**` or `_Markdown_` text.
+- No re-rendered ER RS SVG contains visible `classDef`, `style`, or `:::` parser-leak text.
+
+**Remaining top visual gaps**
+- `entityRelationshipDiagram-elk-layout-configuration`: JS 329.0x502.0 vs RS 496.3x382.6. Topology and title/layout-height behavior remain visibly different.
+- `entityRelationshipDiagram-order-example-with-title`: JS 434.0x518.0 vs RS 496.3x382.6. The title/layout stack is still too short and wider than JS.
+- Single-node ER fixtures remain too short: e.g. markdown is JS 179.9x100.0 vs RS 208.2x65.3, and unicode is JS 167.1x100.0 vs RS 179.7x65.3.
+- ER table rendering is still stylistically different from JS (native SVG text/grid/badges vs Mermaid ER HTML/foreignObject label structure).
+
+Visual match: partial. The parser/style leaks, ER spacing defaults, and markdown marker rendering are improved, but title/topology height and ER table styling still do not fully match JS.
+
+## entityRelationshipDiagram* — Continued changes applied — 2026-05-01T16:23:19Z
+
+- `src/layout/mod.rs:109` — Added Mermaid ER default spacing constants: `nodeSpacing=140`, `rankSpacing=80`.
+- `src/layout/mod.rs:365` — Replaced ER-specific `0.80` compaction with JS-aligned defaults when the caller has not provided custom spacing.
+- `src/layout/mod.rs:8278` — Added a regression test that default ER layout preserves Mermaid's 80px rank spacing floor.
+- `src/parser.rs:2271` — Inserted ER nodes with markdown labels, matching Mermaid ER DB's `labelType: markdown`.
+- `src/layout/markdown.rs:15` — Added `_italic_` span parsing while keeping underscores inside words literal.
+- `src/render.rs:6357` — Preserved the formatted ER title `TextLine` through attribute parsing instead of flattening it to plain text.
+- `src/render.rs:8407` — Added an ER render regression that checks bold/italic SVG spans and absence of literal markdown markers.
+
+## entityRelationshipDiagram* — Continued pass 2 findings — 2026-05-01T16:23:19Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: the global ER suite is closer after applying Mermaid's ER spacing defaults. The largest remaining outliers are no longer parser blowups; they are layout/topology and renderer-style differences. Worst current fixtures: `elk-layout-configuration` (RS 1.51x JS width and 0.76x JS height), `markdown-formatting-in-entity-names` (RS 1.16x width and 0.65x height), and `styling-nodes-with-inline-style` (RS 0.76x width and 0.77x height).
+- Layout topology: relationship fixtures now generally have the expected entities and edges. `elk-layout-configuration` and `order-example-with-title` still do not match JS's taller title/layout stack.
+- Edge shape: previously missing relation edges remain present after the spacing change. Remaining edge differences are from Rust's ER routing/marker/table rendering, not from missing parser inputs.
+- Inter-element spacing ratios: default ER rank gaps now use JS's 80px baseline instead of the previous 40px compacted value. This improves the shared compressed-layout issue but can leave LR diagrams wider than JS because Rust's routing/order still differs from Mermaid ELK.
+- Label-vs-container fit: markdown entity labels now format bold/italic spans instead of rendering literal markers. Single-node ER boxes are still shorter than JS's 100px minimum-looking box.
+- State of the art comparison summary: displayed side by side, many ER fixtures are now recognizably similar, but this is still partial visual match. The main remaining blockers are title/ELK topology height, ER box minimum sizing, and ER-specific table styling.
+
+**Structural diffs**
+- Fixed: ER markdown labels now preserve formatted spans through parser, layout measurement, and render.
+- Fixed: default ER layout inputs now match Mermaid's ER `nodeSpacing`/`rankSpacing` defaults for default config.
+- Remaining: Rust still uses its own layout engine and ER table renderer, so node min-height, title band behavior, foreignObject labels, and some LR/ELK arrangement choices differ from Mermaid JS.
+
+**Visual defects in RS**
+- `elk-layout-configuration` and `order-example-with-title` remain too short and too wide relative to JS.
+- Single-node markdown/unicode fixtures remain roughly 65px tall where JS renders 100px.
+- ER table styling and row/grid treatment remain visibly different from JS even when the text content is now correct.
+
+## entityRelationshipDiagram* — Second continued findings — 2026-05-01T16:40:42Z
+
+**Inputs/defaults diff most likely to explain remaining gaps**
+- JS source check: `../mermaid/packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts` computes attributed ER entity height as `nameBBox.height + entityPadding` plus one measured row height per attribute. In the reference SVGs this resolves to 42.75px per header/attribute band.
+- Rust source check: `src/layout/mod.rs` still sized attributed ER boxes from generic text-block height plus generic padding, so fixtures like `entities-with-attributes` were still too short after the earlier spacing fix.
+- JS/source-layout check: Mermaid/Dagre rank assignment can place sibling parents of a common child on a later rank to reduce total edge length. Rust's main manual path used the simpler longest-path ranker for ER, keeping all source nodes with no incoming edges on rank 0 and making the key/comment-heavy fixture tall/narrow.
+
+**Pre-fix aggregate comparison**
+- After the title and empty-entity fixes but before this pass, the aggregate viewBox error across 16 ER fixtures was 2.07.
+- After the ER row-height fix alone, `entities-with-attributes` improved from RS 246.2x649.6 to RS 246.2x694.6 against JS 219.1x688.3, but `attribute-keys-and-comments` exposed the remaining ranker mismatch at RS 818.5x798.7 against JS 954.2x686.8.
+
+**Remaining top visual gaps**
+- `entityRelationshipDiagram-elk-layout-configuration`: still the largest outlier because Rust parses the frontmatter title but does not implement Mermaid's `config.layout: elk` ER layout path; RS remains 464.6x524.4 against JS 329.0x502.0.
+- `entityRelationshipDiagram-direction-top-to-bottom` / `entities-with-attributes`: heights now match closely, but RS is still about 12% wider than JS due to Rust ER column/table width and routing differences.
+- `entityRelationshipDiagram-direction-left-to-right`: height now matches, but RS remains about 10% wider than JS.
+
+Visual match: partial. The attributed ER boxes and default rank assignment are materially closer, but ELK config handling and exact ER table/column sizing still block full visual parity.
+
+## entityRelationshipDiagram* — Second continued changes applied — 2026-05-01T16:40:42Z
+
+- `src/layout/mod.rs:114` — Added a shared `ER_ATTRIBUTE_ROW_HEIGHT = 42.75` matching the JS ER row/header band height measured from Mermaid's `erBox` output.
+- `src/layout/mod.rs:7928` and `src/layout/mod.rs:8136` — Counted ER body rows after the class-style divider and reserved one Mermaid row for the header plus each attribute during node sizing.
+- `src/render.rs:6500` and `src/render.rs:6641` — Used the same ER row height for rendered headers and attribute rows so visual grid lines stay aligned with layout geometry.
+- `src/layout/ranking.rs:242` and `src/layout/mod.rs:2089` — Routed ER through the existing dagre-like network-simplex ranker instead of the simple longest-path ranker in the manual layout path.
+- `src/layout/mod.rs:8346` and `src/render.rs:8464` — Added regression tests for ER attributed-node layout height and rendered row-band height.
+
+## entityRelationshipDiagram* — Second continued pass 2 findings — 2026-05-01T16:40:42Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: aggregate ER viewBox error is now 1.52 across the 16 fixtures. The biggest remaining outlier is `elk-layout-configuration` at JS 329.0x502.0 vs RS 464.6x524.4 (RS 1.41x width, 1.04x height).
+- Layout topology: `attribute-keys-and-comments` now follows JS's rank shape much more closely: JS 954.2x686.8 vs RS 929.7x669.0, instead of the previous tall/narrow RS 818.5x798.7.
+- Edge shape: relationship edges and crow-foot markers remain present. Remaining differences are mostly routing details and Mermaid marker/style structure, not missing relationship inputs.
+- Inter-element spacing ratios: simple attributed TB diagrams now have close height parity: `entities-with-attributes` is JS 219.1x688.3 vs RS 246.2x694.6. LR diagrams now have height parity but still run wider.
+- Label-vs-container fit: attributed ER rows now have the expected vertical band space; comments and keys remain separated into columns/badges in RS. Column widths and styling still differ from Mermaid's HTML/foreignObject table labels.
+- State of the art comparison summary: displayed side by side, many ER fixtures are now recognizably similar. This remains partial visual match because ELK layout selection, exact ER table style, and some width/routing differences are still visible.
+
+**Structural diffs**
+- Fixed: attributed ER entities now reserve JS-like row heights during both layout and render.
+- Fixed: ER manual layout now uses the dagre-like ranker already present in the repo, which improves shared-child parent rank placement.
+- Remaining: Rust still uses native SVG ER tables and its own routing/width heuristics rather than Mermaid's exact ER `erBox` foreignObject + rough path pipeline.
+
+**Visual defects in RS**
+- `elk-layout-configuration` remains too wide because `config.layout: elk` is parsed as frontmatter but not used to select an ELK-compatible Rust layout path.
+- Several fixtures remain 5-12% wider than JS from ER table column width and node-spacing/routing differences.
+- RS ER tables still look different from JS in row fills, key/comment styling, and marker defs even when size/topology is close.
+
+## entityRelationshipDiagram* — Styling and endpoint findings — 2026-05-01T23:29:41Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: the ER suite is now mostly in the same size class as JS. Current aggregate checks show most fixtures within about 5-15% area of JS; the main outlier remains `elk-layout-configuration` at JS 329.0x502.0 vs RS 464.6x524.4.
+- Layout topology: the styled-node and relationship fixtures are now recognizably the same topology as JS. Remaining topology mismatch is concentrated in the ELK-config fixture, not the styling or endpoint-symbol path.
+- Edge shape: JS ER draws curve-basis relationship paths and attaches SVG markers (`erRenderer.js` sets `marker-start`/`marker-end`). Rust draws its own edge paths and endpoint-decoration groups. Before this pass, those decoration groups were painted in the edge layer before nodes and the target-end angle pointed into the target entity, so meaningful circle/cross/crow-foot marks could be obscured by opaque entity boxes.
+- Inter-element spacing ratios: spacing is not the dominant issue for the two symptoms in this pass. The styled inline fixture is JS 116.0x285.0 vs RS 116.0x288.2 after regeneration.
+- Label-vs-container fit: the styled empty ER entity had a style-correct outer rect, but the default header rect covered the whole empty entity with `#FFFFDE`, so custom fills looked ignored. Text `color` and node `stroke-dasharray` were also not fully applied in ER rendering.
+- State of the art comparison summary: displayed side by side, the styling and endpoint-symbol issues are improved. The suite remains a partial visual match because Rust still uses native SVG ER tables and its own routing/table-width heuristics rather than Mermaid's exact ER HTML/foreignObject and ELK pipeline.
+
+**Structural diffs**
+- JS pipeline reference: `../mermaid/packages/mermaid/src/diagrams/er/erDb.ts` compiles `classDef` styles into entity CSS/text styles, `styles.ts` defines entity/relationship styles, and `erRenderer.js` inserts relationship paths with ER marker refs.
+- Rust pre-pass root cause: style data reached `NodeLayout`, but `render_er_node` used Mermaid defaults for the header fill, text color, and internal grid lines in places that should have inherited explicit ER node style.
+- Rust pre-pass root cause: ER endpoint decorations were emitted before entity nodes, and crows-foot/zero-cardinality geometry extended into or under the entity box at the line endpoint.
+
+**Visual defects in RS**
+- Styled empty ER nodes could still appear default-filled because their full-height header rect overpainted the styled body.
+- Styled ER node text and divider/grid strokes did not consistently use the parsed `color`, `stroke`, `stroke-width`, or `stroke-dasharray`.
+- Endpoint symbols were present in the SVG but could be partially hidden where the relationship meets an entity box, which is especially harmful for ER circle/cross/crow-foot semantics.
+
+Visual match: partial. This pass targets the concrete style and endpoint-symbol defects; ELK config, exact ER table styling, and routing width differences remain.
+
+## entityRelationshipDiagram* — Styling and endpoint changes applied — 2026-05-01T23:29:41Z
+
+- `src/render.rs:893`, `src/render.rs:1259`, `src/render.rs:1274`, `src/render.rs:1700` — Collected ER endpoint decorations and emitted them in a final `erEdgeDecorations` overlay group after entity nodes, so symbolic line ends remain visible at box boundaries.
+- `src/render.rs:1270` — Rotated ER target-end decorations outward from the target entity instead of into the entity.
+- `src/render.rs:7298`-`src/render.rs:7316` — Adjusted ER endpoint decoration local geometry so bars, circles, and crow-foot arms extend away from the entity boundary, and tagged the group with `data-edge-decoration`.
+- `src/render.rs:6522`-`src/render.rs:6538` — Made ER custom fill, text color, stroke width, and stroke dasharray participate in node rendering instead of being overwritten by default ER header/body styling.
+- `src/render.rs:6525`, `src/render.rs:6657`, `src/render.rs:6669`, `src/render.rs:6693` — Propagated explicit ER node stroke, stroke width, and dasharray to attribute dividers/grid lines.
+- `src/render.rs:8512`, `src/render.rs:8533`, `src/render.rs:8547` — Added regression coverage for ER inline style rendering, styled attribute dividers, and endpoint decorations being painted after nodes and oriented outward.
+
+## entityRelationshipDiagram* — Styling and endpoint pass 2 findings — 2026-05-01T23:29:41Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: regenerated ER outputs remain in the same broad size class as the previous ER pass. Current examples: `styling-nodes-with-inline-style` is JS 116.0x285.0 vs RS 116.0x288.2, `styling-relationships-with-classdef` is JS 485.7x459.0 vs RS 511.3x462.2, and `attribute-keys-and-comments` is JS 954.2x686.8 vs RS 929.7x669.0.
+- Layout topology: the styling fixtures now preserve the expected entities, styled nodes, and relationship symbols. The outlier remains `elk-layout-configuration` because Rust does not select Mermaid's ELK ER layout path.
+- Edge shape: ER endpoint decorations are now rendered after entity nodes in `erEdgeDecorations`, and target-end markers point outward. Rust still does not use Mermaid's exact SVG marker definitions/refX/refY, so marker geometry is improved but not identical.
+- Inter-element spacing ratios: ER spacing/rank improvements from the prior pass remain; most residual width differences are table-column/routing differences rather than the endpoint-symbol issue.
+- Label-vs-container fit: styled empty nodes now show custom fill/text/stroke/dash values instead of being repainted with default `#FFFFDE`. Styled attributed nodes now carry custom stroke styling into divider lines.
+- State of the art comparison summary: displayed side by side, the targeted styling and endpoint-symbol defects are mitigated. The overall ER suite remains a partial visual match due to exact table rendering, marker definitions, and ELK layout selection still differing from Mermaid JS.
+
+**Structural diffs**
+- Fixed in this pass: `entityRelationshipDiagram-styling-nodes-with-inline-style-rs.svg` contains `fill="#bbf"`, `stroke="#f66"`, `stroke-dasharray="5 5"`, and text fill `#fff`, without a styled empty-node repaint to `#FFFFDE`.
+- Fixed in this pass: ER class/style strokes now apply to divider lines in attributed entities, as seen in `entityRelationshipDiagram-styling-relationships-with-classdef-rs.svg` for the `PERSON` node's `#f00` lines.
+- Fixed in this pass: ER relationship endpoint decorations appear in a final overlay group after nodes, avoiding the previous hidden-under-box rendering order.
+- Remaining: RS uses hand-drawn endpoint decorations instead of Mermaid marker defs and still uses native SVG ER tables instead of Mermaid's exact HTML/foreignObject/rough path structure.
+
+**Visual defects in RS**
+- `elk-layout-configuration` remains the largest ER outlier at about 1.47x JS area because config-driven ELK layout is still not implemented in the Rust ER pipeline.
+- Several fixtures remain about 5-15% wider or narrower than JS from ER table measurement/routing differences.
+- Endpoint symbols are now visible above nodes, but exact Mermaid marker dimensions and rough styling are still not matched.
+
+Visual match: partial. The style and endpoint-symbol parity gap is materially smaller, but full ER visual equivalence still needs ELK config handling and exact ER table/marker rendering work.
+
+## entityRelationshipDiagram* — Only-one marker clearance findings — 2026-05-01T23:57:27Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: unchanged by this pass; the issue is local marker geometry at entity boundaries.
+- Layout topology: unchanged. The affected relationships already have the right endpoints and cardinalities.
+- Edge shape: JS `erMarkers.js` places `ONLY_ONE_START` bars at marker-local x=9 and x=15 from the path endpoint (`M9,0 L9,18 M15,0 L15,18`). Rust was placing the equivalent two perpendicular bars at x=2 and x=7, so the near bar could still overlap slightly with the entity block after the overlay-order fix.
+- Inter-element spacing ratios: unchanged.
+- Label-vs-container fit: unchanged.
+- State of the art comparison summary: displayed side by side, the specific `||` endpoint marks should now sit farther clear of the entity boundary. Other ER visual differences remain outside this local marker-clearance pass.
+
+**Structural diffs**
+- Rust pre-pass geometry for `EdgeDecoration::CrowsFootOne`: `M 2 -6 L 2 6 M 7 -6 L 7 6`.
+- Mermaid JS marker geometry for `ONLY_ONE_START`: bars effectively 9px and 15px from the endpoint; `ONLY_ONE_END` mirrors the same distances from the target endpoint via `refX=18`.
+
+**Visual defects in RS**
+- The `||` bars were visible above nodes, but the first perpendicular bar could still sit close enough to the entity boundary to visibly overlap the block edge.
+
+Visual match: partial. This pass addresses the local `||` marker clearance only.
+
+## entityRelationshipDiagram* — Only-one marker clearance changes applied — 2026-05-01T23:57:27Z
+
+- `src/render.rs:7298` — Moved ER `CrowsFootOne` / `ONLY_ONE` bars from x=2/7 to x=9/15, matching Mermaid's marker offsets and keeping the first perpendicular bar away from the entity boundary.
+- `src/render.rs:8547` — Extended the endpoint-decoration regression to assert the larger `ONLY_ONE` marker offsets.
+
+## entityRelationshipDiagram* — Only-one marker clearance pass 2 findings — 2026-05-01T23:57:27Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: unchanged after regeneration.
+- Layout topology: unchanged.
+- Edge shape: regenerated ER SVGs now emit only-one marker paths as `M 9 -6 L 9 6 M 15 -6 L 15 6` wherever the `||` cardinality appears.
+- Inter-element spacing ratios: unchanged.
+- Label-vs-container fit: unchanged.
+- State of the art comparison summary: the local `||` marker clearance is improved. Full ER visual match is still partial for the previously logged table, marker-definition, routing, and ELK-layout differences.
+
+**Structural diffs**
+- Fixed in this pass: all regenerated ER outputs with `ONLY_ONE` cardinality use the farther 9px/15px perpendicular-bar offsets.
+- Remaining: other ER marker families still use the current Rust hand-drawn geometry and may need separate tuning if they show local clearance issues.
+
+**Visual defects in RS**
+- No remaining known overlap for the `||` bars from the too-small x=2/7 offset.
+- Existing non-local ER differences still apply: exact JS marker defs, native SVG table styling, and ELK config handling are not matched yet.
+
+Visual match: partial. The `||` marker clearance is mitigated; broader ER parity remains partial.
+
+## entityRelationshipDiagram-default-class-definition — Pass 1 findings — 2026-05-02T01:11:15Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS is 485.7x459.0 and RS is 511.3x462.2, so the size class is close; the visible problem is styling, not gross layout.
+- Layout topology: both outputs place `PERSON` above `CAR` and `HOUSE` with the same two relationships.
+- Edge shape: relationship routing differs in the usual Rust-vs-Mermaid way, but it is not the cause of this styling issue.
+- Inter-element spacing ratios: unchanged from the previous ER pass.
+- Label-vs-container fit: text still fits. The defect is that `classDef default fill:#f9f,stroke-width:4px` makes RS draw thick yellowish internal ER divider/grid lines (`#AAAA33`) for nodes without an explicit `stroke`, while JS keeps dividers on the entity border color with the 4px stroke width.
+- State of the art comparison summary: displayed side by side, the fixture looks close structurally but not stylistically. The thick default-class divider lines in RS read as a different table style from JS.
+
+**Structural diffs**
+- JS `classDef default` applies `fill:#f9f` and `stroke-width:4px` over the ER entity box/table paths while retaining the entity border stroke color unless a more specific class supplies `stroke`.
+- Rust pre-pass used `theme.cluster_border` for ER dividers whenever `node.style.stroke` was absent. With `stroke-width:4px` from the default class, that produced thick `#AAAA33` divider lines on `CAR`.
+
+**Visual defects in RS**
+- `CAR` internal header/row/type dividers were `stroke="#AAAA33" stroke-width="4"` instead of following the entity border stroke color.
+- `PERSON` and `HOUSE` had explicit class strokes, so they were less visibly affected; the default-only entity exposed the bug.
+
+Visual match: partial. This pass targets the default-class divider color; broader ER table/routing differences remain.
+
+## entityRelationshipDiagram-default-class-definition — Changes applied — 2026-05-02T01:11:15Z
+
+- `src/render.rs:6525` — Made ER divider/grid strokes use the entity `border` color instead of `theme.cluster_border`, so default `stroke-width` and explicit `stroke` classes inherit consistently.
+- `src/render.rs:8543` — Added a regression test for `classDef default fill:#f9f,stroke-width:4px` ensuring divider lines keep the border color and do not become thick cluster-colored strokes.
+
+## entityRelationshipDiagram-default-class-definition — Pass 2 findings — 2026-05-02T01:11:15Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: unchanged and still close to JS.
+- Layout topology: unchanged.
+- Edge shape: unchanged.
+- Inter-element spacing ratios: unchanged.
+- Label-vs-container fit: unchanged.
+- State of the art comparison summary: the specific default-class divider color defect is mitigated. The fixture remains a partial visual match because Rust still uses native SVG table lines and its own routing/marker implementation rather than Mermaid's exact rough/foreignObject ER renderer.
+
+**Structural diffs**
+- Fixed in this pass: regenerated `entityRelationshipDiagram-default-class-definition-rs.svg` now emits default-class `CAR` dividers as `stroke="#7B88A8" stroke-width="4"` instead of `stroke="#AAAA33" stroke-width="4"`.
+- Fixed in this pass: explicit `foo` and `bar` class strokes still propagate to `PERSON` (`#f00`) and `HOUSE` (`#0f0`) while default fill/stroke-width still applies.
+- Remaining: the RS renderer still does not reproduce Mermaid JS's rough path table construction exactly.
+
+**Visual defects in RS**
+- No remaining known thick `#AAAA33` divider lines for the default-class fixture.
+- Existing broader ER differences still apply: exact rough table styling, marker defs, and routing are not identical.
+
+Visual match: partial. The default-class styling defect is mitigated; full ER visual match remains partial.
+
+## entityRelationshipDiagram-entities-with-attributes - Pass 1 findings - 2026-05-03T00:59:38Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: JS is about 219.1x688.3; pre-fix RS was about 246.2x694.7. The size class is close, with RS about 12% wider.
+- Layout topology: both outputs use the same vertical `CUSTOMER` -> `ORDER` -> `LINE-ITEM` stack. The zebra defect is inside the entity tables, not the gross layout.
+- Edge shape: both relationship paths are vertical cubic paths. Remaining routing/marker implementation differences are not the cause of the missing row striping.
+- Inter-element spacing ratios: row height already matches Mermaid at 42.75px, so the missing visual layer is the per-row background rectangles.
+- Label-vs-container fit: attribute text fits in both outputs.
+- State of the art comparison summary: displayed side by side, the entity tables do not look like the same table style because JS alternates row backgrounds while RS paints a flat white body.
+
+**Structural diffs**
+- JS emits one `row-rect-odd` or `row-rect-even` row background per attribute row.
+- JS row fills alternate `hsl(240, 100%, 100%)` and `hsl(240, 100%, 97.2745098039%)`.
+- RS pre-fix emitted no `row-rect-*` rectangles and used only the entity body fill behind all rows.
+
+**Visual defects in RS**
+- `CUSTOMER`, `ORDER`, and `LINE-ITEM` attribute tables had no zebra striping, so every attribute row read as the same white band.
+- Existing broader ER differences remain: exact rough path table construction, Mermaid theme colors, and routing/marker definitions are still not identical.
+
+Visual match: partial. This pass targets the missing zebra row layer only.
+
+## entityRelationshipDiagram-entities-with-attributes - Changes applied - 2026-05-03T00:59:38Z
+
+- `src/render.rs:6508` - Added Mermaid ER odd/even row fill constants.
+- `src/render.rs:6649` - Moved row-height calculation ahead of divider/text painting so row backgrounds use the same 42.75px body rows as the labels.
+- `src/render.rs:6656` - Rendered `row-rect-odd` / `row-rect-even` rectangles before dividers and text; even rows use a custom entity fill when styling supplies one, matching Mermaid's styled even-row behavior.
+- `src/render.rs:8531` - Added a regression test for ER zebra row backgrounds and render order.
+
+## entityRelationshipDiagram-entities-with-attributes - Pass 2 findings - 2026-05-03T00:59:38Z
+
+**Mandatory visual-appearance checks**
+- Aspect ratio + size class: unchanged from the pre-fix RS geometry; this patch is renderer styling only.
+- Layout topology: unchanged.
+- Edge shape: unchanged.
+- Inter-element spacing ratios: unchanged; row backgrounds now align to the existing 42.75px attribute rows.
+- Label-vs-container fit: unchanged; row backgrounds render underneath labels.
+- State of the art comparison summary: the entity table row striping now matches Mermaid's odd/even pattern. Full visual parity is still partial because other ER style and renderer differences remain.
+
+**Structural diffs**
+- Fixed in this pass: regenerated RS output now contains eight `row-rect-*` rectangles for the eight attribute rows in the fixture.
+- Fixed in this pass: odd rows use `hsl(240, 100%, 100%)` and even rows use `hsl(240, 100%, 97.2745098039%)`.
+- Remaining: RS still uses native rect/line/text rendering rather than Mermaid's rough path and foreignObject table renderer.
+
+**Visual defects in RS**
+- No remaining known missing zebra striping in `entityRelationshipDiagram-entities-with-attributes-rs.svg`.
+- Existing broader ER styling differences remain, including header/body theme color mismatch and non-identical rough path construction.
+
+Visual match: partial. The zebra rows are fixed; broader ER parity remains partial.

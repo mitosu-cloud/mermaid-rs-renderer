@@ -60,6 +60,7 @@ pub(super) fn compute_treemap_layout(
         acc_descr: None,
         diagram: DiagramData::Graph {
             state_notes: Vec::new(),
+            title: None,
         },
     }
 }
