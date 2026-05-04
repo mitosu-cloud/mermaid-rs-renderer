@@ -4026,3 +4026,53 @@ Visual match: partial. This pass targets the missing zebra row layer only.
 - Existing broader ER styling differences remain, including header/body theme color mismatch and non-identical rough path construction.
 
 Visual match: partial. The zebra rows are fixed; broader ER parity remains partial.
+## examples-basic-pie-chart-* — Pass 1 findings — 2026-05-03T03:18:53Z
+
+Mandatory visual-appearance checks:
+- Aspect ratio + size class: JS renders both examples on a 450px-tall pie canvas with center `(225,225)`, outer circle `r=186`, and slice radius `185`. RS rendered a 360px-tall canvas with center `(180,180)`, outer circle `r=153`, and slice radius `152`, making the pie body about 18-20% too small.
+- Layout topology: both have the same basic chart + right-side legend topology, but RS places the legend at `x=348.8` with 14px swatches; JS places it at `center_x + 12 * 18 = 441` with 18px swatches.
+- Edge shape: not applicable; these are pie charts.
+- Inter-element spacing ratios: RS uses smaller diagram constants (`height=360`, `margin=28`, `legend_rect_size=14`, `legend_spacing=3`, `legend_horizontal_multiplier=10`) while JS uses `height=450`, `MARGIN=40`, `LEGEND_RECT_SIZE=18`, `LEGEND_SPACING=4`, and horizontal legend offset `12 * rect`.
+- Label-vs-container fit: labels fit, but their positions are rotated relative to JS because RS starts arcs at 3 o'clock with `(cos, sin)`, while Mermaid/d3 starts at 12 o'clock with `(sin, -cos)`.
+- State of the art comparison summary: side-by-side, the charts are recognizably the same data but not the same picture. The dominant defects are size, rotation, color assignment, and legend geometry.
+
+Structural diffs:
+- JS slice paths follow d3 arc coordinates such as `M0,-185A185,...` inside a translated group; RS used absolute coordinates starting from the center and a 3 o'clock zero angle.
+- JS pie slice stroke is black via `.pieCircle`; RS used the page background as the slice stroke, creating white separators.
+- JS default pie palette gives the third default slice `hsl(80, 100%, 56.2745%)`; RS reused `#ECECFF` as the third pie color.
+- JS title and legend text are black; RS used `#333` for both.
+
+Visual defects in RS:
+- Pie is visibly too small and lower-impact than JS.
+- Slices are rotated 90 degrees from JS/d3.
+- Voldemort example has the third/green slice color wrong, so the legend color semantics do not match.
+- White slice separators differ from JS's black slice boundaries.
+
+## examples-basic-pie-chart-* — Changes applied — 2026-05-03T03:18:53Z
+
+- `src/config.rs:657` — matched Mermaid pie constants: 450px canvas, 40px margin, 18px legend swatches, 4px legend spacing, and 12x swatch legend offset.
+- `src/layout/pie.rs:143` — computed pie radius, center, legend x, and viewBox width using Mermaid's pie layout formulas.
+- `src/render.rs:3687` — used the pie stroke color instead of the background for slice outlines.
+- `src/render.rs:3774` — switched pie label/path coordinates to the d3-style `(sin(angle), -cos(angle))` system.
+- `src/render.rs:3922` — aligned legend label baseline with Mermaid's `rect_size - spacing` y offset.
+- `src/theme.rs:102` — added Mermaid default pie palette derivation so the third slice resolves to the green `hsl(80, 100%, 56.2745%)`.
+- `src/theme.rs:138` — changed default pie title and legend text to black, matching Mermaid CSS.
+- `src/lib.rs` — added a regression test for Mermaid pie geometry.
+
+## examples-basic-pie-chart-* — Pass 2 findings — 2026-05-03T03:18:53Z
+
+Mandatory visual-appearance checks:
+- Aspect ratio + size class: RS now renders both fixtures at height 450. Netflix is RS `741.01x450` vs JS `733.73x450`; Voldemort is RS `583.35x450` vs JS `574.11x450`. The remaining width delta is about 1-2% from text measurement.
+- Layout topology: chart center `(225,225)`, radius `185/186`, legend x `441`, title y `25`, and legend swatch positions now match JS.
+- Edge shape: not applicable.
+- Inter-element spacing ratios: pie-to-legend spacing and legend row spacing now match JS.
+- Label-vs-container fit: percentage labels and legend labels fit and sit in the same visual positions as JS.
+- State of the art comparison summary: side-by-side, these now look essentially like the Mermaid output. Remaining differences are representation details: RS emits absolute SVG coordinates instead of a translated group, and text metrics make the viewBox a few pixels wider.
+
+Structural diffs:
+- RS path commands start at the center then draw to the arc start; JS starts at the arc start then closes through the center. The visible wedge boundary is equivalent.
+- RS emits explicit `stroke`/`opacity` attributes where JS applies them via CSS classes.
+- RS color strings may include high-precision HSL values; visually they match the JS color.
+
+Visual defects in RS:
+- No remaining material visual defect for these two examples. Width is slightly wider because Rust text measurement is a few pixels larger than browser measurement for the legend labels.

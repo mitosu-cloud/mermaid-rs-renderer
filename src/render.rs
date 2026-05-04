@@ -3684,7 +3684,7 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
         total = pie.slices.iter().map(|s| s.value.max(0.0)).sum();
     }
 
-    let slice_stroke = theme.background.as_str();
+    let slice_stroke = theme.pie_stroke_color.as_str();
     let slice_stroke_width = theme.pie_stroke_width.max(1.2);
 
     for slice in &pie.slices {
@@ -3771,20 +3771,13 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
         } else {
             percent_text.clone()
         };
-        let edge_x = cx + radius * mid_angle.cos();
-        let edge_y = cy + radius * mid_angle.sin();
+        let (edge_x, edge_y) = pie_point(cx, cy, radius, mid_angle);
         let bump = (font_size * 1.6).max(radius * 0.18);
         let (label_x, label_y) = if outside {
-            (
-                cx + (radius + bump) * mid_angle.cos(),
-                cy + (radius + bump) * mid_angle.sin(),
-            )
+            pie_point(cx, cy, radius + bump, mid_angle)
         } else {
             let label_radius = radius * pie_cfg.text_position;
-            (
-                cx + label_radius * mid_angle.cos(),
-                cy + label_radius * mid_angle.sin(),
-            )
+            pie_point(cx, cy, label_radius, mid_angle)
         };
         labels.push(PieLabel {
             text: label_text,
@@ -3926,7 +3919,7 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
             theme.pie_stroke_width
         ));
         let label_x = rect_x + item.marker_size + pie_cfg.legend_spacing;
-        let label_y = rect_y + item.marker_size / 2.0;
+        let label_y = rect_y + item.marker_size - pie_cfg.legend_spacing;
         svg.push_str(&text_block_svg_with_font_size(
             label_x,
             label_y,
@@ -3958,10 +3951,8 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
 }
 
 fn pie_slice_path(cx: f32, cy: f32, radius: f32, start_angle: f32, end_angle: f32) -> String {
-    let sx = cx + radius * start_angle.cos();
-    let sy = cy + radius * start_angle.sin();
-    let ex = cx + radius * end_angle.cos();
-    let ey = cy + radius * end_angle.sin();
+    let (sx, sy) = pie_point(cx, cy, radius, start_angle);
+    let (ex, ey) = pie_point(cx, cy, radius, end_angle);
     let large_arc = if (end_angle - start_angle).abs() > std::f32::consts::PI {
         1
     } else {
@@ -3971,6 +3962,10 @@ fn pie_slice_path(cx: f32, cy: f32, radius: f32, start_angle: f32, end_angle: f3
     format!(
         "M {cx:.2} {cy:.2} L {sx:.2} {sy:.2} A {radius:.2} {radius:.2} 0 {large_arc} {sweep} {ex:.2} {ey:.2} Z"
     )
+}
+
+fn pie_point(cx: f32, cy: f32, radius: f32, angle: f32) -> (f32, f32) {
+    (cx + radius * angle.sin(), cy - radius * angle.cos())
 }
 
 fn render_quadrant(

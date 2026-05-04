@@ -99,7 +99,7 @@ impl Theme {
         let primary_color = "#ECECFF".to_string();
         let secondary_color = "#FFFFDE".to_string();
         let tertiary_color = "#ECECFF".to_string();
-        let pie_colors = default_pie_colors(&primary_color, &secondary_color, &tertiary_color);
+        let pie_colors = mermaid_default_pie_colors(&primary_color, &secondary_color);
         Self {
             font_family: "'trebuchet ms', verdana, arial, sans-serif".to_string(),
             font_size: 16.0,
@@ -135,11 +135,11 @@ impl Theme {
             git_tag_label_border: MERMAID_GIT_TAG_LABEL_BORDER.to_string(),
             pie_colors,
             pie_title_text_size: 25.0,
-            pie_title_text_color: MERMAID_TEXT_COLOR.to_string(),
+            pie_title_text_color: "#000000".to_string(),
             pie_section_text_size: 17.0,
             pie_section_text_color: MERMAID_TEXT_COLOR.to_string(),
             pie_legend_text_size: 17.0,
-            pie_legend_text_color: MERMAID_TEXT_COLOR.to_string(),
+            pie_legend_text_color: "#000000".to_string(),
             pie_stroke_color: "#000000".to_string(),
             pie_stroke_width: 2.0,
             pie_outer_stroke_width: 2.0,
@@ -469,6 +469,24 @@ fn default_pie_colors(primary: &str, secondary: &str, tertiary: &str) -> [String
         adjust_color(primary, 60.0, 0.0, -20.0),
         adjust_color(primary, -60.0, 0.0, -20.0),
         adjust_color(primary, 120.0, 0.0, -10.0),
+    ]
+}
+
+fn mermaid_default_pie_colors(primary: &str, secondary: &str) -> [String; 12] {
+    let tertiary = adjust_color(primary, -160.0, 0.0, 0.0);
+    [
+        primary.to_string(),
+        secondary.to_string(),
+        adjust_color(&tertiary, 0.0, 0.0, -40.0),
+        adjust_color(primary, 0.0, 0.0, -10.0),
+        adjust_color(secondary, 0.0, 0.0, -30.0),
+        adjust_color(&tertiary, 0.0, 0.0, -20.0),
+        adjust_color(primary, 60.0, 0.0, -20.0),
+        adjust_color(primary, -60.0, 0.0, -40.0),
+        adjust_color(primary, 120.0, 0.0, -40.0),
+        adjust_color(primary, 60.0, 0.0, -40.0),
+        adjust_color(primary, -90.0, 0.0, -40.0),
+        adjust_color(primary, 120.0, 0.0, -30.0),
     ]
 }
 

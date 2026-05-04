@@ -145,7 +145,7 @@ pub(super) fn compute_pie_layout(graph: &Graph, theme: &Theme, config: &LayoutCo
     let radius = (pie_width.min(height) / 2.0 - pie_cfg.margin).max(1.0);
     let center_x = pie_width / 2.0;
     let center_y = height / 2.0;
-    let legend_x = center_x + radius + pie_cfg.margin * 0.6;
+    let legend_x = center_x + pie_cfg.legend_horizontal_multiplier * pie_cfg.legend_rect_size;
 
     for (idx, (label, color)) in legend_items.into_iter().enumerate() {
         let vertical = idx as f32 * legend_item_height - legend_offset;
@@ -159,11 +159,22 @@ pub(super) fn compute_pie_layout(graph: &Graph, theme: &Theme, config: &LayoutCo
         });
     }
 
-    let width = legend_x
+    let chart_and_legend_width = pie_width
+        + pie_cfg.margin
         + pie_cfg.legend_rect_size
         + pie_cfg.legend_spacing
-        + legend_width
-        + pie_cfg.margin * 0.4;
+        + legend_width;
+    let title_left = title_block
+        .as_ref()
+        .map(|text| center_x - text.width / 2.0)
+        .unwrap_or(0.0);
+    let title_right = title_block
+        .as_ref()
+        .map(|text| center_x + text.width / 2.0)
+        .unwrap_or(0.0);
+    let viewbox_x = title_left.min(0.0);
+    let viewbox_right = chart_and_legend_width.max(title_right);
+    let width = viewbox_right - viewbox_x;
     let title_layout = title_block.map(|text| PieTitleLayout {
         x: center_x,
         y: center_y - (height - 50.0) / 2.0,

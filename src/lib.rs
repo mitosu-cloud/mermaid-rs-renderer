@@ -436,6 +436,23 @@ mod tests {
     }
 
     #[test]
+    fn test_pie_diagram_uses_mermaid_geometry() {
+        let svg = render_with_options(
+            r#"pie title NETFLIX
+            "Time spent looking for movie" : 90
+            "Time spent watching it" : 10"#,
+            RenderOptions::mermaid_default(),
+        )
+        .unwrap();
+        assert!(svg.contains("viewBox=\"0 0 "));
+        assert!(svg.contains(" 450\""));
+        assert!(svg.contains("<circle cx=\"225.00\" cy=\"225.00\" r=\"186.00\""));
+        assert!(svg.contains("L 225.00 40.00 A 185.00 185.00"));
+        assert!(svg.contains("<rect x=\"441.00\" y=\"203.00\" width=\"18.00\" height=\"18.00\""));
+        assert!(svg.contains("fill=\"#000000\""));
+    }
+
+    #[test]
     fn test_preferred_aspect_ratio_applies_to_svg_dimensions() {
         let opts = RenderOptions::default().with_preferred_aspect_ratio_parts(16.0, 9.0);
         let svg = render_with_options("flowchart LR; A-->B-->C", opts).unwrap();
