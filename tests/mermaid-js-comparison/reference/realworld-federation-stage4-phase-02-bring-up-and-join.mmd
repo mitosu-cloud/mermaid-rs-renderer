@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant fed0 as fed0 (bootstrap)
+    participant fed1 as fed1 (joiner)
+    Note over fed0: start with FEDERATION_BOOTSTRAP=true<br/>generate self-signed TLS cert<br/>SHA-256 fingerprint -> local FederationMember
+    Note over fed1: start with FEDERATION_JOIN_ENDPOINT=fed0
+    fed1->>fed0: JoinFederation (mTLS handshake)
+    fed0-->>fed1: accept + own cert fingerprint
+    fed1->>fed0: own cert fingerprint (in JoinRequest)
+    Note over fed0,fed1: both now hold the peer's<br/>cert_fingerprint via Raft<br/>(no shared CA needed)

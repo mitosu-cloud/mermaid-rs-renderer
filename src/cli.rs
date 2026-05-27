@@ -145,6 +145,62 @@ fn parse_aspect_ratio_json(value: &serde_json::Value) -> Option<f32> {
     }
 }
 
+fn json_f32(value: &serde_json::Value) -> Option<f32> {
+    match value {
+        serde_json::Value::Number(num) => num.as_f64().map(|val| val as f32),
+        serde_json::Value::String(text) => text.trim().parse::<f32>().ok(),
+        _ => None,
+    }
+}
+
+fn xy_chart_palette(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|color| !color.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn merge_xy_chart_axis_config(
+    axis: &mut crate::config::XYChartAxisConfig,
+    axis_cfg: &serde_json::Value,
+) {
+    if let Some(val) = axis_cfg.get("showLabel").and_then(|v| v.as_bool()) {
+        axis.show_label = val;
+    }
+    if let Some(val) = axis_cfg.get("labelFontSize").and_then(json_f32) {
+        axis.label_font_size = val;
+    }
+    if let Some(val) = axis_cfg.get("labelPadding").and_then(json_f32) {
+        axis.label_padding = val;
+    }
+    if let Some(val) = axis_cfg.get("showTitle").and_then(|v| v.as_bool()) {
+        axis.show_title = val;
+    }
+    if let Some(val) = axis_cfg.get("titleFontSize").and_then(json_f32) {
+        axis.title_font_size = val;
+    }
+    if let Some(val) = axis_cfg.get("titlePadding").and_then(json_f32) {
+        axis.title_padding = val;
+    }
+    if let Some(val) = axis_cfg.get("showTick").and_then(|v| v.as_bool()) {
+        axis.show_tick = val;
+    }
+    if let Some(val) = axis_cfg.get("tickLength").and_then(json_f32) {
+        axis.tick_length = val;
+    }
+    if let Some(val) = axis_cfg.get("tickWidth").and_then(json_f32) {
+        axis.tick_width = val;
+    }
+    if let Some(val) = axis_cfg.get("showAxisLine").and_then(|v| v.as_bool()) {
+        axis.show_axis_line = val;
+    }
+    if let Some(val) = axis_cfg.get("axisLineWidth").and_then(json_f32) {
+        axis.axis_line_width = val;
+    }
+}
+
 pub fn run() -> Result<()> {
     let args = Args::parse();
     let output_format = infer_output_format(args.output.as_deref(), args.output_format);
@@ -478,7 +534,16 @@ sequenceDiagram
                 "edgeLabelBackground": "#222222",
                 "clusterBkg": "#333333",
                 "clusterBorder": "#444444",
-                "background": "#101010"
+                "background": "#101010",
+                "cScale0": "#ff0000",
+                "cScale1": "#00ff00",
+                "radar": {
+                    "axisColor": "#111111",
+                    "axisStrokeWidth": 3,
+                    "curveOpacity": 0.4,
+                    "curveStrokeWidth": 5,
+                    "graticuleColor": "#dddddd"
+                }
             }
         });
         let merged = merge_init_config(config, init);
@@ -489,6 +554,12 @@ sequenceDiagram
         assert_eq!(merged.theme.cluster_border, "#444444");
         assert_eq!(merged.theme.background, "#101010");
         assert_eq!(merged.render.background, "#101010");
+        assert_eq!(merged.theme.cscale_colors, vec!["#ff0000", "#00ff00"]);
+        assert_eq!(merged.theme.radar.axis_color, "#111111");
+        assert_eq!(merged.theme.radar.axis_stroke_width, 3.0);
+        assert_eq!(merged.theme.radar.curve_opacity, 0.4);
+        assert_eq!(merged.theme.radar.curve_stroke_width, 5.0);
+        assert_eq!(merged.theme.radar.graticule_color, "#dddddd");
     }
 
     #[test]
@@ -506,6 +577,70 @@ sequenceDiagram
         });
         let merged = merge_init_config(config, init);
         assert_eq!(merged.layout.preferred_aspect_ratio, Some(16.0 / 9.0));
+    }
+
+    #[test]
+    fn merge_init_config_updates_xychart_config_and_theme() {
+        let config = Config::default();
+        let init = json!({
+            "xyChart": {
+                "width": 900,
+                "height": 600,
+                "showDataLabel": true
+            },
+            "themeVariables": {
+                "xyChart": {
+                    "titleColor": "#ff0000",
+                    "plotColorPalette": "#000000, #0000FF"
+                }
+            }
+        });
+        let merged = merge_init_config(config, init);
+        assert_eq!(merged.layout.xychart.width, 900.0);
+        assert_eq!(merged.layout.xychart.height, 600.0);
+        assert!(merged.layout.xychart.show_data_label);
+        assert_eq!(merged.theme.xy_chart.title_color, "#ff0000");
+        assert_eq!(
+            merged.theme.xy_chart.plot_colors,
+            vec!["#000000".to_string(), "#0000FF".to_string()]
+        );
+    }
+
+    #[test]
+    fn merge_init_config_updates_sankey_node_dimensions() {
+        let config = Config::default();
+        let init = json!({
+            "sankey": {
+                "nodeWidth": 18,
+                "nodePadding": 24
+            }
+        });
+        let merged = merge_init_config(config, init);
+        assert_eq!(merged.layout.sankey.node_width, 18.0);
+        assert_eq!(merged.layout.sankey.node_padding, 24.0);
+    }
+
+    #[test]
+    fn merge_init_config_updates_treemap_config() {
+        let config = Config::default();
+        let init = json!({
+            "treemap": {
+                "nodeWidth": 120,
+                "nodeHeight": 60,
+                "diagramPadding": 20,
+                "padding": 12,
+                "showValues": false,
+                "valueFormat": "$.1%"
+            }
+        });
+        let merged = merge_init_config(config, init);
+        assert_eq!(merged.layout.treemap.width, 1200.0);
+        assert_eq!(merged.layout.treemap.height, 600.0);
+        assert_eq!(merged.layout.treemap.diagram_padding, 20.0);
+        assert_eq!(merged.layout.treemap.padding, 12.0);
+        assert_eq!(merged.layout.treemap.gap, 12.0);
+        assert!(!merged.layout.treemap.show_values);
+        assert_eq!(merged.layout.treemap.value_format, "$.1%");
     }
 }
 
@@ -701,6 +836,106 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
         if let Some(val) = theme_vars.get("fontSize").and_then(|v| v.as_f64()) {
             config.theme.font_size = val as f32;
         }
+        if let Some(val) = theme_vars.get("titleColor").and_then(|v| v.as_str()) {
+            config.theme.radar.title_color = val.to_string();
+        }
+        if let Some(radar) = theme_vars.get("radar").and_then(|v| v.as_object()) {
+            let get_str = |key: &str| radar.get(key).and_then(|v| v.as_str());
+            let get_f32 = |key: &str| {
+                radar.get(key).and_then(|value| match value {
+                    serde_json::Value::Number(num) => num.as_f64().map(|v| v as f32),
+                    serde_json::Value::String(text) => text.trim().parse::<f32>().ok(),
+                    _ => None,
+                })
+            };
+            if let Some(val) = get_str("axisColor") {
+                config.theme.radar.axis_color = val.to_string();
+            }
+            if let Some(val) = get_f32("axisStrokeWidth") {
+                config.theme.radar.axis_stroke_width = val;
+            }
+            if let Some(val) = get_f32("axisLabelFontSize") {
+                config.theme.radar.axis_label_font_size = val;
+            }
+            if let Some(val) = get_f32("curveOpacity") {
+                config.theme.radar.curve_opacity = val;
+            }
+            if let Some(val) = get_f32("curveStrokeWidth") {
+                config.theme.radar.curve_stroke_width = val;
+            }
+            if let Some(val) = get_str("graticuleColor") {
+                config.theme.radar.graticule_color = val.to_string();
+            }
+            if let Some(val) = get_f32("graticuleOpacity") {
+                config.theme.radar.graticule_opacity = val;
+            }
+            if let Some(val) = get_f32("graticuleStrokeWidth") {
+                config.theme.radar.graticule_stroke_width = val;
+            }
+            if let Some(val) = get_f32("legendFontSize") {
+                config.theme.radar.legend_font_size = val;
+            }
+        }
+        if let Some(val) = theme_vars.get("quadrant1Fill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.fills[0] = val.to_string();
+        }
+        if let Some(val) = theme_vars.get("quadrant2Fill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.fills[1] = val.to_string();
+        }
+        if let Some(val) = theme_vars.get("quadrant3Fill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.fills[2] = val.to_string();
+        }
+        if let Some(val) = theme_vars.get("quadrant4Fill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.fills[3] = val.to_string();
+        }
+        if let Some(val) = theme_vars.get("quadrant1TextFill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.text_fills[0] = val.to_string();
+        }
+        if let Some(val) = theme_vars.get("quadrant2TextFill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.text_fills[1] = val.to_string();
+        }
+        if let Some(val) = theme_vars.get("quadrant3TextFill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.text_fills[2] = val.to_string();
+        }
+        if let Some(val) = theme_vars.get("quadrant4TextFill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.text_fills[3] = val.to_string();
+        }
+        if let Some(val) = theme_vars.get("quadrantPointFill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.point_fill = val.to_string();
+        }
+        if let Some(val) = theme_vars
+            .get("quadrantPointTextFill")
+            .and_then(|v| v.as_str())
+        {
+            config.theme.quadrant.point_text_fill = val.to_string();
+        }
+        if let Some(val) = theme_vars
+            .get("quadrantXAxisTextFill")
+            .and_then(|v| v.as_str())
+        {
+            config.theme.quadrant.x_axis_text_fill = val.to_string();
+        }
+        if let Some(val) = theme_vars
+            .get("quadrantYAxisTextFill")
+            .and_then(|v| v.as_str())
+        {
+            config.theme.quadrant.y_axis_text_fill = val.to_string();
+        }
+        if let Some(val) = theme_vars
+            .get("quadrantInternalBorderStrokeFill")
+            .and_then(|v| v.as_str())
+        {
+            config.theme.quadrant.internal_border_stroke_fill = val.to_string();
+        }
+        if let Some(val) = theme_vars
+            .get("quadrantExternalBorderStrokeFill")
+            .and_then(|v| v.as_str())
+        {
+            config.theme.quadrant.external_border_stroke_fill = val.to_string();
+        }
+        if let Some(val) = theme_vars.get("quadrantTitleFill").and_then(|v| v.as_str()) {
+            config.theme.quadrant.title_fill = val.to_string();
+        }
         // If theme is "base" and secondary/tertiary weren't explicitly set,
         // derive them from primaryColor following official Mermaid rules.
         let is_base = init
@@ -723,6 +958,47 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
         }
         if !cscale.is_empty() {
             config.theme.cscale_colors = cscale;
+        }
+        if let Some(xy_chart) = theme_vars.get("xyChart") {
+            if let Some(val) = xy_chart.get("backgroundColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.background_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("titleColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.title_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("dataLabelColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.data_label_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("xAxisTitleColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.x_axis_title_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("xAxisLabelColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.x_axis_label_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("xAxisTickColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.x_axis_tick_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("xAxisLineColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.x_axis_line_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("yAxisTitleColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.y_axis_title_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("yAxisLabelColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.y_axis_label_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("yAxisTickColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.y_axis_tick_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("yAxisLineColor").and_then(|v| v.as_str()) {
+                config.theme.xy_chart.y_axis_line_color = val.to_string();
+            }
+            if let Some(val) = xy_chart.get("plotColorPalette").and_then(|v| v.as_str()) {
+                let palette = xy_chart_palette(val);
+                if !palette.is_empty() {
+                    config.theme.xy_chart.plot_colors = palette;
+                }
+            }
         }
     }
     if let Some(ratio) = init
@@ -757,6 +1033,174 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
             if let Some(ct) = crate::ir::CurveType::from_name(val) {
                 config.layout.flowchart.curve = ct;
             }
+        }
+    }
+    if let Some(treemap) = init.get("treemap") {
+        if let Some(val) = treemap.get("nodeWidth").and_then(json_f32) {
+            config.layout.treemap.width = val * 10.0;
+        }
+        if let Some(val) = treemap.get("nodeHeight").and_then(json_f32) {
+            config.layout.treemap.height = val * 10.0;
+        }
+        if let Some(val) = treemap.get("diagramPadding").and_then(json_f32) {
+            config.layout.treemap.diagram_padding = val;
+        }
+        if let Some(val) = treemap.get("padding").and_then(json_f32) {
+            config.layout.treemap.padding = val;
+            config.layout.treemap.gap = val;
+        }
+        if let Some(val) = treemap.get("showValues").and_then(|v| v.as_bool()) {
+            config.layout.treemap.show_values = val;
+        }
+        if let Some(val) = treemap.get("valueFormat").and_then(|v| v.as_str()) {
+            config.layout.treemap.value_format = val.to_string();
+        }
+    }
+    if let Some(xychart) = init.get("xyChart") {
+        if let Some(val) = xychart.get("width").and_then(json_f32) {
+            config.layout.xychart.width = val;
+        }
+        if let Some(val) = xychart.get("height").and_then(json_f32) {
+            config.layout.xychart.height = val;
+        }
+        if let Some(val) = xychart.get("titleFontSize").and_then(json_f32) {
+            config.layout.xychart.title_font_size = val;
+        }
+        if let Some(val) = xychart.get("titlePadding").and_then(json_f32) {
+            config.layout.xychart.title_padding = val;
+        }
+        if let Some(val) = xychart.get("showTitle").and_then(|v| v.as_bool()) {
+            config.layout.xychart.show_title = val;
+        }
+        if let Some(val) = xychart.get("showDataLabel").and_then(|v| v.as_bool()) {
+            config.layout.xychart.show_data_label = val;
+        }
+        if let Some(val) = xychart
+            .get("showDataLabelOutsideBar")
+            .and_then(|v| v.as_bool())
+        {
+            config.layout.xychart.show_data_label_outside_bar = val;
+        }
+        if let Some(val) = xychart.get("plotReservedSpacePercent").and_then(json_f32) {
+            config.layout.xychart.plot_reserved_space_percent = val;
+        }
+        if let Some(axis) = xychart.get("xAxis") {
+            merge_xy_chart_axis_config(&mut config.layout.xychart.x_axis, axis);
+        }
+        if let Some(axis) = xychart.get("yAxis") {
+            merge_xy_chart_axis_config(&mut config.layout.xychart.y_axis, axis);
+        }
+    }
+    if let Some(quadrant) = init.get("quadrantChart") {
+        if let Some(val) = quadrant.get("useMaxWidth").and_then(|v| v.as_bool()) {
+            config.layout.quadrant.use_max_width = val;
+        }
+        if let Some(val) = quadrant.get("chartWidth").and_then(json_f32) {
+            config.layout.quadrant.chart_width = val;
+        }
+        if let Some(val) = quadrant.get("chartHeight").and_then(json_f32) {
+            config.layout.quadrant.chart_height = val;
+        }
+        if let Some(val) = quadrant.get("showXAxis").and_then(|v| v.as_bool()) {
+            config.layout.quadrant.show_x_axis = val;
+        }
+        if let Some(val) = quadrant.get("showYAxis").and_then(|v| v.as_bool()) {
+            config.layout.quadrant.show_y_axis = val;
+        }
+        if let Some(val) = quadrant.get("showTitle").and_then(|v| v.as_bool()) {
+            config.layout.quadrant.show_title = val;
+        }
+        if let Some(val) = quadrant.get("titlePadding").and_then(json_f32) {
+            config.layout.quadrant.title_padding = val;
+        }
+        if let Some(val) = quadrant.get("titleFontSize").and_then(json_f32) {
+            config.layout.quadrant.title_font_size = val;
+        }
+        if let Some(val) = quadrant.get("quadrantPadding").and_then(json_f32) {
+            config.layout.quadrant.quadrant_padding = val;
+        }
+        if let Some(val) = quadrant.get("xAxisLabelPadding").and_then(json_f32) {
+            config.layout.quadrant.x_axis_label_padding = val;
+        }
+        if let Some(val) = quadrant.get("yAxisLabelPadding").and_then(json_f32) {
+            config.layout.quadrant.y_axis_label_padding = val;
+        }
+        if let Some(val) = quadrant.get("xAxisLabelFontSize").and_then(json_f32) {
+            config.layout.quadrant.x_axis_label_font_size = val;
+        }
+        if let Some(val) = quadrant.get("yAxisLabelFontSize").and_then(json_f32) {
+            config.layout.quadrant.y_axis_label_font_size = val;
+        }
+        if let Some(val) = quadrant.get("quadrantLabelFontSize").and_then(json_f32) {
+            config.layout.quadrant.quadrant_label_font_size = val;
+        }
+        if let Some(val) = quadrant.get("quadrantTextTopPadding").and_then(json_f32) {
+            config.layout.quadrant.quadrant_text_top_padding = val;
+        }
+        if let Some(val) = quadrant.get("pointTextPadding").and_then(json_f32) {
+            config.layout.quadrant.point_text_padding = val;
+        }
+        if let Some(val) = quadrant.get("pointLabelFontSize").and_then(json_f32) {
+            config.layout.quadrant.point_label_font_size = val;
+        }
+        if let Some(val) = quadrant.get("pointRadius").and_then(json_f32) {
+            config.layout.quadrant.point_radius = val;
+        }
+        if let Some(val) = quadrant.get("xAxisPosition").and_then(|v| v.as_str()) {
+            config.layout.quadrant.x_axis_position = val.to_string();
+        }
+        if let Some(val) = quadrant.get("yAxisPosition").and_then(|v| v.as_str()) {
+            config.layout.quadrant.y_axis_position = val.to_string();
+        }
+        if let Some(val) = quadrant
+            .get("quadrantInternalBorderStrokeWidth")
+            .and_then(json_f32)
+        {
+            config.layout.quadrant.quadrant_internal_border_stroke_width = val;
+        }
+        if let Some(val) = quadrant
+            .get("quadrantExternalBorderStrokeWidth")
+            .and_then(json_f32)
+        {
+            config.layout.quadrant.quadrant_external_border_stroke_width = val;
+        }
+    }
+    if let Some(sankey) = init.get("sankey") {
+        if let Some(val) = sankey.get("width").and_then(json_f32) {
+            config.layout.sankey.width = val;
+        }
+        if let Some(val) = sankey.get("height").and_then(json_f32) {
+            config.layout.sankey.height = val;
+        }
+        if let Some(val) = sankey.get("linkColor").and_then(|v| v.as_str()) {
+            config.layout.sankey.link_color = val.to_string();
+        }
+        if let Some(val) = sankey.get("nodeAlignment").and_then(|v| v.as_str()) {
+            config.layout.sankey.node_alignment = match val {
+                "left" => crate::config::SankeyNodeAlignment::Left,
+                "right" => crate::config::SankeyNodeAlignment::Right,
+                "center" => crate::config::SankeyNodeAlignment::Center,
+                "justify" => crate::config::SankeyNodeAlignment::Justify,
+                _ => config.layout.sankey.node_alignment.clone(),
+            };
+        }
+        if let Some(val) = sankey.get("useMaxWidth").and_then(|v| v.as_bool()) {
+            config.layout.sankey.use_max_width = val;
+        }
+        if let Some(val) = sankey.get("showValues").and_then(|v| v.as_bool()) {
+            config.layout.sankey.show_values = val;
+        }
+        if let Some(val) = sankey.get("prefix").and_then(|v| v.as_str()) {
+            config.layout.sankey.prefix = val.to_string();
+        }
+        if let Some(val) = sankey.get("suffix").and_then(|v| v.as_str()) {
+            config.layout.sankey.suffix = val.to_string();
+        }
+        if let Some(val) = sankey.get("nodeWidth").and_then(json_f32) {
+            config.layout.sankey.node_width = val;
+        }
+        if let Some(val) = sankey.get("nodePadding").and_then(json_f32) {
+            config.layout.sankey.node_padding = val;
         }
     }
     if let Some(gitgraph) = init.get("gitGraph") {

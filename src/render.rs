@@ -6,15 +6,44 @@ use crate::layout::label_placement::{
     endpoint_label_padding,
 };
 use crate::layout::{
-    C4BoundaryLayout, C4Layout, C4RelLayout, C4ShapeLayout, DiagramData, ErrorLayout,
-    GitGraphLayout, JourneyLayout, Layout, PieData, SankeyLayout, TextBlock, VennLayout,
+    C4BoundaryLayout, C4Layout, C4RelLayout, C4ShapeLayout, CynefinLayout, DiagramData,
+    ErrorLayout, EventModelingLayout, GitGraphLayout, JourneyLayout, Layout, PacketLayout, PieData,
+    SankeyLayout, TextBlock, TextLine, VennLayout,
 };
 use crate::text_metrics;
-use crate::theme::{Theme, adjust_color, parse_color_to_hsl};
+use crate::theme::{Theme, adjust_color};
 use anyhow::Result;
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
+
+const FLOWCHART_ICON_ASSET_SIZE: f32 = 48.0;
+const FLOWCHART_ICON_LABEL_PADDING: f32 = 8.0;
+const FLOWCHART_ICON_LABEL_TOP_INSET: f32 = 2.0;
+const FLOWCHART_ICON_CIRCLE_PADDING: f32 = 20.0;
+const FLOWCHART_ICON_SQUARE_PADDING: f32 = 4.0;
+const FLOWCHART_DIVIDED_RECT_HEADER_RATIO: f32 = 0.2;
+const FLOWCHART_BANG_BBOX_SCALE: f32 = 1.25;
+const FLOWCHART_WINDOW_PANE_OFFSET: f32 = 10.0;
+const SEQUENCE_TEXT_LINE_HEIGHT: f32 = 1.1875;
+
+fn flowchart_tilted_cylinder_rx(height: f32) -> f32 {
+    let ry = height / 2.0;
+    ry / (2.5 + height / 50.0)
+}
+
+fn flowchart_wave_document_amplitude(total_height: f32) -> f32 {
+    total_height / 10.0
+}
+
+fn flowchart_cylinder_ry(width: f32) -> f32 {
+    let rx = width / 2.0;
+    rx / (2.5 + width / 50.0)
+}
+
+fn flowchart_divided_rect_offset(total_height: f32) -> f32 {
+    total_height * FLOWCHART_DIVIDED_RECT_HEADER_RATIO / (1.0 + FLOWCHART_DIVIDED_RECT_HEADER_RATIO)
+}
 
 fn fit_dimensions_to_preferred_ratio(
     width: f32,
@@ -41,9 +70,40 @@ fn fit_dimensions_to_preferred_ratio(
     (width.max(1.0), height.max(1.0))
 }
 
+fn sankey_content_y_bounds(layout: &SankeyLayout) -> (f32, f32) {
+    let mut min_y = 0.0_f32;
+    let mut max_y = layout.height;
+    let label_dy = if layout.show_values { 0.0 } else { 14.0 * 0.35 };
+    // Browser getBBox for Mermaid's 14px Trebuchet labels contributes about
+    // 13px above and 3px below the text baseline.
+    const LABEL_ASCENT: f32 = 13.0;
+    const LABEL_DESCENT: f32 = 3.0;
+    for node in &layout.nodes {
+        let baseline = node.y + node.height / 2.0 + label_dy;
+        min_y = min_y.min(baseline - LABEL_ASCENT);
+        max_y = max_y.max(baseline + LABEL_DESCENT);
+    }
+    (min_y, max_y)
+}
+
+fn sankey_content_viewbox_y(layout: &SankeyLayout) -> f32 {
+    sankey_content_y_bounds(layout).0
+}
+
+fn sankey_content_viewbox_height(layout: &SankeyLayout) -> f32 {
+    let (min_y, max_y) = sankey_content_y_bounds(layout);
+    max_y - min_y
+}
+
 fn edge_dom_id(edge_idx: usize) -> String {
     format!("edge-{edge_idx}")
 }
+
+fn sequence_frame_border_color(theme: &Theme) -> &str {
+    theme.sequence_actor_border.as_str()
+}
+
+const STATE_FORK_JOIN_RENDER_HEIGHT: f32 = 10.0;
 
 pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> String {
     let mut svg = String::new();
@@ -57,7 +117,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     } else {
         None
     };
-    let er_title_extra = if layout.kind == crate::ir::DiagramKind::Er && graph_title.is_some() {
+    let graph_title_extra = if matches!(
+        layout.kind,
+        crate::ir::DiagramKind::Er | crate::ir::DiagramKind::Class
+    ) && graph_title.is_some()
+    {
         48.0
     } else {
         0.0
@@ -104,6 +168,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 gitgraph.width,
                 gitgraph.height,
             )
+        } else if let DiagramData::Journey(journey) = &layout.diagram {
+            let width = journey.width.max(1.0);
+            let height = journey.height.max(1.0);
+            (width, height, 0.0, -25.0, width, height)
         } else if layout.kind == crate::ir::DiagramKind::Mindmap {
             let pad = config.mindmap.padding;
             let mut min_x = f32::MAX;
@@ -163,17 +231,44 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             } else {
                 (width, height, 0.0, 0.0, width, height)
             }
+        } else if let DiagramData::Sankey(sankey) = &layout.diagram {
+            let width = sankey.width.max(1.0);
+            let height = sankey_content_viewbox_height(sankey).max(1.0);
+            let viewbox_y = sankey_content_viewbox_y(sankey);
+            (width, height, 0.0, viewbox_y, width, height)
+        } else if let DiagramData::TreeView(tree_view) = &layout.diagram {
+            let width = tree_view.width.max(1.0);
+            let height = tree_view.height.max(1.0);
+            (width, height, -0.5, 0.0, width, height)
+        } else if let DiagramData::EventModeling(eventmodeling) = &layout.diagram {
+            (
+                eventmodeling.width.max(1.0),
+                eventmodeling.height.max(1.0),
+                eventmodeling.viewbox_x,
+                eventmodeling.viewbox_y,
+                eventmodeling.viewbox_width.max(1.0),
+                eventmodeling.viewbox_height.max(1.0),
+            )
+        } else if let DiagramData::Cynefin(cynefin) = &layout.diagram {
+            (
+                cynefin.width.max(1.0),
+                cynefin.height.max(1.0),
+                0.0,
+                0.0,
+                cynefin.width.max(1.0),
+                cynefin.height.max(1.0),
+            )
         } else {
             let width = layout.width.max(1.0);
             let height = layout.height.max(1.0);
-            if er_title_extra > 0.0 {
+            if graph_title_extra > 0.0 {
                 (
                     width,
-                    height + er_title_extra,
+                    height + graph_title_extra,
                     0.0,
-                    -er_title_extra,
+                    -graph_title_extra,
                     width,
-                    height + er_title_extra,
+                    height + graph_title_extra,
                 )
             } else {
                 (width, height, 0.0, 0.0, width, height)
@@ -187,8 +282,21 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     let is_sequence = seq_data.is_some();
     let is_state = layout.kind == crate::ir::DiagramKind::State;
     let is_class = layout.kind == crate::ir::DiagramKind::Class;
+    let is_block = layout.kind == crate::ir::DiagramKind::Block;
+    let is_architecture = layout.kind == crate::ir::DiagramKind::Architecture;
     let is_c4 = matches!(layout.diagram, DiagramData::C4(_));
+    let is_venn = matches!(layout.diagram, DiagramData::Venn(_));
+    let is_packet = matches!(layout.diagram, DiagramData::Packet(_));
+    let is_sankey = matches!(layout.diagram, DiagramData::Sankey(_));
+    let is_quadrant = matches!(layout.diagram, DiagramData::Quadrant(_));
+    let is_tree_view = matches!(layout.diagram, DiagramData::TreeView(_));
+    let is_ishikawa = matches!(layout.diagram, DiagramData::Ishikawa(_));
+    let is_gitgraph = matches!(layout.diagram, DiagramData::GitGraph(_));
+    let is_eventmodeling = matches!(layout.diagram, DiagramData::EventModeling(_));
+    let is_cynefin = matches!(layout.diagram, DiagramData::Cynefin(_));
+    let is_treemap = layout.kind == crate::ir::DiagramKind::Treemap;
     let has_links = is_c4
+        || is_eventmodeling
         || layout.nodes.values().any(|node| node.link.is_some())
         || seq_data
             .iter()
@@ -223,7 +331,14 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             width_attr = "100%".to_string();
             height_attr.clear();
             style_attr = format!(
-                " style=\"max-width: {:.3}px;{}\"",
+                " style=\"max-width: {:.3}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if matches!(layout.diagram, DiagramData::Journey(_)) {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.0}px; background-color: white;{}\"",
                 viewbox_width, preferred_ratio_style
             );
         } else if layout.kind == crate::ir::DiagramKind::Mindmap && config.mindmap.use_max_width {
@@ -246,6 +361,70 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             height_attr.clear();
             style_attr = format!(
                 " style=\"max-width: {:.3}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if matches!(layout.diagram, DiagramData::TreeView(_)) {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.3}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if let DiagramData::EventModeling(eventmodeling) = &layout.diagram
+            && eventmodeling.use_max_width
+        {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.3}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if let DiagramData::Cynefin(cynefin) = &layout.diagram
+            && cynefin.use_max_width
+        {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.3}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if is_treemap {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.0}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if matches!(layout.diagram, DiagramData::XYChart(_)) {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.0}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if let DiagramData::Quadrant(quadrant) = &layout.diagram
+            && quadrant.use_max_width
+        {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.0}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if let DiagramData::Sankey(sankey) = &layout.diagram
+            && sankey.use_max_width
+        {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.0}px; background-color: white;{}\"",
+                viewbox_width, preferred_ratio_style
+            );
+        } else if is_venn || is_packet {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {:.0}px; background-color: white;{}\"",
                 viewbox_width, preferred_ratio_style
             );
         } else if layout.kind == crate::ir::DiagramKind::Pie && config.pie.use_max_width {
@@ -275,11 +454,36 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             labelledby.push("chart-desc");
         }
         aria_attrs.push_str(&format!(" aria-labelledby=\"{}\"", labelledby.join(" ")));
+    } else if is_sankey {
+        aria_attrs.push_str(" role=\"graphics-document document\" aria-roledescription=\"sankey\"");
+    } else if is_tree_view {
+        aria_attrs
+            .push_str(" role=\"graphics-document document\" aria-roledescription=\"treeView\"");
+    } else if is_eventmodeling {
+        aria_attrs.push_str(
+            " role=\"graphics-document document\" aria-roledescription=\"eventmodeling\"",
+        );
+    } else if is_cynefin {
+        aria_attrs
+            .push_str(" role=\"graphics-document document\" aria-roledescription=\"cynefin\"");
+    } else if is_treemap {
+        aria_attrs
+            .push_str(" role=\"graphics-document document\" aria-roledescription=\"treemap\"");
     }
 
+    let svg_id_attr = if is_sankey || is_tree_view || is_treemap || is_eventmodeling || is_cynefin {
+        " id=\"my-svg\""
+    } else {
+        ""
+    };
+    let svg_class_attr = if is_treemap {
+        " class=\"flowchart\""
+    } else {
+        ""
+    };
     svg.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\"{} width=\"{width_attr}\"{} viewBox=\"{viewbox_x} {viewbox_y} {viewbox_width} {viewbox_height}\"{style_attr}{aria_attrs}>",
-        if has_links {
+        "<svg{svg_id_attr} xmlns=\"http://www.w3.org/2000/svg\"{} width=\"{width_attr}\"{} viewBox=\"{viewbox_x} {viewbox_y} {viewbox_width} {viewbox_height}\"{style_attr}{svg_class_attr}{aria_attrs}>",
+        if has_links || is_sankey || is_tree_view || is_treemap {
             " xmlns:xlink=\"http://www.w3.org/1999/xlink\""
         } else {
             ""
@@ -290,6 +494,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             format!(" height=\"{height_attr}\"")
         }
     ));
+    svg.push_str(&svg_font_style_block(layout, theme, config));
 
     // Emit accessibility <title> and <desc> elements.
     if let Some(title) = &layout.acc_title {
@@ -309,22 +514,41 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         svg.push_str(&error_style_block(theme));
     }
 
-    // Timeline and Ishikawa use CSS background-color on the SVG element.
+    // Timeline, GitGraph, Ishikawa, XYChart, QuadrantChart, Venn, Sankey, and Packet supply their own background.
     if !matches!(
         layout.diagram,
-        DiagramData::Timeline(_) | DiagramData::Ishikawa(_)
-    ) {
+        DiagramData::Timeline(_)
+            | DiagramData::GitGraph(_)
+            | DiagramData::Ishikawa(_)
+            | DiagramData::XYChart(_)
+            | DiagramData::Quadrant(_)
+            | DiagramData::Venn(_)
+            | DiagramData::Sankey(_)
+            | DiagramData::TreeView(_)
+            | DiagramData::EventModeling(_)
+            | DiagramData::Cynefin(_)
+            | DiagramData::Packet(_)
+    ) && !is_treemap
+    {
         svg.push_str(&format!(
             "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
             theme.background
         ));
     }
-    if layout.kind == crate::ir::DiagramKind::Er
-        && let Some(title) = graph_title
+    if matches!(
+        layout.kind,
+        crate::ir::DiagramKind::Er | crate::ir::DiagramKind::Class
+    ) && let Some(title) = graph_title
     {
+        let title_class = if layout.kind == crate::ir::DiagramKind::Class {
+            "classDiagramTitleText"
+        } else {
+            "erDiagramTitleText"
+        };
         svg.push_str(&format!(
-            "<text text-anchor=\"middle\" x=\"{:.2}\" y=\"-25\" class=\"erDiagramTitleText\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+            "<text text-anchor=\"middle\" x=\"{:.2}\" y=\"-25\" class=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
             viewbox_x + viewbox_width / 2.0,
+            title_class,
             normalize_font_family(&theme.font_family),
             theme.font_size,
             theme.primary_text_color,
@@ -338,8 +562,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         return svg;
     }
 
+    let default_edge_stroke = default_edge_stroke_for_kind(layout.kind, theme);
     let mut colors = Vec::new();
-    colors.push(theme.line_color.clone());
+    colors.push(default_edge_stroke.clone());
     for edge in &layout.edges {
         if let Some(color) = &edge.override_style.stroke
             && !colors.contains(color)
@@ -352,20 +577,42 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         color_ids.insert(color.clone(), idx);
     }
 
-    // Timeline diagrams define their own arrowhead marker — skip generic defs.
+    // Diagram-specific renderers skip generic flowchart markers unless they
+    // still reference the shared marker ids.
     let is_timeline = matches!(layout.diagram, DiagramData::Timeline(_));
-    if is_timeline {
-        // Jump past generic marker defs — render_timeline() adds its own.
+    let is_xychart = matches!(layout.diagram, DiagramData::XYChart(_));
+    let architecture_needs_markers = is_architecture
+        && layout
+            .edges
+            .iter()
+            .any(|edge| edge.arrow_start || edge.arrow_end);
+    if is_timeline
+        || is_xychart
+        || is_quadrant
+        || is_venn
+        || is_sankey
+        || is_packet
+        || is_tree_view
+        || is_ishikawa
+        || is_gitgraph
+        || is_treemap
+        || is_eventmodeling
+        || is_cynefin
+        || (is_architecture && !architecture_needs_markers)
+    {
+        // Jump past generic marker defs.
     } else {
         svg.push_str("<defs>");
         for color in &colors {
             let idx = color_ids.get(color).copied().unwrap_or(0);
+            let (point_ref_x, point_size) = if is_block { ("6", "12") } else { ("5", "8") };
+            let start_size = if is_block { "12" } else { "8" };
             svg.push_str(&format!(
-            "<marker id=\"arrow-{idx}\" viewBox=\"0 0 10 10\" refX=\"5\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+            "<marker id=\"arrow-{idx}\" viewBox=\"0 0 10 10\" refX=\"{point_ref_x}\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"{point_size}\" markerHeight=\"{point_size}\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
             color, color
         ));
             svg.push_str(&format!(
-            "<marker id=\"arrow-start-{idx}\" viewBox=\"0 0 10 10\" refX=\"4.5\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M 0 5 L 10 10 L 10 0 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
+            "<marker id=\"arrow-start-{idx}\" viewBox=\"0 0 10 10\" refX=\"4.5\" refY=\"5\" markerUnits=\"userSpaceOnUse\" markerWidth=\"{start_size}\" markerHeight=\"{start_size}\" orient=\"auto\"><path d=\"M 0 5 L 10 10 L 10 0 z\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
             color, color
         ));
             if is_sequence {
@@ -425,6 +672,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     }
 
     if let DiagramData::Sankey(ref sankey) = layout.diagram {
+        svg.push_str("<g/>");
         svg.push_str(&render_sankey(sankey, theme, config));
         svg.push_str("</svg>");
         return svg;
@@ -496,6 +744,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         return svg;
     }
 
+    if let DiagramData::Packet(ref packet) = layout.diagram {
+        svg.push_str(&render_packet(packet));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
     if let DiagramData::TreeView(ref tv) = layout.diagram {
         svg.push_str(&render_tree_view(tv, theme));
         svg.push_str("</svg>");
@@ -514,7 +768,19 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         return svg;
     }
 
-    for subgraph in &layout.subgraphs {
+    if let DiagramData::EventModeling(ref eventmodeling) = layout.diagram {
+        svg.push_str(&render_eventmodeling(eventmodeling));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    if let DiagramData::Cynefin(ref cynefin) = layout.diagram {
+        svg.push_str(&render_cynefin(cynefin, theme));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    for (subgraph_index, subgraph) in layout.subgraphs.iter().enumerate() {
         let label_empty = subgraph.label.trim().is_empty();
         if is_state {
             let sub_fill = subgraph.style.fill.as_ref().unwrap_or(&theme.primary_color);
@@ -534,7 +800,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let header_h = if label_empty {
                 0.0
             } else {
-                (subgraph.label_block.height + theme.font_size * 0.75).max(theme.font_size * 1.4)
+                subgraph.label_block.height + 2.0
             };
             let header_fill = if sub_fill.as_str() == "none" {
                 "none".to_string()
@@ -546,18 +812,23 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             } else {
                 adjust_color(sub_fill, 0.0, -12.0, 10.0)
             };
-            if header_h > 0.0 {
+            let rounded_with_title = header_h > 0.0;
+            if rounded_with_title {
                 svg.push_str(&format!(
                     "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"6\" ry=\"6\" fill=\"{}\" stroke=\"none\"/>",
                     subgraph.x,
                     subgraph.y,
                     subgraph.width,
-                    header_h,
+                    subgraph.height,
                     header_fill
                 ));
             }
             let inner_y = subgraph.y + header_h;
-            let inner_h = (subgraph.height - header_h).max(0.0);
+            let inner_h = if rounded_with_title {
+                (subgraph.height - subgraph.label_block.height - 6.0).max(0.0)
+            } else {
+                subgraph.height
+            };
             if inner_h > 0.0 {
                 svg.push_str(&format!(
                     "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"none\"/>",
@@ -616,16 +887,41 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 ));
             }
         } else {
-            let sub_fill = subgraph
-                .style
-                .fill
-                .as_ref()
-                .unwrap_or(&theme.cluster_background);
-            let sub_stroke = subgraph
-                .style
-                .stroke
-                .as_ref()
-                .unwrap_or(&theme.cluster_border);
+            let block_cluster_fill = if is_block {
+                Some(color_with_opacity(&theme.cluster_background, 0.5))
+            } else {
+                None
+            };
+            let block_cluster_stroke = if is_block {
+                Some(color_with_opacity(&theme.cluster_border, 0.2))
+            } else {
+                None
+            };
+            let kanban_section_fill = if layout.kind == crate::ir::DiagramKind::Kanban {
+                Some(default_kanban_section_fill(subgraph_index))
+            } else {
+                None
+            };
+            let default_fill = if is_block {
+                block_cluster_fill
+                    .as_deref()
+                    .unwrap_or(&theme.cluster_background)
+            } else if let Some(fill) = kanban_section_fill {
+                fill
+            } else {
+                &theme.cluster_background
+            };
+            let default_stroke = if is_block {
+                block_cluster_stroke
+                    .as_deref()
+                    .unwrap_or(&theme.cluster_border)
+            } else if let Some(fill) = kanban_section_fill {
+                fill
+            } else {
+                &theme.cluster_border
+            };
+            let sub_fill = subgraph.style.fill.as_deref().unwrap_or(default_fill);
+            let sub_stroke = subgraph.style.stroke.as_deref().unwrap_or(default_stroke);
             let sub_dash = subgraph
                 .style
                 .stroke_dasharray
@@ -634,16 +930,28 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 .unwrap_or_default();
             let sub_stroke_width = subgraph.style.stroke_width.unwrap_or(1.0);
             let invisible = label_empty
-                && sub_fill.as_str() == "none"
-                && sub_stroke.as_str() == "none"
+                && sub_fill == "none"
+                && sub_stroke == "none"
                 && sub_stroke_width <= 0.0;
             if !invisible {
+                let radius = if matches!(
+                    layout.kind,
+                    crate::ir::DiagramKind::Block | crate::ir::DiagramKind::Flowchart
+                ) {
+                    0
+                } else if layout.kind == crate::ir::DiagramKind::Kanban {
+                    5
+                } else {
+                    10
+                };
                 svg.push_str(&format!(
-                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"10\" ry=\"10\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{} />",
+                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{}\" ry=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{} />",
                     subgraph.x,
                     subgraph.y,
                     subgraph.width,
                     subgraph.height,
+                    radius,
+                    radius,
                     sub_fill,
                     sub_stroke,
                     sub_stroke_width,
@@ -652,12 +960,29 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             }
             if !label_empty {
                 let label_x = subgraph.x + subgraph.width / 2.0;
-                let label_y = subgraph.y + 12.0 + subgraph.label_block.height / 2.0;
+                let label_y = if matches!(
+                    layout.kind,
+                    crate::ir::DiagramKind::Flowchart | crate::ir::DiagramKind::Kanban
+                ) {
+                    // Mermaid JS positions flowchart cluster labels at the top
+                    // edge of the cluster (`subGraphTitleTopMargin`, normally
+                    // zero) and lets the label's measured box occupy the title
+                    // band. Our text helper takes the label center, so use the
+                    // center of that measured band here.
+                    subgraph.y + subgraph.label_block.height / 2.0
+                } else {
+                    subgraph.y + 12.0 + subgraph.label_block.height / 2.0
+                };
+                let default_label_color = if layout.kind == crate::ir::DiagramKind::Kanban {
+                    "black"
+                } else {
+                    theme.primary_text_color.as_str()
+                };
                 let label_color = subgraph
                     .style
                     .text_color
-                    .as_ref()
-                    .unwrap_or(&theme.primary_text_color);
+                    .as_deref()
+                    .unwrap_or(default_label_color);
                 svg.push_str(&text_block_svg(
                     label_x,
                     label_y,
@@ -692,12 +1017,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 // the label center in the gap reserved by `actor_y_offset`.
                 let label_x = seq_box.x + seq_box.width / 2.0;
                 let label_y = seq_box.y + theme.font_size * 0.85;
-                svg.push_str(&text_block_svg_anchor(
+                svg.push_str(&sequence_text_block_svg_anchor(
                     label_x,
                     label_y,
                     label,
                     theme,
-                    config,
                     "middle",
                     Some(theme.primary_text_color.as_str()),
                 ));
@@ -706,7 +1030,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     }
 
     for frame in seq_data.map(|s| s.frames.as_slice()).unwrap_or_default() {
-        let stroke = theme.primary_border_color.as_str();
+        let stroke = sequence_frame_border_color(theme);
         // `rect <color>` blocks render as a solid filled background with no
         // dashed border and no label box (matches mermaid.js convention).
         if matches!(frame.kind, crate::ir::SequenceFrameKind::Rect) {
@@ -747,22 +1071,20 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             notch_x = notch_x,
             notch_y = notch_y
         ));
-        svg.push_str(&text_block_svg(
+        svg.push_str(&sequence_text_block_svg(
             frame.label.x,
             frame.label.y,
             &frame.label.text,
             theme,
-            config,
             false,
             Some(theme.primary_text_color.as_str()),
         ));
         for label in &frame.section_labels {
-            svg.push_str(&text_block_svg(
+            svg.push_str(&sequence_text_block_svg(
                 label.x,
                 label.y,
                 &label.text,
                 theme,
-                config,
                 false,
                 None,
             ));
@@ -831,19 +1153,18 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         ));
         let center_x = note.x + note.width / 2.0;
         let center_y = note.y + note.height / 2.0;
-        svg.push_str(&text_block_svg(
+        svg.push_str(&sequence_text_block_svg(
             center_x,
             center_y,
             &note.label,
             theme,
-            config,
             false,
             Some(theme.primary_text_color.as_str()),
         ));
     }
 
     if let DiagramData::Graph { state_notes, .. } = &layout.diagram {
-        for note in state_notes {
+        for (note_idx, note) in state_notes.iter().enumerate() {
             let fill = theme.sequence_note_fill.as_str();
             let stroke = theme.sequence_note_border.as_str();
             let fold = (theme.font_size * 0.8)
@@ -858,14 +1179,36 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             // Draw dashed connector from note to its target state first so
             // the note shape paints over the connector ends.
             if let Some(target) = layout.nodes.get(&note.target) {
-                let (note_anchor_x, target_anchor_x) = match note.position {
-                    crate::ir::StateNotePosition::LeftOf => (note.x + note.width, target.x),
-                    crate::ir::StateNotePosition::RightOf => (note.x, target.x + target.width),
+                let note_cx = note.x + note.width / 2.0;
+                let note_cy = note.y + note.height / 2.0;
+                let target_cx = target.x + target.width / 2.0;
+                let target_cy = target.y + target.height / 2.0;
+                let (start, end) = if note_cy > target_cy + 1.0 {
+                    let biased_x = target_cx + (note_cx - target_cx) * 0.38;
+                    ((biased_x, target.y + target.height), (note_cx, note.y))
+                } else if note_cy + 1.0 < target_cy {
+                    let biased_x = target_cx + (note_cx - target_cx) * 0.26;
+                    ((note_cx, note.y + note.height), (biased_x, target.y))
+                } else if note_cx < target_cx {
+                    ((note.x + note.width, note_cy), (target.x, target_cy))
+                } else {
+                    ((note.x, note_cy), (target.x + target.width, target_cy))
                 };
-                let note_anchor_y = note.y + note.height / 2.0;
-                let target_anchor_y = target.y + target.height / 2.0;
+                let dy = end.1 - start.1;
+                let c1 = (start.0, start.1 + dy * 0.33);
+                let c2 = (end.0, end.1 - dy * 0.33);
+                let connector_id = format!("state-note-edge-{note_idx}");
                 svg.push_str(&format!(
-                    "<line x1=\"{note_anchor_x:.2}\" y1=\"{note_anchor_y:.2}\" x2=\"{target_anchor_x:.2}\" y2=\"{target_anchor_y:.2}\" stroke=\"{stroke}\" stroke-width=\"1\" stroke-dasharray=\"5 3\" fill=\"none\"/>"
+                    "<path id=\"{connector_id}\" class=\"edge-thickness-normal edge-pattern-solid transition note-edge\" data-edge=\"true\" data-et=\"edge\" data-id=\"{connector_id}\" d=\"M {sx:.3},{sy:.3} C {c1x:.3},{c1y:.3} {c2x:.3},{c2y:.3} {ex:.3},{ey:.3}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"5\" fill=\"none\"/>",
+                    default_edge_stroke,
+                    sx = start.0,
+                    sy = start.1,
+                    c1x = c1.0,
+                    c1y = c1.1,
+                    c2x = c2.0,
+                    c2y = c2.1,
+                    ex = end.0,
+                    ey = end.1
                 ));
             }
             svg.push_str(&format!(
@@ -895,7 +1238,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     if is_sequence {
         for (edge_idx, edge) in layout.edges.iter().enumerate() {
             let d = points_to_path(&edge.points);
-            let mut stroke = theme.line_color.clone();
+            let mut stroke = default_edge_stroke.clone();
             let edge_id = edge_dom_id(edge_idx);
             if let Some(color) = &edge.override_style.stroke {
                 stroke = color.clone();
@@ -949,7 +1292,13 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             if let Some(dash_override) = &edge.override_style.dasharray {
                 dash = format!("stroke-dasharray=\"{}\"", dash_override);
             }
-            let stroke_width = edge.override_style.stroke_width.unwrap_or(2.0);
+            let stroke_width = edge.override_style.stroke_width.unwrap_or_else(|| {
+                if edge.style == crate::ir::EdgeStyle::Invisible {
+                    0.0
+                } else {
+                    1.5
+                }
+            });
             svg.push_str(&format!(
                 "<path id=\"{edge_id}\" class=\"edgePath\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" {} {} {} stroke-linecap=\"round\" stroke-linejoin=\"round\" />",
                 d, stroke, stroke_width, marker_end, marker_start, dash
@@ -1009,12 +1358,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 svg.push_str(&format!(
                     "<g class=\"edgeLabel\" data-edge-id=\"{edge_id}\" data-label-kind=\"center\">"
                 ));
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     mid_x,
                     label_y,
                     label,
                     theme,
-                    config,
                     false,
                     Some(label_color),
                 ));
@@ -1064,12 +1412,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 svg.push_str(&format!(
                     "<g class=\"edgeLabel\" data-edge-id=\"{edge_id}\" data-label-kind=\"start\">"
                 ));
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     x,
                     y,
                     label,
                     theme,
-                    config,
                     false,
                     Some(label_color),
                 ));
@@ -1112,12 +1459,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 svg.push_str(&format!(
                     "<g class=\"edgeLabel\" data-edge-id=\"{edge_id}\" data-label-kind=\"end\">"
                 ));
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     x,
                     y,
                     label,
                     theme,
-                    config,
                     false,
                     Some(label_color),
                 ));
@@ -1149,6 +1495,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     } else {
         let base_edge_width = match layout.kind {
             crate::ir::DiagramKind::Class
+            | crate::ir::DiagramKind::Flowchart
             | crate::ir::DiagramKind::State
             | crate::ir::DiagramKind::Er => 1.0,
             _ => 2.0,
@@ -1156,21 +1503,45 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         for (edge_idx, edge) in layout.edges.iter().enumerate() {
             let edge_curve = edge.curve.unwrap_or(config.flowchart.curve);
             let render_points = class_symbol_render_points(edge, layout.kind);
+            let path_points = if layout.kind == crate::ir::DiagramKind::Flowchart {
+                flowchart_marker_offset_render_points(&render_points, edge)
+            } else {
+                render_points.clone()
+            };
             let d = {
-                let raw = points_to_curved_path(&render_points, edge_curve);
+                let raw = if edge_curve == crate::ir::CurveType::Basis
+                    && matches!(
+                        layout.kind,
+                        crate::ir::DiagramKind::Block
+                            | crate::ir::DiagramKind::Class
+                            | crate::ir::DiagramKind::State
+                            | crate::ir::DiagramKind::Flowchart
+                    ) {
+                    if matches!(
+                        layout.kind,
+                        crate::ir::DiagramKind::Flowchart | crate::ir::DiagramKind::State
+                    ) {
+                        let basis_points = flowchart_d3_basis_points(&path_points);
+                        points_to_d3_basis_path(&basis_points)
+                    } else {
+                        points_to_d3_basis_path(&path_points)
+                    }
+                } else {
+                    points_to_curved_path(&path_points, edge_curve)
+                };
                 if config.look == crate::ir::DiagramLook::HandDrawn {
                     let seed = hand_drawn_seed(
-                        render_points.first().map(|p| p.0).unwrap_or(0.0),
-                        render_points.first().map(|p| p.1).unwrap_or(0.0),
-                        render_points.last().map(|p| p.0).unwrap_or(0.0),
-                        render_points.last().map(|p| p.1).unwrap_or(0.0),
+                        path_points.first().map(|p| p.0).unwrap_or(0.0),
+                        path_points.first().map(|p| p.1).unwrap_or(0.0),
+                        path_points.last().map(|p| p.0).unwrap_or(0.0),
+                        path_points.last().map(|p| p.1).unwrap_or(0.0),
                     );
                     hand_drawn_path_jitter(&raw, 1.0, seed)
                 } else {
                     raw
                 }
             };
-            let mut stroke = theme.line_color.clone();
+            let mut stroke = default_edge_stroke.clone();
             let edge_id = edge_dom_id(edge_idx);
             let (mut dash, mut stroke_width) = match edge.style {
                 crate::ir::EdgeStyle::Solid => (String::new(), base_edge_width),
@@ -1178,6 +1549,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     ("stroke-dasharray=\"2\"".to_string(), base_edge_width)
                 }
                 crate::ir::EdgeStyle::Thick => (String::new(), 3.5),
+                crate::ir::EdgeStyle::Invisible => (String::new(), 0.0),
             };
 
             if let Some(color) = &edge.override_style.stroke {
@@ -1537,10 +1909,21 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 }
                 continue;
             }
-            svg.push_str(&shape_svg(node, theme, config));
+            if layout.kind == crate::ir::DiagramKind::Kanban {
+                svg.push_str(&render_kanban_item_node(node, theme, config));
+                if node.link.is_some() {
+                    svg.push_str("</a>");
+                }
+                continue;
+            }
+            if layout.kind == crate::ir::DiagramKind::Treemap {
+                svg.push_str(&treemap_shape_svg(node, theme));
+            } else {
+                svg.push_str(&shape_svg(node, theme, config, layout.kind));
+            }
             if layout.kind != crate::ir::DiagramKind::Er {
                 let divider_line_height = if layout.kind == crate::ir::DiagramKind::Class {
-                    theme.font_size * config.class_label_line_height()
+                    theme.font_size * config.class_diagram_label_line_height()
                 } else {
                     theme.font_size * config.label_line_height
                 };
@@ -1549,9 +1932,15 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     theme,
                     divider_line_height,
                     layout.kind == crate::ir::DiagramKind::Class,
+                    layout.kind == crate::ir::DiagramKind::Class,
                 ));
             }
-            let center_x = node.x + node.width / 2.0;
+            let mut center_x = node.x + node.width / 2.0;
+            if node.shape == crate::ir::NodeShape::Asymmetric {
+                center_x += left_inv_arrow_notch(node.width, node.height) / 2.0;
+            } else if node.shape == crate::ir::NodeShape::OddShape {
+                center_x += flowchart_odd_notch(node.height) / 2.0;
+            }
             let center_y = node.y + node.height / 2.0;
             let hide_label = node
                 .label
@@ -1559,57 +1948,20 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 .iter()
                 .all(|line| line.text().trim().is_empty())
                 || node.id.starts_with("__start_")
-                || node.id.starts_with("__end_");
+                || node.id.starts_with("__end_")
+                || (layout.kind == crate::ir::DiagramKind::Flowchart
+                    && matches!(
+                        node.shape,
+                        crate::ir::NodeShape::CrossedCircle
+                            | crate::ir::NodeShape::Hourglass
+                            | crate::ir::NodeShape::LightningBolt
+                    ));
             if !hide_label {
                 let label_svg = if layout.kind == crate::ir::DiagramKind::Treemap {
                     if node.is_treemap_leaf {
-                        // Leaf nodes: name centered, value centered below in smaller font
-                        let mut out = String::new();
-                        let sub_h = node.sub_label.as_ref().map_or(0.0, |sl| sl.height);
-                        let total_h = node.label.height + sub_h;
-                        let label_y = center_y - total_h / 2.0 + node.label.height / 2.0;
-                        out.push_str(&text_block_svg(
-                            center_x,
-                            label_y,
-                            &node.label,
-                            theme,
-                            config,
-                            false,
-                            node.style.text_color.as_deref(),
-                        ));
-                        if let Some(ref sub) = node.sub_label {
-                            let sub_font = theme.font_size * 0.75;
-                            let sub_y = label_y + node.label.height / 2.0 + sub.height / 2.0 + 2.0;
-                            out.push_str(&text_block_svg_with_font_size(
-                                center_x,
-                                sub_y,
-                                sub,
-                                theme,
-                                config,
-                                sub_font,
-                                "middle",
-                                node.style.text_color.as_deref(),
-                                false,
-                            ));
-                        }
-                        out
+                        treemap_leaf_label_svg(node, theme)
                     } else {
-                        // Parent/category nodes: label top-left
-                        let label_x = node.x + config.treemap.label_padding_x;
-                        let label_y =
-                            node.y + config.treemap.label_padding_y + node.label.height / 2.0;
-                        let small_font = theme.font_size * 0.7;
-                        text_block_svg_with_font_size(
-                            label_x,
-                            label_y,
-                            &node.label,
-                            theme,
-                            config,
-                            small_font,
-                            "start",
-                            node.style.text_color.as_deref(),
-                            false,
-                        )
+                        treemap_section_label_svg(node, theme)
                     }
                 } else if layout.kind == crate::ir::DiagramKind::Er {
                     render_er_node_label(node, theme, config).unwrap_or_else(|| {
@@ -1648,6 +2000,130 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         "start",
                         node.style.text_color.as_deref(),
                         false,
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && is_flowchart_icon_shape(node.shape)
+                {
+                    let label_y = flowchart_icon_label_center_y(node);
+                    text_block_svg(
+                        center_x,
+                        label_y,
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::HorizontalCylinder
+                {
+                    let label_offset_x = flowchart_tilted_cylinder_rx(node.height);
+                    text_block_svg(
+                        center_x - label_offset_x,
+                        center_y,
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::Document
+                {
+                    text_block_svg(
+                        center_x,
+                        center_y - flowchart_wave_document_amplitude(node.height),
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::LinedDocument
+                {
+                    let wave_amplitude = flowchart_wave_document_amplitude(node.height);
+                    let body_width = node.width / 1.1;
+                    text_block_svg(
+                        center_x + body_width * 0.025,
+                        center_y - wave_amplitude / 2.0,
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::TagDocument
+                {
+                    text_block_svg(
+                        center_x,
+                        center_y - flowchart_wave_document_amplitude(node.height) / 2.0,
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::LinedCylinder
+                {
+                    text_block_svg(
+                        center_x,
+                        center_y + flowchart_cylinder_ry(node.width),
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::DividedRect
+                {
+                    text_block_svg(
+                        center_x,
+                        center_y + flowchart_divided_rect_offset(node.height) / 2.0,
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::SlopedRect
+                {
+                    text_block_svg(
+                        center_x,
+                        center_y + node.height / 6.0,
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::WindowPane
+                {
+                    text_block_svg(
+                        center_x + FLOWCHART_WINDOW_PANE_OFFSET / 2.0,
+                        center_y + FLOWCHART_WINDOW_PANE_OFFSET / 2.0,
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::BraceLeft
+                {
+                    text_block_svg(
+                        center_x - flowchart_curly_brace_radius(node.height) / 2.0,
+                        center_y,
+                        &node.label,
+                        theme,
+                        config,
+                        false,
+                        node.style.text_color.as_deref(),
                     )
                 } else if node
                     .label
@@ -1712,12 +2188,18 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
                 }
             }
-            svg.push_str(&shape_svg(footbox, theme, config));
+            svg.push_str(&shape_svg(
+                footbox,
+                theme,
+                config,
+                crate::ir::DiagramKind::Sequence,
+            ));
             let divider_line_height = theme.font_size * config.label_line_height;
             svg.push_str(&divider_lines_svg(
                 footbox,
                 theme,
                 divider_line_height,
+                false,
                 false,
             ));
             let center_x = footbox.x + footbox.width / 2.0;
@@ -1876,6 +2358,113 @@ fn points_to_curved_path(points: &[(f32, f32)], curve: crate::ir::CurveType) -> 
             curve_cardinal(pts, 0.5)
         }
     }
+}
+
+fn points_to_d3_basis_path(points: &[(f32, f32)]) -> String {
+    if points.is_empty() {
+        return String::new();
+    }
+    let pts = dedupe_points(points);
+    match pts.len() {
+        0 => return String::new(),
+        1 => return format!("M {:.3},{:.3}", pts[0].0, pts[0].1),
+        2 => {
+            return format!(
+                "M {:.3},{:.3} L {:.3},{:.3}",
+                pts[0].0, pts[0].1, pts[1].0, pts[1].1
+            );
+        }
+        _ => {}
+    }
+
+    let mut d = format!("M {:.3},{:.3}", pts[0].0, pts[0].1);
+    let first_line = (
+        (5.0 * pts[0].0 + pts[1].0) / 6.0,
+        (5.0 * pts[0].1 + pts[1].1) / 6.0,
+    );
+    d.push_str(&format!(" L {:.3},{:.3}", first_line.0, first_line.1));
+
+    for i in 2..pts.len() {
+        let p0 = pts[i - 2];
+        let p1 = pts[i - 1];
+        let p2 = pts[i];
+        let c1 = ((2.0 * p0.0 + p1.0) / 3.0, (2.0 * p0.1 + p1.1) / 3.0);
+        let c2 = ((p0.0 + 2.0 * p1.0) / 3.0, (p0.1 + 2.0 * p1.1) / 3.0);
+        let end = (
+            (p0.0 + 4.0 * p1.0 + p2.0) / 6.0,
+            (p0.1 + 4.0 * p1.1 + p2.1) / 6.0,
+        );
+        d.push_str(&format!(
+            " C {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
+            c1.0, c1.1, c2.0, c2.1, end.0, end.1
+        ));
+    }
+
+    let n = pts.len();
+    let p0 = pts[n - 2];
+    let p1 = pts[n - 1];
+    let c1 = ((2.0 * p0.0 + p1.0) / 3.0, (2.0 * p0.1 + p1.1) / 3.0);
+    let c2 = ((p0.0 + 2.0 * p1.0) / 3.0, (p0.1 + 2.0 * p1.1) / 3.0);
+    let end = ((p0.0 + 5.0 * p1.0) / 6.0, (p0.1 + 5.0 * p1.1) / 6.0);
+    d.push_str(&format!(
+        " C {:.3},{:.3} {:.3},{:.3} {:.3},{:.3} L {:.3},{:.3}",
+        c1.0, c1.1, c2.0, c2.1, end.0, end.1, p1.0, p1.1
+    ));
+    d
+}
+
+fn flowchart_d3_basis_points(points: &[(f32, f32)]) -> Vec<(f32, f32)> {
+    let pts = dedupe_points(points);
+    if pts.len() == 2 {
+        let mid = ((pts[0].0 + pts[1].0) * 0.5, (pts[0].1 + pts[1].1) * 0.5);
+        vec![pts[0], mid, pts[1]]
+    } else {
+        pts
+    }
+}
+
+fn flowchart_marker_offset_render_points(
+    points: &[(f32, f32)],
+    edge: &crate::layout::EdgeLayout,
+) -> Vec<(f32, f32)> {
+    const ARROW_POINT_OFFSET: f32 = 4.0;
+
+    let mut adjusted = points.to_vec();
+    if adjusted.len() < 2 {
+        return adjusted;
+    }
+
+    if edge.arrow_start {
+        offset_endpoint(&mut adjusted, true, ARROW_POINT_OFFSET);
+    }
+    if edge.arrow_end {
+        offset_endpoint(&mut adjusted, false, ARROW_POINT_OFFSET);
+    }
+
+    adjusted
+}
+
+fn offset_endpoint(points: &mut [(f32, f32)], start: bool, offset: f32) {
+    if points.len() < 2 || offset == 0.0 {
+        return;
+    }
+
+    let (endpoint_idx, adjacent_idx) = if start {
+        (0, 1)
+    } else {
+        (points.len() - 1, points.len() - 2)
+    };
+    let endpoint = points[endpoint_idx];
+    let adjacent = points[adjacent_idx];
+    let dx = adjacent.0 - endpoint.0;
+    let dy = adjacent.1 - endpoint.1;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= f32::EPSILON {
+        return;
+    }
+
+    points[endpoint_idx].0 += offset * dx / len;
+    points[endpoint_idx].1 += offset * dy / len;
 }
 
 /// B-spline (basis) curve through points.
@@ -2604,10 +3193,8 @@ fn format_sankey_value(value: f32) -> String {
     }
 }
 
-fn render_sankey(layout: &SankeyLayout, theme: &Theme, _config: &LayoutConfig) -> String {
+fn render_sankey(layout: &SankeyLayout, _theme: &Theme, _config: &LayoutConfig) -> String {
     let mut svg = String::new();
-    let max_rank = layout.nodes.iter().map(|node| node.rank).max().unwrap_or(0);
-    let label_font_size = 14.0f32;
 
     svg.push_str("<g class=\"nodes\">");
     for (idx, node) in layout.nodes.iter().enumerate() {
@@ -2626,106 +3213,31 @@ fn render_sankey(layout: &SankeyLayout, theme: &Theme, _config: &LayoutConfig) -
     }
     svg.push_str("</g>");
 
-    let mut label_y: Vec<f32> = layout
-        .nodes
-        .iter()
-        .map(|node| node.y + node.height / 2.0)
-        .collect();
-    let label_line_height = label_font_size * 1.2;
-    let label_half_heights: Vec<f32> = layout
-        .nodes
-        .iter()
-        .map(|node| {
-            let text_lines = node
-                .label
-                .lines()
-                .filter(|line| !line.trim().is_empty())
-                .count()
-                .max(1) as f32;
-            // Node labels always render one additional value line below the title.
-            (text_lines + 1.0) * label_line_height * 0.5
-        })
-        .collect();
-    let mut rank_min_x = vec![f32::INFINITY; max_rank + 1];
+    svg.push_str("<g class=\"node-labels\" font-size=\"14\">");
     for node in &layout.nodes {
-        let slot = &mut rank_min_x[node.rank];
-        *slot = (*slot).min(node.x);
-    }
-    for x in &mut rank_min_x {
-        if !x.is_finite() {
-            *x = 0.0;
-        }
-    }
-    let edge_margin = label_font_size * 0.3;
-    let preferred_gap = label_font_size * 0.25;
-    for rank in 0..=max_rank {
-        let mut indices: Vec<usize> = layout
-            .nodes
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, node)| (node.rank == rank).then_some(idx))
-            .collect();
-        if indices.len() < 2 {
-            continue;
-        }
-        indices.sort_by(|a, b| {
-            label_y[*a]
-                .partial_cmp(&label_y[*b])
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        let first_idx = indices[0];
-        let last_idx = *indices.last().unwrap_or(&first_idx);
-        let top = edge_margin + label_half_heights[first_idx];
-        let bottom = (layout.height - edge_margin - label_half_heights[last_idx]).max(top);
-
-        if indices.len() == 1 {
-            label_y[first_idx] = label_y[first_idx].clamp(top, bottom);
-            continue;
-        }
-
-        let mut half_pair_span = 0.0;
-        for pair in indices.windows(2) {
-            half_pair_span += label_half_heights[pair[0]] + label_half_heights[pair[1]];
-        }
-        let available_span = (bottom - top).max(0.0);
-        let max_gap = (available_span - half_pair_span) / (indices.len() - 1) as f32;
-        let gap = preferred_gap.min(max_gap.max(0.0));
-        let required_span = half_pair_span + gap * (indices.len() - 1) as f32;
-        let first_max = (bottom - required_span).max(top);
-
-        label_y[first_idx] = label_y[first_idx].clamp(top, first_max);
-        for pair in indices.windows(2) {
-            let prev_idx = pair[0];
-            let cur_idx = pair[1];
-            let min_gap = label_half_heights[prev_idx] + label_half_heights[cur_idx] + gap;
-            label_y[cur_idx] = label_y[prev_idx] + min_gap;
-        }
-    }
-
-    svg.push_str(&format!(
-        "<g class=\"node-labels\" font-size=\"{}\" fill=\"{}\">",
-        label_font_size, theme.primary_text_color
-    ));
-    for (idx, node) in layout.nodes.iter().enumerate() {
-        let align_left_of_node = node.rank > 0;
-        let text_anchor = if align_left_of_node { "end" } else { "start" };
-        let x = if align_left_of_node {
-            let mut inward_offset = 6.0;
-            if node.rank < max_rank {
-                let prev_x = rank_min_x[node.rank.saturating_sub(1)];
-                let rank_gap = (node.x - prev_x).max(0.0);
-                inward_offset = (rank_gap * 0.2).clamp(6.0, label_font_size * 3.0);
-            }
-            node.x - inward_offset
+        let label_on_right = node.x < layout.width / 2.0;
+        let text_anchor = if label_on_right { "start" } else { "end" };
+        let x = if label_on_right {
+            node.x + node.width + 6.0
         } else {
-            node.x + layout.node_width + 6.0
+            node.x - 6.0
         };
-        let y = label_y[idx];
-        let label = escape_xml(&node.label);
-        let value = format_sankey_value(node.total);
-        let first_y = y - label_font_size * 0.4;
+        let y = node.y + node.height / 2.0;
+        let dy = if layout.show_values { "0em" } else { "0.35em" };
+        let text = if layout.show_values {
+            format!(
+                "{}\n{}{}{}",
+                node.label,
+                layout.prefix,
+                format_sankey_value(node.total),
+                layout.suffix
+            )
+        } else {
+            node.label.clone()
+        };
         svg.push_str(&format!(
-            "<text x=\"{x:.2}\" y=\"{first_y:.2}\" dy=\"0em\" text-anchor=\"{text_anchor}\" font-size=\"{label_font_size:.1}\"><tspan x=\"{x:.2}\" dy=\"0em\">{label}</tspan><tspan x=\"{x:.2}\" dy=\"1.15em\">{value}</tspan></text>"
+            "<text x=\"{x}\" y=\"{y}\" dy=\"{dy}\" text-anchor=\"{text_anchor}\">{}</text>",
+            escape_xml_text_node(&text)
         ));
     }
     svg.push_str("</g>");
@@ -2734,22 +3246,30 @@ fn render_sankey(layout: &SankeyLayout, theme: &Theme, _config: &LayoutConfig) -
     for link in &layout.links {
         let mid_x = (link.start.0 + link.end.0) / 2.0;
         let gradient_id = escape_xml(&link.gradient_id);
+        let stroke = match layout.link_color.as_str() {
+            "gradient" => format!("url(#{gradient_id})"),
+            "source" => escape_xml(&link.color_start),
+            "target" => escape_xml(&link.color_end),
+            other => escape_xml(other),
+        };
         svg.push_str("<g class=\"link\" style=\"mix-blend-mode: multiply;\">");
+        if layout.link_color == "gradient" {
+            svg.push_str(&format!(
+                "<linearGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" x1=\"{}\" x2=\"{}\">",
+                gradient_id, link.start.0, link.end.0
+            ));
+            svg.push_str(&format!(
+                "<stop offset=\"0%\" stop-color=\"{}\"/>",
+                escape_xml(&link.color_start)
+            ));
+            svg.push_str(&format!(
+                "<stop offset=\"100%\" stop-color=\"{}\"/>",
+                escape_xml(&link.color_end)
+            ));
+            svg.push_str("</linearGradient>");
+        }
         svg.push_str(&format!(
-            "<linearGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" x1=\"{}\" x2=\"{}\">",
-            gradient_id, link.start.0, link.end.0
-        ));
-        svg.push_str(&format!(
-            "<stop offset=\"0%\" stop-color=\"{}\"/>",
-            escape_xml(&link.color_start)
-        ));
-        svg.push_str(&format!(
-            "<stop offset=\"100%\" stop-color=\"{}\"/>",
-            escape_xml(&link.color_end)
-        ));
-        svg.push_str("</linearGradient>");
-        svg.push_str(&format!(
-            "<path d=\"M{:.3},{:.3}C{:.3},{:.3},{:.3},{:.3},{:.3},{:.3}\" stroke=\"url(#{})\" stroke-width=\"{}\"/>",
+            "<path d=\"M{},{}C{},{},{},{},{},{}\" stroke=\"{}\" stroke-width=\"{}\"/>",
             link.start.0,
             link.start.1,
             mid_x,
@@ -2758,8 +3278,8 @@ fn render_sankey(layout: &SankeyLayout, theme: &Theme, _config: &LayoutConfig) -
             link.end.1,
             link.end.0,
             link.end.1,
-            gradient_id,
-            link.thickness
+            stroke,
+            link.thickness.max(1.0)
         ));
         svg.push_str("</g>");
     }
@@ -2839,14 +3359,187 @@ fn normalize_font_family(font_family: &str) -> String {
         .join(",")
 }
 
-fn error_style_block(theme: &Theme) -> String {
-    let font_family = normalize_font_family(&theme.font_family);
+fn svg_font_style_block(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> String {
+    let css_font_family = css_font_family_list(&theme.font_family);
+    let embedded_font = embedded_font_faces_css(&font_family_lists_to_embed(layout, theme, config));
     format!(
-        "<style>svg{{font-family:{font_family};font-size:{font_size};fill:{fill};}}.error-icon{{fill:#552222;}}.error-text{{fill:#552222;stroke:#552222;}}</style>",
-        font_family = font_family,
+        "<style>{embedded_font}svg{{font-family:{font_family};font-size:{font_size}px;fill:{fill};}}</style>",
+        embedded_font = embedded_font,
+        font_family = css_font_family,
         font_size = theme.font_size,
         fill = theme.text_color
     )
+}
+
+fn error_style_block(_theme: &Theme) -> String {
+    "<style>.error-icon{fill:#552222;}.error-text{fill:#552222;stroke:#552222;}</style>".to_string()
+}
+
+fn embedded_font_faces_css(font_families: &[&str]) -> String {
+    let mut seen = Vec::new();
+    let mut css = String::new();
+    for font_family in font_families {
+        let Some(family) = primary_named_font_family(font_family) else {
+            continue;
+        };
+        if seen
+            .iter()
+            .any(|seen_family: &String| seen_family.eq_ignore_ascii_case(&family))
+        {
+            continue;
+        }
+        let Some(font) = text_metrics::embedded_font_data(font_family) else {
+            continue;
+        };
+        seen.push(family.clone());
+        css.push_str(&format!(
+            "@font-face{{font-family:{};src:url(data:{};base64,{}) format(\"{}\");font-weight:400;font-style:normal;}}",
+            css_string(&family),
+            font.mime_type,
+            base64_encode(&font.bytes),
+            font.format_hint
+        ));
+    }
+    css
+}
+
+fn font_family_lists_to_embed<'a>(
+    layout: &Layout,
+    theme: &'a Theme,
+    config: &'a LayoutConfig,
+) -> Vec<&'a str> {
+    let mut families = vec![theme.font_family.as_str()];
+    if !matches!(layout.diagram, DiagramData::C4(_)) {
+        return families;
+    }
+    let c4 = &config.c4;
+    families.extend([
+        c4.person_font_family.as_str(),
+        c4.external_person_font_family.as_str(),
+        c4.system_font_family.as_str(),
+        c4.external_system_font_family.as_str(),
+        c4.system_db_font_family.as_str(),
+        c4.external_system_db_font_family.as_str(),
+        c4.system_queue_font_family.as_str(),
+        c4.external_system_queue_font_family.as_str(),
+        c4.boundary_font_family.as_str(),
+        c4.message_font_family.as_str(),
+        c4.container_font_family.as_str(),
+        c4.external_container_font_family.as_str(),
+        c4.container_db_font_family.as_str(),
+        c4.external_container_db_font_family.as_str(),
+        c4.container_queue_font_family.as_str(),
+        c4.external_container_queue_font_family.as_str(),
+        c4.component_font_family.as_str(),
+        c4.external_component_font_family.as_str(),
+        c4.component_db_font_family.as_str(),
+        c4.external_component_db_font_family.as_str(),
+        c4.component_queue_font_family.as_str(),
+        c4.external_component_queue_font_family.as_str(),
+    ]);
+    families
+}
+
+fn primary_named_font_family(font_family: &str) -> Option<String> {
+    font_family
+        .split(',')
+        .map(clean_font_family_token)
+        .find(|part| !part.is_empty() && !is_generic_font_family(part))
+}
+
+fn css_font_family_list(font_family: &str) -> String {
+    let tokens: Vec<String> = font_family
+        .split(',')
+        .map(clean_font_family_token)
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            if is_generic_font_family(&part) || is_css_identifier(&part) {
+                part
+            } else {
+                css_string(&part)
+            }
+        })
+        .collect();
+
+    if tokens.is_empty() {
+        "sans-serif".to_string()
+    } else {
+        tokens.join(",")
+    }
+}
+
+fn clean_font_family_token(token: &str) -> String {
+    token
+        .trim()
+        .trim_matches('\'')
+        .trim_matches('"')
+        .trim()
+        .to_string()
+}
+
+fn is_generic_font_family(family: &str) -> bool {
+    matches!(
+        family.to_ascii_lowercase().as_str(),
+        "serif"
+            | "sans-serif"
+            | "monospace"
+            | "cursive"
+            | "fantasy"
+            | "system-ui"
+            | "ui-sans-serif"
+            | "ui-monospace"
+            | "-apple-system"
+    )
+}
+
+fn is_css_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first.is_ascii_alphabetic() || first == '_' || first == '-') {
+        return false;
+    }
+    chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+}
+
+fn css_string(value: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\a "),
+            '\r' => {}
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        let n = ((b0 as u32) << 16) | ((b1 as u32) << 8) | b2 as u32;
+        out.push(TABLE[((n >> 18) & 0x3f) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3f) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((n >> 6) & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(n & 0x3f) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
 }
 
 fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> String {
@@ -2856,18 +3549,45 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
     let measure_font_size = theme.font_size.max(16.0);
     let line_height = measure_font_size * config.label_line_height;
 
-    let render_line = |x: f32, y: f32, text: &str, color: &str, bold: bool| -> String {
-        let weight = if bold { " font-weight=\"bold\"" } else { "" };
-        format!(
-            "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"start\" font-family=\"{font_family}\" font-size=\"{size}\" fill=\"{color}\"{weight}>{text}</text>",
+    let render_line = |x: f32,
+                       y: f32,
+                       line: &TextLine,
+                       color: &str,
+                       bold: bool,
+                       anchor: &str,
+                       inherited_weight: Option<&str>,
+                       inherited_style: Option<&str>|
+     -> String {
+        let effective_weight = if bold {
+            Some("bold")
+        } else {
+            inherited_weight.filter(|value| !value.trim().is_empty())
+        };
+        let weight = effective_weight
+            .map(|value| format!(" font-weight=\"{}\"", escape_xml(value.trim())))
+            .unwrap_or_default();
+        let font_style = inherited_style
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| format!(" font-style=\"{}\"", escape_xml(value.trim())))
+            .unwrap_or_default();
+        let mut text = format!(
+            "<text x=\"{x:.2}\" y=\"{y:.2}\" text-anchor=\"{anchor}\" font-family=\"{font_family}\" font-size=\"{size}\" fill=\"{color}\"{weight}{font_style}>",
             x = x,
             y = y,
+            anchor = anchor,
             font_family = font_family,
             size = theme.font_size,
             color = color,
             weight = weight,
-            text = escape_xml(text)
-        )
+            font_style = font_style
+        );
+        if line.has_formatting() {
+            render_formatted_tspans(&mut text, x, 0.0, line, false);
+        } else {
+            text.push_str(&escape_xml(&line.text()));
+        }
+        text.push_str("</text>");
+        text
     };
 
     // Requirement-specific markers.
@@ -2918,7 +3638,11 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
         } else {
             ""
         };
-        let d = points_to_path(&edge.points);
+        let d = if edge.points.len() >= 3 {
+            points_to_d3_basis_path(&edge.points)
+        } else {
+            points_to_path(&edge.points)
+        };
         svg.push_str(&format!(
             "<path id=\"{edge_id}\" data-edge-id=\"{edge_id}\" d=\"{d}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}{marker_start}{marker_end} stroke-linecap=\"round\" stroke-linejoin=\"round\"/>"
         ));
@@ -3006,26 +3730,34 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
         let lines = &node.label.lines;
         let header_count = lines.len().min(2);
         let body_lines = if lines.len() > 2 { &lines[2..] } else { &[] };
-        let header_x = node.x + req.label_padding_x;
-        let header_y = node.y + req.label_padding_y;
+        let header_x = node.x + node.width / 2.0;
+        let body_x = node.x + req.label_padding_x;
+        let first_baseline = node.y + req.label_padding_y + theme.font_size;
+        let inherited_weight = node.style.font_weight.as_deref();
+        let inherited_style = node.style.font_style.as_deref();
         if header_count >= 1 {
             svg.push_str(&render_line(
                 header_x,
-                header_y,
-                &lines[0].text(),
+                first_baseline,
+                &lines[0],
                 label_color,
                 false,
+                "middle",
+                inherited_weight,
+                inherited_style,
             ));
         }
         if header_count >= 2 {
-            let min_header_gap = theme.font_size * 1.25;
-            let id_y = header_y + req.header_line_gap.max(min_header_gap);
+            let id_y = first_baseline + req.header_line_gap.max(line_height);
             svg.push_str(&render_line(
                 header_x,
                 id_y,
-                &lines[1].text(),
+                &lines[1],
                 label_color,
                 true,
+                "middle",
+                inherited_weight,
+                inherited_style,
             ));
         }
 
@@ -3040,14 +3772,17 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
                 req.divider_color,
                 req.divider_width
             ));
-            let mut body_y = divider_y + req.label_padding_y;
+            let mut body_y = divider_y + req.label_padding_y + theme.font_size;
             for line in body_lines {
                 svg.push_str(&render_line(
-                    header_x,
+                    body_x,
                     body_y,
-                    &line.text(),
+                    line,
                     label_color,
                     false,
+                    "start",
+                    inherited_weight,
+                    inherited_style,
                 ));
                 body_y += line_height;
             }
@@ -3069,14 +3804,11 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
     const CENTER_X: f32 = WIDTH / 2.0;
     const CENTER_Y: f32 = HEIGHT / 2.0;
     const MAX_RADIUS: f32 = 300.0;
-    const GRID_STEPS: usize = 5;
-    const AXIS_LABEL_OFFSET: f32 = 15.0;
+    const AXIS_LABEL_FACTOR: f32 = 1.05;
     const LEGEND_BOX_SIZE: f32 = 12.0;
     const LEGEND_GAP: f32 = 4.0;
-    const GRID_COLOR: &str = "#DEDEDE";
-    const AXIS_COLOR: &str = "#333333";
-    const RADAR_HUES: [i32; 12] = [240, 60, 80, 270, 300, 330, 0, 30, 90, 150, 180, 210];
-    const RADAR_LIGHTNESS: &str = "76.2745098039%";
+    const LEGEND_LINE_HEIGHT: f32 = 20.0;
+    const CURVE_TENSION: f32 = 0.17;
 
     fn radar_index(id: &str) -> usize {
         id.rsplit('_')
@@ -3110,7 +3842,7 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
             let Ok(value) = value_str.parse::<f32>() else {
                 continue;
             };
-            pairs.push((axis.to_string(), value.max(0.0)));
+            pairs.push((axis.to_string(), value));
         }
         if pairs.is_empty() {
             None
@@ -3118,6 +3850,66 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
             Some((name, pairs))
         }
     }
+
+    fn closed_round_curve(points: &[(f32, f32)], tension: f32) -> String {
+        let num_points = points.len();
+        let mut d = format!("M{:.3},{:.3}", points[0].0, points[0].1);
+        for idx in 0..num_points {
+            let p0 = points[(idx + num_points - 1) % num_points];
+            let p1 = points[idx];
+            let p2 = points[(idx + 1) % num_points];
+            let p3 = points[(idx + 2) % num_points];
+            let cp1 = (
+                p1.0 + (p2.0 - p0.0) * tension,
+                p1.1 + (p2.1 - p0.1) * tension,
+            );
+            let cp2 = (
+                p2.0 - (p3.0 - p1.0) * tension,
+                p2.1 - (p3.1 - p1.1) * tension,
+            );
+            d.push_str(&format!(
+                " C{:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
+                cp1.0, cp1.1, cp2.0, cp2.1, p2.0, p2.1
+            ));
+        }
+        d.push_str(" Z");
+        d
+    }
+
+    fn radar_polygon_points(
+        radius: f32,
+        axis_count: usize,
+        start_angle: f32,
+        angle_step: f32,
+    ) -> String {
+        (0..axis_count)
+            .map(|idx| {
+                let angle = start_angle + angle_step * idx as f32;
+                format!("{:.3},{:.3}", radius * angle.cos(), radius * angle.sin())
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    let (title, show_legend, ticks, configured_max, min_value, graticule) = match &layout.diagram {
+        DiagramData::Radar(radar) => (
+            radar.title.as_deref().unwrap_or(""),
+            radar.show_legend,
+            radar.ticks.max(1),
+            radar.max,
+            radar.min,
+            radar.graticule,
+        ),
+        DiagramData::Graph { title, .. } => (
+            title.as_deref().unwrap_or(""),
+            true,
+            5,
+            None,
+            0.0,
+            crate::ir::RadarGraticule::Circle,
+        ),
+        _ => ("", true, 5, None, 0.0, crate::ir::RadarGraticule::Circle),
+    };
 
     let mut nodes: Vec<&crate::layout::NodeLayout> =
         layout.nodes.values().filter(|node| !node.hidden).collect();
@@ -3140,7 +3932,7 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
     }
 
     let mut series_values: Vec<(String, Vec<f32>)> = Vec::new();
-    let mut max_value = 0.0f32;
+    let mut max_value = configured_max.unwrap_or(0.0);
     for (name, pairs) in &raw_series {
         let mut values = Vec::with_capacity(axis_count);
         for axis in &axes {
@@ -3148,16 +3940,18 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
                 .iter()
                 .find_map(|(a, v)| (a == axis).then_some(*v))
                 .unwrap_or(0.0);
-            max_value = max_value.max(value);
+            if configured_max.is_none() {
+                max_value = max_value.max(value);
+            }
             values.push(value);
         }
         series_values.push((name.clone(), values));
     }
 
-    if max_value <= 0.0 {
-        max_value = 1.0;
+    if max_value <= min_value {
+        max_value = min_value + 1.0;
     }
-    let scale = MAX_RADIUS / max_value;
+    let value_span = (max_value - min_value).max(1.0);
     let angle_step = 2.0 * PI / axis_count as f32;
     let start_angle = -PI / 2.0;
 
@@ -3167,12 +3961,31 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
         CENTER_X, CENTER_Y
     ));
 
-    for step in 1..=GRID_STEPS {
-        let r = MAX_RADIUS * step as f32 / GRID_STEPS as f32;
-        svg.push_str(&format!(
-            "<circle r=\"{:.3}\" fill=\"{}\" fill-opacity=\"0.3\" stroke=\"{}\" stroke-width=\"1\" />",
-            r, GRID_COLOR, GRID_COLOR
-        ));
+    for step in 1..=ticks {
+        let r = MAX_RADIUS * step as f32 / ticks as f32;
+        match graticule {
+            crate::ir::RadarGraticule::Circle => {
+                svg.push_str(&format!(
+                    "<circle r=\"{:.3}\" fill=\"{}\" fill-opacity=\"{}\" stroke=\"{}\" stroke-width=\"{}\" />",
+                    r,
+                    theme.radar.graticule_color,
+                    theme.radar.graticule_opacity,
+                    theme.radar.graticule_color,
+                    theme.radar.graticule_stroke_width
+                ));
+            }
+            crate::ir::RadarGraticule::Polygon => {
+                let points = radar_polygon_points(r, axis_count, start_angle, angle_step);
+                svg.push_str(&format!(
+                    "<polygon points=\"{}\" fill=\"{}\" fill-opacity=\"{}\" stroke=\"{}\" stroke-width=\"{}\" />",
+                    points,
+                    theme.radar.graticule_color,
+                    theme.radar.graticule_opacity,
+                    theme.radar.graticule_color,
+                    theme.radar.graticule_stroke_width
+                ));
+            }
+        }
     }
 
     for (idx, axis) in axes.iter().enumerate() {
@@ -3180,85 +3993,106 @@ fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> Strin
         let x = MAX_RADIUS * angle.cos();
         let y = MAX_RADIUS * angle.sin();
         svg.push_str(&format!(
-            "<line x1=\"0\" y1=\"0\" x2=\"{:.3}\" y2=\"{:.3}\" stroke=\"{}\" stroke-width=\"2\" />",
-            x, y, AXIS_COLOR
+            "<line x1=\"0\" y1=\"0\" x2=\"{:.3}\" y2=\"{:.3}\" stroke=\"{}\" stroke-width=\"{}\" />",
+            x, y, theme.radar.axis_color, theme.radar.axis_stroke_width
         ));
-        let label_r = MAX_RADIUS + AXIS_LABEL_OFFSET;
-        let mut lx = label_r * angle.cos();
+        let label_r = MAX_RADIUS * AXIS_LABEL_FACTOR;
+        let lx = label_r * angle.cos();
         let ly = label_r * angle.sin();
-        let anchor = if angle.cos() > 0.35 {
-            lx -= 6.0;
-            "end"
-        } else if angle.cos() < -0.35 {
-            lx += 6.0;
-            "start"
-        } else {
-            "middle"
-        };
         svg.push_str(&format!(
-            "<text x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"{}\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"12\" fill=\"{}\">{}</text>",
+            "<text x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
             lx,
             ly,
-            anchor,
             normalize_font_family(&theme.font_family),
-            AXIS_COLOR,
+            theme.radar.axis_label_font_size,
+            theme.radar.axis_color,
             escape_xml(axis)
         ));
     }
 
     for (series_idx, (name, values)) in series_values.iter().enumerate() {
-        let hue = RADAR_HUES[series_idx % RADAR_HUES.len()];
-        let color = format!("hsl({}, 100%, {})", hue, RADAR_LIGHTNESS);
+        let color = theme
+            .cscale_colors
+            .get(series_idx)
+            .map(String::as_str)
+            .unwrap_or(
+                crate::theme::MERMAID_RADAR_COLORS
+                    [series_idx % crate::theme::MERMAID_RADAR_COLORS.len()],
+            );
         let mut points = Vec::with_capacity(axis_count);
         for (idx, value) in values.iter().enumerate() {
             let angle = start_angle + angle_step * idx as f32;
-            let r = value * scale;
+            let clipped = value.clamp(min_value, max_value);
+            let r = MAX_RADIUS * (clipped - min_value) / value_span;
             points.push((r * angle.cos(), r * angle.sin()));
         }
         if points.is_empty() {
             continue;
         }
-        let mut d = String::new();
-        d.push_str(&format!("M{:.3},{:.3}", points[0].0, points[0].1));
-        for point in points.iter().skip(1) {
-            d.push_str(&format!(" L{:.3},{:.3}", point.0, point.1));
+        match graticule {
+            crate::ir::RadarGraticule::Circle => {
+                let d = closed_round_curve(&points, CURVE_TENSION);
+                svg.push_str(&format!(
+                    "<path d=\"{}\" fill=\"{}\" fill-opacity=\"{}\" stroke=\"{}\" stroke-width=\"{}\" />",
+                    d,
+                    escape_xml(&color),
+                    theme.radar.curve_opacity,
+                    escape_xml(&color),
+                    theme.radar.curve_stroke_width
+                ));
+            }
+            crate::ir::RadarGraticule::Polygon => {
+                let points_attr = points
+                    .iter()
+                    .map(|(x, y)| format!("{:.3},{:.3}", x, y))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                svg.push_str(&format!(
+                    "<polygon points=\"{}\" fill=\"{}\" fill-opacity=\"{}\" stroke=\"{}\" stroke-width=\"{}\" />",
+                    points_attr,
+                    escape_xml(&color),
+                    theme.radar.curve_opacity,
+                    escape_xml(&color),
+                    theme.radar.curve_stroke_width
+                ));
+            }
         }
-        d.push_str(" Z");
-        svg.push_str(&format!(
-            "<path d=\"{}\" fill=\"{}\" fill-opacity=\"0.5\" stroke=\"{}\" stroke-width=\"2\" />",
-            d,
-            escape_xml(&color),
-            escape_xml(&color)
-        ));
 
-        let legend_offset = MAX_RADIUS * 0.8;
-        let legend_x = legend_offset;
-        let legend_y = -legend_offset + series_idx as f32 * (theme.font_size + 6.0);
-        svg.push_str(&format!(
-            "<rect x=\"{:.3}\" y=\"{:.3}\" width=\"{}\" height=\"{}\" fill=\"{}\" fill-opacity=\"0.5\" stroke=\"{}\" />",
-            legend_x,
-            legend_y,
-            LEGEND_BOX_SIZE,
-            LEGEND_BOX_SIZE,
-            escape_xml(&color),
-            escape_xml(&color)
-        ));
-        svg.push_str(&format!(
-            "<text x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"start\" dominant-baseline=\"hanging\" font-family=\"{}\" font-size=\"12\" fill=\"{}\">{}</text>",
-            legend_x + LEGEND_BOX_SIZE + LEGEND_GAP,
-            legend_y,
-            normalize_font_family(&theme.font_family),
-            AXIS_COLOR,
-            escape_xml(name)
-        ));
+        if show_legend {
+            let legend_x = ((MAX_RADIUS + 50.0) * 3.0) / 4.0;
+            let legend_y =
+                (-(MAX_RADIUS + 50.0) * 3.0) / 4.0 + series_idx as f32 * LEGEND_LINE_HEIGHT;
+            svg.push_str(&format!(
+                "<g transform=\"translate({:.3}, {:.3})\">",
+                legend_x, legend_y
+            ));
+            svg.push_str(&format!(
+                "<rect width=\"{}\" height=\"{}\" fill=\"{}\" fill-opacity=\"{}\" stroke=\"{}\" />",
+                LEGEND_BOX_SIZE,
+                LEGEND_BOX_SIZE,
+                escape_xml(&color),
+                theme.radar.curve_opacity,
+                escape_xml(&color)
+            ));
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"0\" text-anchor=\"start\" dominant-baseline=\"hanging\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+                LEGEND_BOX_SIZE + LEGEND_GAP,
+                normalize_font_family(&theme.font_family),
+                theme.radar.legend_font_size,
+                theme.text_color,
+                escape_xml(name)
+            ));
+            svg.push_str("</g>");
+        }
     }
 
     svg.push_str(&format!(
-        "<text x=\"0\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"hanging\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\"></text>",
+        "<text x=\"0\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"hanging\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
         -(MAX_RADIUS + 50.0),
         normalize_font_family(&theme.font_family),
         theme.font_size,
-        AXIS_COLOR
+        theme.radar.title_color,
+        escape_xml(title)
     ));
 
     svg.push_str("</g>");
@@ -3299,15 +4133,20 @@ fn architecture_icon_svg(icon_type: Option<&str>, w: f32, h: f32, fill: &str) ->
             let lst = format!(
                 "fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\" stroke-width=\"2\""
             );
-            let fst = format!("fill=\"{fill}\"");
+            let bar_fill = format!("fill=\"{fill}\" stroke-width=\"0\"");
+            let bar_stroke = format!("fill=\"none\" stroke=\"{fill}\" stroke-miterlimit=\"10\"");
+            let dot = format!("fill=\"{fill}\" stroke=\"{fill}\" stroke-miterlimit=\"10\"");
             format!(
                 "<g {t}>\
                  <rect x=\"17.5\" y=\"17.5\" width=\"45\" height=\"45\" rx=\"2\" ry=\"2\" {lst}/>\
                  <line x1=\"17.5\" y1=\"32.5\" x2=\"62.5\" y2=\"32.5\" {lst}/>\
                  <line x1=\"17.5\" y1=\"47.5\" x2=\"62.5\" y2=\"47.5\" {lst}/>\
-                 <circle cx=\"55\" cy=\"25\" r=\"1.5\" {fst}/>\
-                 <circle cx=\"55\" cy=\"40\" r=\"1.5\" {fst}/>\
-                 <circle cx=\"55\" cy=\"55\" r=\"1.5\" {fst}/>\
+                 <g><path d=\"m56.25,25c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z\" {bar_fill}/><path d=\"m56.25,25c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z\" {bar_stroke}/></g>\
+                 <g><path d=\"m56.25,40c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z\" {bar_fill}/><path d=\"m56.25,40c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z\" {bar_stroke}/></g>\
+                 <g><path d=\"m56.25,55c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z\" {bar_fill}/><path d=\"m56.25,55c0,.27-.45.5-1,.5h-10.5c-.55,0-1-.23-1-.5s.45-.5,1-.5h10.5c.55,0,1,.23,1,.5Z\" {bar_stroke}/></g>\
+                 <g><circle cx=\"32.5\" cy=\"25\" r=\".75\" {dot}/><circle cx=\"27.5\" cy=\"25\" r=\".75\" {dot}/><circle cx=\"22.5\" cy=\"25\" r=\".75\" {dot}/></g>\
+                 <g><circle cx=\"32.5\" cy=\"40\" r=\".75\" {dot}/><circle cx=\"27.5\" cy=\"40\" r=\".75\" {dot}/><circle cx=\"22.5\" cy=\"40\" r=\".75\" {dot}/></g>\
+                 <g><circle cx=\"32.5\" cy=\"55\" r=\".75\" {dot}/><circle cx=\"27.5\" cy=\"55\" r=\".75\" {dot}/><circle cx=\"22.5\" cy=\"55\" r=\".75\" {dot}/></g>\
                  </g>"
             )
         }
@@ -3390,8 +4229,18 @@ fn architecture_icon_svg(icon_type: Option<&str>, w: f32, h: f32, fill: &str) ->
                 "<g {tf}><path d=\"m65,47.5c0,2.76-2.24,5-5,5H20c-2.76,0-5-2.24-5-5,0-1.87,1.03-3.51,2.56-4.36-.04-.21-.06-.42-.06-.64,0-2.6,2.48-4.74,5.65-4.97,1.65-4.51,6.34-7.76,11.85-7.76.86,0,1.69.08,2.5.23,2.09-1.57,4.69-2.5,7.5-2.5,6.1,0,11.19,4.38,12.28,10.17,2.14.56,3.72,2.51,3.72,4.83,0,.03,0,.07-.01.1,2.29.46,4.01,2.48,4.01,4.9Z\" {lst}/></g>"
             )
         }
-        _ => {
-            // Fallback: question mark
+        Some(_) => {
+            // Mermaid architecture only registers the mermaid-architecture pack.
+            // Other prefixes, such as logos:aws-*, use Iconify's unknown icon.
+            let s = w.min(h) / 80.0;
+            let t = format!("transform=\"scale({s:.3})\"");
+            let fill = escape_xml(fill);
+            format!(
+                "<g {t}><text transform=\"translate(21.16 64.67)\" style=\"fill: {fill}; font-family: ArialMT, Arial; font-size: 67.75px;\"><tspan x=\"0\" y=\"0\">?</tspan></text></g>"
+            )
+        }
+        None => {
+            // Fallback for omitted icons preserves the pre-existing blank-icon behavior.
             format!(
                 "<text x=\"{cx:.1}\" y=\"{y:.1}\" text-anchor=\"middle\" dominant-baseline=\"middle\" fill=\"{fill}\" font-size=\"{fs:.0}\">?</text>",
                 y = cy + w * 0.08,
@@ -3446,8 +4295,6 @@ fn render_architecture(
         if edge.points.len() < 2 {
             continue;
         }
-        let (x0, y0) = edge.points[0];
-        let (x1, y1) = edge.points[edge.points.len() - 1];
         let stroke = edge
             .override_style
             .stroke
@@ -3461,15 +4308,33 @@ fn render_architecture(
             .as_ref()
             .map(|dash| format!(" stroke-dasharray=\"{}\"", dash))
             .unwrap_or_default();
+        let path_data = edge
+            .points
+            .iter()
+            .enumerate()
+            .map(|(idx, (x, y))| {
+                let command = if idx == 0 { "M" } else { "L" };
+                format!("{command} {x:.3} {y:.3}")
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let marker_start_attr = if edge.arrow_start {
+            format!(" marker-start=\"url(#arrow-start-{marker_idx})\"")
+        } else {
+            String::new()
+        };
+        let marker_end_attr = if edge.arrow_end {
+            format!(" marker-end=\"url(#arrow-{marker_idx})\"")
+        } else {
+            String::new()
+        };
         svg.push_str(&format!(
-            "<path d=\"M {:.3} {:.3} L {:.3} {:.3}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" marker-end=\"url(#arrow-{})\"{} />",
-            x0,
-            y0,
-            x1,
-            y1,
+            "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{}{}{} />",
+            path_data,
             escape_xml(stroke),
             stroke_width,
-            marker_idx,
+            marker_start_attr,
+            marker_end_attr,
             dash_attr,
         ));
     }
@@ -3488,7 +4353,7 @@ fn render_architecture(
             .find(|line| !line.text().trim().is_empty())
             .map(|line| line.text().into_owned())
             .unwrap_or_else(|| node.id.clone());
-        let label_y = node.height + theme.font_size + 8.0;
+        let label_y = node.height + theme.font_size * 0.5;
         svg.push_str(&format!(
             "<g id=\"service-{}\" class=\"architecture-service\" transform=\"translate({:.3},{:.3})\">",
             escape_xml(&node.id),
@@ -3518,6 +4383,19 @@ fn render_architecture(
         ));
         svg.push_str("</g>");
     }
+    for node in layout.nodes.values() {
+        if !node.hidden {
+            continue;
+        }
+        svg.push_str(&format!(
+            "<g class=\"architecture-junction\" transform=\"translate({:.3},{:.3})\"><g><rect id=\"node-{}\" fill-opacity=\"0\" width=\"{}\" height=\"{}\" /></g></g>",
+            node.x,
+            node.y,
+            escape_xml(&node.id),
+            node.width,
+            node.height,
+        ));
+    }
     svg.push_str("</g>");
 
     svg.push_str("<g class=\"architecture-groups\">");
@@ -3532,7 +4410,7 @@ fn render_architecture(
             .unwrap_or_default();
         let group_id = sanitize_group_suffix(&subgraph.label);
         svg.push_str(&format!(
-            "<rect id=\"group-{}\" x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{} />",
+            "<rect id=\"group-{}\" class=\"node-bkg\" x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{} />",
             escape_xml(&group_id),
             subgraph.x,
             subgraph.y,
@@ -3576,98 +4454,773 @@ fn render_architecture(
     svg
 }
 
-fn render_venn(venn: &VennLayout, _theme: &Theme, _config: &LayoutConfig) -> String {
+fn render_venn(venn: &VennLayout, theme: &Theme, _config: &LayoutConfig) -> String {
     let mut svg = String::new();
 
-    // Background
-    svg.push_str(&format!(
-        "<rect x=\"0\" y=\"0\" width=\"{}\" height=\"{}\" fill=\"white\" rx=\"4\"/>",
-        venn.width, venn.height
-    ));
-
-    // Title
     if let Some(ref title) = venn.title {
         svg.push_str(&format!(
-            "<text x=\"{}\" y=\"28\" text-anchor=\"middle\" font-family=\"sans-serif\" \
-             font-size=\"18\" font-weight=\"bold\" fill=\"#333\">{}</text>",
+            "<text class=\"venn-title\" font-size=\"16px\" text-anchor=\"middle\" dominant-baseline=\"middle\" x=\"{}\" y=\"{}\" style=\"fill: {};\">{}</text>",
             venn.width / 2.0,
+            32.0 * 0.5,
+            escape_xml(&theme.text_color),
             escape_xml(title)
         ));
     }
 
-    // Render circles with semi-transparent fills
-    // Use mix-blend-mode for natural intersection coloring
-    svg.push_str("<g style=\"isolation: isolate;\">");
-    for circle in &venn.circles {
+    svg.push_str(&format!(
+        "<g transform=\"translate(0, {})\">",
+        venn.title_height
+    ));
+
+    for (idx, circle) in venn.circles.iter().enumerate() {
+        let path = venn_circle_path(circle.cx, circle.cy, circle.radius);
         svg.push_str(&format!(
-            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\" fill-opacity=\"{}\" \
-             stroke=\"{}\" stroke-width=\"{}\" style=\"mix-blend-mode: multiply;\"/>",
-            circle.cx,
-            circle.cy,
-            circle.radius,
-            escape_xml(&circle.color),
+            "<g class=\"venn-area venn-circle venn-set-{}\" data-venn-sets=\"{}\"><path d=\"{}\" style=\"fill-opacity: {}; fill: {}; stroke: {}; stroke-width: {}; stroke-opacity: {};\"/>",
+            idx % 8,
+            escape_xml(&circle.id),
+            escape_xml(&path),
             circle.fill_opacity,
+            escape_xml(&circle.color),
             escape_xml(&circle.stroke),
             circle.stroke_width,
+            circle.stroke_opacity,
+        ));
+        if !circle.label.is_empty() {
+            svg.push_str(&format!(
+                "<text class=\"label\" text-anchor=\"middle\" dy=\".35em\" x=\"{}\" y=\"{}\" style=\"fill: {}; font-size: 24px;\"><tspan x=\"{}\" y=\"{}\" dy=\"0.35em\">{}</tspan></text>",
+                circle.label_x.round(),
+                circle.label_y.round(),
+                escape_xml(&circle.text_color),
+                circle.label_x.round(),
+                circle.label_y.round(),
+                escape_xml(&circle.label)
+            ));
+        }
+        svg.push_str("</g>");
+    }
+
+    for intersection in &venn.intersections {
+        let data_key = venn_data_sets_key(&intersection.set_ids);
+        svg.push_str(&format!(
+            "<g class=\"venn-area venn-intersection\" data-venn-sets=\"{}\">",
+            escape_xml(&data_key)
+        ));
+        if let Some(ref path) = intersection.path {
+            svg.push_str(&format!(
+                "<path d=\"{}\" style=\"fill-opacity: {}; fill: {};\"/>",
+                escape_xml(path),
+                intersection.fill_opacity,
+                escape_xml(&intersection.fill)
+            ));
+        }
+        if let Some(ref label) = intersection.label {
+            svg.push_str(&format!(
+                "<text class=\"label\" text-anchor=\"middle\" dy=\".35em\" x=\"{}\" y=\"{}\" style=\"fill: {}; font-size: 24px;\"><tspan x=\"{}\" y=\"{}\" dy=\"0.35em\">{}</tspan></text>",
+                intersection.cx.round(),
+                intersection.cy.round(),
+                escape_xml(&intersection.text_color),
+                intersection.cx.round(),
+                intersection.cy.round(),
+                escape_xml(label)
+            ));
+        }
+        svg.push_str("</g>");
+    }
+
+    if !venn.text_nodes.is_empty() {
+        svg.push_str(
+            "<g class=\"venn-text-nodes\"><g class=\"venn-text-area\" font-size=\"20px\">",
+        );
+        for node in &venn.text_nodes {
+            svg.push_str(&format!(
+                "<foreignObject class=\"venn-text-node-fo\" width=\"{}\" height=\"{}\" x=\"{}\" y=\"{}\" overflow=\"visible\"><span class=\"venn-text-node\" xmlns=\"http://www.w3.org/1999/xhtml\" style=\"display: flex; width: 100%; height: 100%; white-space: normal; align-items: center; justify-content: center; text-align: center; overflow-wrap: normal; word-break: normal;{}\">{}</span></foreignObject>",
+                node.width,
+                node.height,
+                node.x,
+                node.y,
+                node
+                    .color
+                    .as_ref()
+                    .map(|color| format!(" color: {};", escape_xml(color)))
+                    .unwrap_or_default(),
+                escape_xml(&node.label)
+            ));
+        }
+        svg.push_str("</g></g>");
+    }
+
+    svg.push_str("</g>");
+    svg
+}
+
+fn venn_circle_path(cx: f32, cy: f32, radius: f32) -> String {
+    let diameter = radius * 2.0;
+    format!(
+        "M {cx} {cy} m -{radius} 0 a {radius} {radius} 0 1 0 {diameter} 0 a {radius} {radius} 0 1 0 -{diameter} 0"
+    )
+}
+
+fn venn_data_sets_key(set_ids: &[String]) -> String {
+    let mut ids = set_ids.to_vec();
+    ids.sort();
+    ids.join("_")
+}
+
+fn render_packet(packet: &PacketLayout) -> String {
+    let mut svg = String::new();
+    svg.push_str(
+        "<style>.packetByte{font-size:10px;}.packetByte.start{fill:black;}.packetByte.end{fill:black;}.packetLabel{fill:black;font-size:12px;}.packetTitle{fill:black;font-size:14px;}.packetBlock{stroke:black;stroke-width:1;fill:#efefef;}</style>",
+    );
+
+    for block in &packet.blocks {
+        svg.push_str(&format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" class=\"packetBlock\"/>",
+            block.x, block.y, block.width, block.height
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" class=\"packetLabel\" dominant-baseline=\"middle\" text-anchor=\"middle\">{}</text>",
+            block.x + block.width / 2.0,
+            block.y + block.height / 2.0,
+            escape_xml(&block.label)
+        ));
+
+        if packet.show_bits {
+            let single = block.start == block.end;
+            let bit_y = block.y - 2.0;
+            let start_x = if single {
+                block.x + block.width / 2.0
+            } else {
+                block.x
+            };
+            let start_anchor = if single { "middle" } else { "start" };
+            svg.push_str(&format!(
+                "<text x=\"{}\" y=\"{}\" class=\"packetByte start\" dominant-baseline=\"auto\" text-anchor=\"{}\">{}</text>",
+                start_x, bit_y, start_anchor, block.start
+            ));
+            if !single {
+                svg.push_str(&format!(
+                    "<text x=\"{}\" y=\"{}\" class=\"packetByte end\" dominant-baseline=\"auto\" text-anchor=\"end\">{}</text>",
+                    block.x + block.width,
+                    bit_y,
+                    block.end
+                ));
+            }
+        }
+    }
+
+    if let Some(title) = &packet.title {
+        svg.push_str(&format!(
+            "<text x=\"{}\" y=\"{}\" dominant-baseline=\"middle\" text-anchor=\"middle\" class=\"packetTitle\">{}</text>",
+            packet.title_x,
+            packet.title_y,
+            escape_xml(title)
+        ));
+    }
+
+    svg
+}
+
+fn render_eventmodeling(layout: &EventModelingLayout) -> String {
+    let mut svg = String::new();
+    let swimlane_width = layout.max_r + 15.0;
+    svg.push_str("<g/>");
+
+    for swimlane in &layout.swimlanes {
+        svg.push_str(&format!(
+            "<g class=\"em-swimlane\"><rect x=\"0\" y=\"{:.3}\" rx=\"3\" width=\"{:.3}\" height=\"{:.3}\" fill=\"rgb(250,250,250)\" stroke=\"rgb(240,240,240)\"/><text font-weight=\"bold\" x=\"30\" y=\"{:.3}\">{}</text></g>",
+            swimlane.y,
+            swimlane_width,
+            swimlane.height,
+            swimlane.y + 30.0,
+            escape_xml(&swimlane.label)
+        ));
+    }
+
+    for box_layout in &layout.boxes {
+        svg.push_str(&format!(
+            "<g class=\"em-box\"><rect x=\"{:.3}\" y=\"{:.3}\" rx=\"3\" width=\"{:.3}\" height=\"{:.3}\" stroke=\"{}\" fill=\"{}\"/><foreignObject x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\"><div xmlns=\"http://www.w3.org/1999/xhtml\" style=\"display: table; height: 100%; width: 100%;\"><span style=\"display: table-cell; text-align: center; vertical-align: middle;\">{}</span></div></foreignObject></g>",
+            box_layout.x,
+            box_layout.y,
+            box_layout.width,
+            box_layout.height,
+            box_layout.stroke,
+            box_layout.fill,
+            box_layout.x + 10.0,
+            box_layout.y + 10.0,
+            (box_layout.width - 20.0).max(1.0),
+            (box_layout.height - 20.0).max(1.0),
+            box_layout.html,
+        ));
+    }
+
+    for relation in &layout.relations {
+        let Some(source) = layout.boxes.get(relation.source_box) else {
+            continue;
+        };
+        let Some(target) = layout.boxes.get(relation.target_box) else {
+            continue;
+        };
+        let upwards = source.y > target.y;
+        let source_x = source.x + (source.width * 2.0) / 3.0;
+        let target_x = target.x + target.width / 3.0;
+        let source_y = if upwards {
+            source.y
+        } else {
+            source.y + source.height
+        };
+        let target_y = if upwards {
+            target.y + target.height
+        } else {
+            target.y
+        };
+        svg.push_str(&format!(
+            "<path class=\"em-relation\" fill=\"none\" stroke=\"#333333\" stroke-width=\"1\" marker-end=\"url(#em-arrowhead-my-svg)\" d=\"M{:.3} {:.3} L{:.3} {:.3}\"/>",
+            source_x, source_y, target_x, target_y
+        ));
+    }
+
+    svg.push_str("<defs><marker id=\"em-arrowhead-my-svg\" markerWidth=\"10\" markerHeight=\"7\" refX=\"10\" refY=\"3.5\" orient=\"auto\"><polygon points=\"0 0, 10 3.5, 0 7\" fill=\"#333333\"/></marker></defs>");
+    svg
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CynefinDomainLayout {
+    cx: f32,
+    cy: f32,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+}
+
+fn render_cynefin(layout: &CynefinLayout, theme: &Theme) -> String {
+    let mut svg = String::new();
+    let t = &theme.cynefin;
+    let width = layout.diagram_width;
+    let height = layout.diagram_height;
+    let padding = layout.padding;
+    let root_transform = format!("translate({:.3}, {:.3})", padding, padding);
+    let domain_layouts = cynefin_domain_layouts(width, height);
+    let seed = cynefin_hash_string("my-svg");
+
+    svg.push_str(&format!(
+        "<style>.cynefinDomain{{stroke:none;}}.cynefinDomainLabel{{font-size:{:.3}px;font-weight:bold;fill:{};}}.cynefinSubtitle{{font-size:{:.3}px;fill:{};font-style:italic;}}.cynefinItem{{fill-opacity:0.95;stroke:{};stroke-width:1;}}.cynefinItemText{{font-size:{:.3}px;fill:{};}}.cynefinItemOverflow{{fill-opacity:0.6;stroke:{};stroke-width:1;stroke-dasharray:3 2;}}.cynefinBoundary{{stroke:{};stroke-width:{:.3};stroke-dasharray:6 3;}}.cynefinCliff{{stroke:{};stroke-width:{:.3};}}.cynefinConfusion{{stroke:{};stroke-width:1.5;stroke-dasharray:4 2;}}.cynefinArrowLine{{stroke:{};stroke-width:{:.3};fill:none;}}.cynefinArrowHead{{fill:{};stroke:none;}}.cynefinArrowLabel{{font-size:{:.3}px;fill:{};}}.cynefinTitle{{font-size:{:.3}px;font-weight:bold;fill:{};}}</style>",
+        t.domain_font_size,
+        escape_xml(&t.label_color),
+        t.item_font_size - 1.0,
+        escape_xml(&t.text_color),
+        escape_xml(&t.boundary_color),
+        t.item_font_size,
+        escape_xml(&t.text_color),
+        escape_xml(&t.boundary_color),
+        escape_xml(&t.boundary_color),
+        t.boundary_width,
+        escape_xml(&t.cliff_color),
+        t.cliff_width,
+        escape_xml(&t.boundary_color),
+        escape_xml(&t.arrow_color),
+        t.arrow_width,
+        escape_xml(&t.arrow_color),
+        t.item_font_size - 1.0,
+        escape_xml(&t.text_color),
+        t.domain_font_size + 2.0,
+        escape_xml(&t.label_color),
+    ));
+
+    if !layout.transitions.is_empty() {
+        svg.push_str(&format!(
+            "<defs><marker id=\"cynefin-arrow-my-svg\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"6\" markerHeight=\"6\" orient=\"auto-start-reverse\"><path d=\"M 0 0 L 10 5 L 0 10 z\" class=\"cynefinArrowHead\"/></marker></defs>"
+        ));
+    }
+
+    svg.push_str(&format!("<g transform=\"{}\">", root_transform));
+    svg.push_str("<g class=\"cynefin-backgrounds\">");
+    for domain in [
+        crate::ir::CynefinDomainName::Complex,
+        crate::ir::CynefinDomainName::Complicated,
+        crate::ir::CynefinDomainName::Chaotic,
+        crate::ir::CynefinDomainName::Clear,
+    ] {
+        let l = cynefin_domain_layout(domain, &domain_layouts);
+        svg.push_str(&format!(
+            "<rect class=\"cynefinDomain\" x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" fill=\"{}\" fill-opacity=\"0.4\" stroke=\"none\"/>",
+            l.x,
+            l.y,
+            l.w,
+            l.h,
+            escape_xml(cynefin_domain_bg(domain, t))
         ));
     }
     svg.push_str("</g>");
 
-    // Render set labels
-    for circle in &venn.circles {
-        // Position label at center of non-overlapping area (push away from other circles)
-        let mut lx = circle.cx;
-        let mut ly = circle.cy;
+    svg.push_str("<g class=\"cynefin-boundaries\">");
+    svg.push_str(&format!(
+        "<path class=\"cynefinBoundary\" d=\"{}\" fill=\"none\"/>",
+        cynefin_generate_fold_path(width, height, seed, layout.boundary_amplitude)
+    ));
+    svg.push_str(&format!(
+        "<path class=\"cynefinBoundary\" d=\"{}\" fill=\"none\"/>",
+        cynefin_generate_horizontal_boundary(
+            width,
+            height,
+            seed.wrapping_add(100),
+            layout.boundary_amplitude
+        )
+    ));
+    svg.push_str(&format!(
+        "<path class=\"cynefinCliff\" d=\"{}\" fill=\"none\"/>",
+        cynefin_generate_cliff_path(width, height)
+    ));
+    svg.push_str("</g>");
 
-        // Find direction to push label (away from centroid of all other circles)
-        if venn.circles.len() > 1 {
-            let mut other_cx = 0.0f32;
-            let mut other_cy = 0.0f32;
-            let mut count = 0;
-            for other in &venn.circles {
-                if other.id != circle.id {
-                    other_cx += other.cx;
-                    other_cy += other.cy;
-                    count += 1;
-                }
+    svg.push_str(&format!(
+        "<path class=\"cynefinConfusion\" d=\"{}\" fill=\"{}\" fill-opacity=\"0.5\"/>",
+        cynefin_generate_confusion_path(width / 2.0, height / 2.0, width * 0.15, height * 0.15),
+        escape_xml(&t.confusion_bg)
+    ));
+
+    svg.push_str("<g class=\"cynefin-labels\">");
+    for domain in [
+        crate::ir::CynefinDomainName::Complex,
+        crate::ir::CynefinDomainName::Complicated,
+        crate::ir::CynefinDomainName::Chaotic,
+        crate::ir::CynefinDomainName::Clear,
+    ] {
+        let l = cynefin_domain_layout(domain, &domain_layouts);
+        let y = if layout.show_domain_descriptions {
+            l.cy - 30.0
+        } else {
+            l.cy
+        };
+        svg.push_str(&format!(
+            "<text class=\"cynefinDomainLabel\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"middle\">{}</text>",
+            l.cx,
+            y,
+            domain.title()
+        ));
+    }
+    let confusion_y = if layout.show_domain_descriptions {
+        height / 2.0 - 10.0
+    } else {
+        height / 2.0
+    };
+    svg.push_str(&format!(
+        "<text class=\"cynefinDomainLabel\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"middle\">Confusion</text>",
+        width / 2.0,
+        confusion_y
+    ));
+    svg.push_str("</g>");
+
+    if layout.show_domain_descriptions {
+        svg.push_str("<g class=\"cynefin-subtitles\">");
+        for domain in [
+            crate::ir::CynefinDomainName::Complex,
+            crate::ir::CynefinDomainName::Complicated,
+            crate::ir::CynefinDomainName::Chaotic,
+            crate::ir::CynefinDomainName::Clear,
+        ] {
+            let l = cynefin_domain_layout(domain, &domain_layouts);
+            let (model, practice) = cynefin_domain_meta(domain);
+            svg.push_str(&format!(
+                "<text class=\"cynefinSubtitle\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"middle\">{}</text>",
+                l.cx,
+                l.cy - 10.0,
+                model
+            ));
+            svg.push_str(&format!(
+                "<text class=\"cynefinSubtitle\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"middle\">{}</text>",
+                l.cx,
+                l.cy + 5.0,
+                practice
+            ));
+        }
+        svg.push_str(&format!(
+            "<text class=\"cynefinSubtitle\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"middle\">Disorder</text>",
+            width / 2.0,
+            height / 2.0 + 8.0
+        ));
+        svg.push_str("</g>");
+    }
+
+    svg.push_str("<g class=\"cynefin-items\">");
+    for domain in [
+        crate::ir::CynefinDomainName::Complex,
+        crate::ir::CynefinDomainName::Complicated,
+        crate::ir::CynefinDomainName::Chaotic,
+        crate::ir::CynefinDomainName::Clear,
+        crate::ir::CynefinDomainName::Confusion,
+    ] {
+        let Some(items) = layout.domains.get(&domain) else {
+            continue;
+        };
+        if items.is_empty() {
+            continue;
+        }
+        render_cynefin_items(&mut svg, domain, items, layout, theme, &domain_layouts);
+    }
+    svg.push_str("</g>");
+
+    if !layout.transitions.is_empty() {
+        svg.push_str("<g class=\"cynefin-arrows\">");
+        for transition in &layout.transitions {
+            if transition.from == transition.to {
+                continue;
             }
-            if count > 0 {
-                other_cx /= count as f32;
-                other_cy /= count as f32;
-                let dx = circle.cx - other_cx;
-                let dy = circle.cy - other_cy;
-                let dist = (dx * dx + dy * dy).sqrt().max(1.0);
-                let push = circle.radius * 0.35;
-                lx += dx / dist * push;
-                ly += dy / dist * push;
+            let from = cynefin_domain_layout(transition.from, &domain_layouts);
+            let to = cynefin_domain_layout(transition.to, &domain_layouts);
+            let x1 = from.cx;
+            let y1 = from.cy;
+            let x2 = to.cx;
+            let y2 = to.cy;
+            let mx = (x1 + x2) / 2.0;
+            let my = (y1 + y2) / 2.0;
+            let dx = x2 - x1;
+            let dy = y2 - y1;
+            let len = (dx * dx + dy * dy).sqrt();
+            if len <= f32::EPSILON {
+                continue;
+            }
+            let offset_amount = len * 0.15;
+            let nx = -dy / len;
+            let ny = dx / len;
+            let cpx = mx + nx * offset_amount;
+            let cpy = my + ny * offset_amount;
+            svg.push_str(&format!(
+                "<path class=\"cynefinArrowLine\" d=\"M{:.3},{:.3} Q{:.3},{:.3} {:.3},{:.3}\" fill=\"none\" marker-end=\"url(#cynefin-arrow-my-svg)\"/>",
+                x1, y1, cpx, cpy, x2, y2
+            ));
+            if let Some(label) = &transition.label {
+                svg.push_str(&format!(
+                    "<text class=\"cynefinArrowLabel\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"auto\">{}</text>",
+                    cpx,
+                    cpy - 6.0,
+                    escape_xml(label)
+                ));
             }
         }
+        svg.push_str("</g>");
+    }
 
+    if let Some(title) = &layout.title {
         svg.push_str(&format!(
-            "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" dominant-baseline=\"central\" \
-             font-family=\"sans-serif\" font-size=\"14\" font-weight=\"bold\" fill=\"{}\">{}</text>",
-            lx,
-            ly,
-            escape_xml(&circle.text_color),
-            escape_xml(&circle.label)
+            "<text class=\"cynefinTitle\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"middle\">{}</text>",
+            width / 2.0,
+            -padding / 2.0,
+            escape_xml(title)
+        ));
+    }
+    svg.push_str("</g>");
+    svg
+}
+
+fn render_cynefin_items(
+    svg: &mut String,
+    domain: crate::ir::CynefinDomainName,
+    items: &[String],
+    layout: &CynefinLayout,
+    theme: &Theme,
+    domain_layouts: &std::collections::HashMap<crate::ir::CynefinDomainName, CynefinDomainLayout>,
+) {
+    const MAX_CONFUSION_ITEMS: usize = 3;
+    let t = &theme.cynefin;
+    let l = cynefin_domain_layout(domain, domain_layouts);
+    let is_confusion = domain == crate::ir::CynefinDomainName::Confusion;
+    let render_count = if is_confusion {
+        items.len().min(MAX_CONFUSION_ITEMS)
+    } else {
+        items.len()
+    };
+    let overflow_count = if is_confusion && items.len() > MAX_CONFUSION_ITEMS {
+        items.len() - MAX_CONFUSION_ITEMS
+    } else {
+        0
+    };
+    let item_height = 26.0;
+    let item_padding_x = 10.0;
+    let start_y = if is_confusion {
+        l.cy + if layout.show_domain_descriptions {
+            22.0
+        } else {
+            14.0
+        }
+    } else {
+        l.cy + if layout.show_domain_descriptions {
+            25.0
+        } else {
+            15.0
+        }
+    };
+
+    for (idx, item) in items.iter().take(render_count).enumerate() {
+        let item_y = start_y + idx as f32 * (item_height + 4.0);
+        let measured_width =
+            text_metrics::measure_text_width(item, t.item_font_size, &theme.font_family)
+                .unwrap_or_else(|| item.chars().count() as f32 * 7.0);
+        let badge_width = measured_width + item_padding_x * 2.0;
+        let item_x = l.cx - badge_width / 2.0;
+        svg.push_str(&format!(
+            "<g transform=\"translate({:.3}, {:.3})\"><rect class=\"cynefinItem\" x=\"0\" y=\"0\" width=\"{:.3}\" height=\"{:.3}\" rx=\"4\" ry=\"4\" fill=\"{}\" fill-opacity=\"0.95\"/><text class=\"cynefinItemText\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"central\">{}</text></g>",
+            item_x,
+            item_y,
+            badge_width,
+            item_height,
+            escape_xml(cynefin_domain_bg(domain, t)),
+            badge_width / 2.0,
+            item_height / 2.0,
+            escape_xml(item)
         ));
     }
 
-    // Render intersection labels
-    for intersection in &venn.intersections {
-        if let Some(ref label) = intersection.label {
-            svg.push_str(&format!(
-                "<text x=\"{}\" y=\"{}\" text-anchor=\"middle\" dominant-baseline=\"central\" \
-                 font-family=\"sans-serif\" font-size=\"12\" fill=\"{}\">{}</text>",
-                intersection.cx,
-                intersection.cy,
-                escape_xml(&intersection.text_color),
-                escape_xml(label)
-            ));
-        }
+    if overflow_count > 0 {
+        let label = format!("+{} more", overflow_count);
+        let overflow_y = start_y + render_count as f32 * (item_height + 4.0);
+        let measured_width =
+            text_metrics::measure_text_width(&label, t.item_font_size, &theme.font_family)
+                .unwrap_or_else(|| label.chars().count() as f32 * 7.0);
+        let badge_width = measured_width + item_padding_x * 2.0;
+        let item_x = l.cx - badge_width / 2.0;
+        svg.push_str(&format!(
+            "<g transform=\"translate({:.3}, {:.3})\"><rect class=\"cynefinItemOverflow\" x=\"0\" y=\"0\" width=\"{:.3}\" height=\"{:.3}\" rx=\"4\" ry=\"4\" fill=\"{}\" fill-opacity=\"0.6\"/><text class=\"cynefinItemText\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"central\">{}</text></g>",
+            item_x,
+            overflow_y,
+            badge_width,
+            item_height,
+            escape_xml(cynefin_domain_bg(domain, t)),
+            badge_width / 2.0,
+            item_height / 2.0,
+            escape_xml(&label)
+        ));
     }
+}
 
-    svg
+fn cynefin_domain_layouts(
+    width: f32,
+    height: f32,
+) -> std::collections::HashMap<crate::ir::CynefinDomainName, CynefinDomainLayout> {
+    let hw = width / 2.0;
+    let hh = height / 2.0;
+    [
+        (
+            crate::ir::CynefinDomainName::Complex,
+            CynefinDomainLayout {
+                cx: hw / 2.0,
+                cy: hh / 2.0,
+                x: 0.0,
+                y: 0.0,
+                w: hw,
+                h: hh,
+            },
+        ),
+        (
+            crate::ir::CynefinDomainName::Complicated,
+            CynefinDomainLayout {
+                cx: hw + hw / 2.0,
+                cy: hh / 2.0,
+                x: hw,
+                y: 0.0,
+                w: hw,
+                h: hh,
+            },
+        ),
+        (
+            crate::ir::CynefinDomainName::Chaotic,
+            CynefinDomainLayout {
+                cx: hw / 2.0,
+                cy: hh + hh / 2.0,
+                x: 0.0,
+                y: hh,
+                w: hw,
+                h: hh,
+            },
+        ),
+        (
+            crate::ir::CynefinDomainName::Clear,
+            CynefinDomainLayout {
+                cx: hw + hw / 2.0,
+                cy: hh + hh / 2.0,
+                x: hw,
+                y: hh,
+                w: hw,
+                h: hh,
+            },
+        ),
+        (
+            crate::ir::CynefinDomainName::Confusion,
+            CynefinDomainLayout {
+                cx: hw,
+                cy: hh,
+                x: hw * 0.7,
+                y: hh * 0.7,
+                w: hw * 0.6,
+                h: hh * 0.6,
+            },
+        ),
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn cynefin_domain_layout(
+    domain: crate::ir::CynefinDomainName,
+    layouts: &std::collections::HashMap<crate::ir::CynefinDomainName, CynefinDomainLayout>,
+) -> CynefinDomainLayout {
+    layouts[&domain]
+}
+
+fn cynefin_domain_bg<'a>(
+    domain: crate::ir::CynefinDomainName,
+    theme: &'a crate::theme::CynefinTheme,
+) -> &'a str {
+    match domain {
+        crate::ir::CynefinDomainName::Complex => &theme.complex_bg,
+        crate::ir::CynefinDomainName::Complicated => &theme.complicated_bg,
+        crate::ir::CynefinDomainName::Chaotic => &theme.chaotic_bg,
+        crate::ir::CynefinDomainName::Clear => &theme.clear_bg,
+        crate::ir::CynefinDomainName::Confusion => &theme.confusion_bg,
+    }
+}
+
+fn cynefin_domain_meta(domain: crate::ir::CynefinDomainName) -> (&'static str, &'static str) {
+    match domain {
+        crate::ir::CynefinDomainName::Complex => {
+            ("Probe &#8594; Sense &#8594; Respond", "Emergent Practices")
+        }
+        crate::ir::CynefinDomainName::Complicated => {
+            ("Sense &#8594; Analyse &#8594; Respond", "Good Practices")
+        }
+        crate::ir::CynefinDomainName::Clear => {
+            ("Sense &#8594; Categorise &#8594; Respond", "Best Practices")
+        }
+        crate::ir::CynefinDomainName::Chaotic => {
+            ("Act &#8594; Sense &#8594; Respond", "Novel Practices")
+        }
+        crate::ir::CynefinDomainName::Confusion => ("", "Disorder"),
+    }
+}
+
+fn cynefin_hash_string(input: &str) -> i32 {
+    let mut hash = 0_i32;
+    for ch in input.encode_utf16() {
+        hash = hash
+            .wrapping_shl(5)
+            .wrapping_sub(hash)
+            .wrapping_add(ch as i32);
+    }
+    hash
+}
+
+fn cynefin_seeded_random(seed: i32) -> f32 {
+    let mut t = seed.wrapping_add(0x6d2b79f5_u32 as i32);
+    t = (t ^ ((t as u32 >> 15) as i32)).wrapping_mul(t | 1);
+    t ^= t.wrapping_add((t ^ ((t as u32 >> 7) as i32)).wrapping_mul(t | 61));
+    ((t ^ ((t as u32 >> 14) as i32)) as u32) as f32 / 4_294_967_296.0
+}
+
+fn cynefin_generate_fold_path(width: f32, height: f32, seed: i32, amplitude: f32) -> String {
+    let cx = width / 2.0;
+    let segments = 7;
+    let seg_height = height / segments as f32;
+    let mut points = Vec::new();
+    for i in 0..=segments {
+        let jitter =
+            cynefin_seeded_random(seed.wrapping_add(i as i32 * 17)) * amplitude * 2.0 - amplitude;
+        points.push((cx + jitter, i as f32 * seg_height));
+    }
+    let mut d = format!("M{:.3},{:.3}", points[0].0, points[0].1);
+    for i in 0..segments {
+        let p0 = points[i];
+        let p1 = points[i + 1];
+        let mid_y = (p0.1 + p1.1) / 2.0;
+        let dir = if i % 2 == 0 { 1.0 } else { -1.0 };
+        let offset =
+            amplitude * 1.5 * dir * cynefin_seeded_random(seed.wrapping_add(i as i32 * 31 + 7));
+        d.push_str(&format!(
+            " C{:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
+            p0.0 + offset,
+            mid_y,
+            p1.0 - offset,
+            mid_y,
+            p1.0,
+            p1.1
+        ));
+    }
+    d
+}
+
+fn cynefin_generate_horizontal_boundary(
+    width: f32,
+    height: f32,
+    seed: i32,
+    amplitude: f32,
+) -> String {
+    let cy = height / 2.0;
+    let segments = 7;
+    let seg_width = width / segments as f32;
+    let mut points = Vec::new();
+    for i in 0..=segments {
+        let jitter =
+            cynefin_seeded_random(seed.wrapping_add(i as i32 * 23)) * amplitude * 2.0 - amplitude;
+        points.push((i as f32 * seg_width, cy + jitter));
+    }
+    let mut d = format!("M{:.3},{:.3}", points[0].0, points[0].1);
+    for i in 0..segments {
+        let p0 = points[i];
+        let p1 = points[i + 1];
+        let mid_x = (p0.0 + p1.0) / 2.0;
+        let dir = if i % 2 == 0 { 1.0 } else { -1.0 };
+        let offset =
+            amplitude * 1.5 * dir * cynefin_seeded_random(seed.wrapping_add(i as i32 * 37 + 11));
+        d.push_str(&format!(
+            " C{:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
+            mid_x,
+            p0.1 + offset,
+            mid_x,
+            p1.1 - offset,
+            p1.0,
+            p1.1
+        ));
+    }
+    d
+}
+
+fn cynefin_generate_cliff_path(width: f32, height: f32) -> String {
+    let cx = width / 2.0;
+    let top_y = height * 0.5;
+    let bottom_y = height;
+    let amplitude = width * 0.03;
+    format!(
+        "M{:.3},{:.3} C{:.3},{:.3} {:.3},{:.3} {:.3},{:.3} C{:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
+        cx,
+        top_y,
+        cx + amplitude,
+        top_y + (bottom_y - top_y) * 0.2,
+        cx - amplitude * 1.5,
+        top_y + (bottom_y - top_y) * 0.55,
+        cx + amplitude * 0.5,
+        top_y + (bottom_y - top_y) * 0.75,
+        cx - amplitude,
+        top_y + (bottom_y - top_y) * 0.85,
+        cx + amplitude * 0.3,
+        top_y + (bottom_y - top_y) * 0.95,
+        cx,
+        bottom_y
+    )
+}
+
+fn cynefin_generate_confusion_path(cx: f32, cy: f32, rx: f32, ry: f32) -> String {
+    format!(
+        "M{:.3},{:.3} A{:.3},{:.3} 0 1,1 {:.3},{:.3} A{:.3},{:.3} 0 1,1 {:.3},{:.3} Z",
+        cx - rx,
+        cy,
+        rx,
+        ry,
+        cx + rx,
+        cy,
+        rx,
+        ry,
+        cx - rx,
+        cy
+    )
 }
 
 fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
@@ -3980,412 +5533,524 @@ fn render_quadrant(
     let h = layout.grid_height;
     let half_w = w / 2.0;
     let half_h = h / 2.0;
+    let quadrant_config = &config.quadrant;
 
-    // Quadrant background colors
-    let q_colors = ["#ECECFF", "#f1f1ff", "#f6f6ff", "#fbfbff"];
+    let fmt = |value: f32| -> String {
+        if (value - value.round()).abs() < 0.01 {
+            format!("{:.0}", value.round())
+        } else {
+            let formatted = format!("{:.2}", value);
+            formatted
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string()
+        }
+    };
+    let text_svg = |text: &TextBlock,
+                    fill: &str,
+                    font_size: f32,
+                    dominant_baseline: &str,
+                    text_anchor: &str,
+                    x: f32,
+                    y: f32,
+                    rotation: f32|
+     -> String {
+        format!(
+            "<text x=\"0\" y=\"0\" fill=\"{}\" font-size=\"{}\" dominant-baseline=\"{}\" text-anchor=\"{}\" transform=\"translate({}, {}) rotate({})\">{}</text>",
+            escape_xml(fill),
+            fmt(font_size),
+            dominant_baseline,
+            text_anchor,
+            fmt(x),
+            fmt(y),
+            fmt(rotation),
+            escape_xml(&text_block_plain(text))
+        )
+    };
 
     // Draw 4 quadrant backgrounds
     // Q1 top-right, Q2 top-left, Q3 bottom-left, Q4 bottom-right
     svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        grid_x + half_w,
-        grid_y,
-        half_w,
-        half_h,
-        q_colors[0]
+        "<g class=\"main\"><g class=\"quadrants\"><g class=\"quadrant\"><rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
+        fmt(grid_x + half_w),
+        fmt(grid_y),
+        fmt(half_w),
+        fmt(half_h),
+        escape_xml(&theme.quadrant.fills[0])
     ));
     svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        grid_x, grid_y, half_w, half_h, q_colors[1]
+        "</g><g class=\"quadrant\"><rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
+        fmt(grid_x),
+        fmt(grid_y),
+        fmt(half_w),
+        fmt(half_h),
+        escape_xml(&theme.quadrant.fills[1])
     ));
     svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        grid_x,
-        grid_y + half_h,
-        half_w,
-        half_h,
-        q_colors[2]
+        "</g><g class=\"quadrant\"><rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
+        fmt(grid_x),
+        fmt(grid_y + half_h),
+        fmt(half_w),
+        fmt(half_h),
+        escape_xml(&theme.quadrant.fills[2])
     ));
     svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        grid_x + half_w,
-        grid_y + half_h,
-        half_w,
-        half_h,
-        q_colors[3]
+        "</g><g class=\"quadrant\"><rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"{}\"/>",
+        fmt(grid_x + half_w),
+        fmt(grid_y + half_h),
+        fmt(half_w),
+        fmt(half_h),
+        escape_xml(&theme.quadrant.fills[3])
     ));
+    svg.push_str("</g></g>");
 
-    // Draw border
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"none\" stroke=\"#c7c7f1\" stroke-width=\"2\"/>",
-        grid_x, grid_y, w, h
-    ));
-    // Grid lines: quarter, center, three-quarter (6 lines total).
-    let grid_color = "#c7c7f1";
-    let minor_color = "#ddddf5";
-    let quarter_w = w / 4.0;
-    let quarter_h = h / 4.0;
-    // Vertical minor lines (1/4 and 3/4)
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
-        grid_x + quarter_w, grid_y, grid_x + quarter_w, grid_y + h
-    ));
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
-        grid_x + 3.0 * quarter_w, grid_y, grid_x + 3.0 * quarter_w, grid_y + h
-    ));
-    // Horizontal minor lines (1/4 and 3/4)
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
-        grid_x, grid_y + quarter_h, grid_x + w, grid_y + quarter_h
-    ));
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
-        grid_x, grid_y + 3.0 * quarter_h, grid_x + w, grid_y + 3.0 * quarter_h
-    ));
-    // Center lines (major)
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\"/>",
-        grid_x + half_w, grid_y, grid_x + half_w, grid_y + h
-    ));
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\"/>",
-        grid_x, grid_y + half_h, grid_x + w, grid_y + half_h
-    ));
+    // Draw Mermaid's external border and center dividers.
+    let external_width = quadrant_config.quadrant_external_border_stroke_width;
+    let internal_width = quadrant_config.quadrant_internal_border_stroke_width;
+    let half_external = external_width / 2.0;
+    let external_stroke = escape_xml(&theme.quadrant.external_border_stroke_fill);
+    let internal_stroke = escape_xml(&theme.quadrant.internal_border_stroke_fill);
+    svg.push_str("<g class=\"border\">");
+    let lines = [
+        (
+            grid_x - half_external,
+            grid_y,
+            grid_x + w + half_external,
+            grid_y,
+            external_width,
+            external_stroke.as_str(),
+        ),
+        (
+            grid_x + w,
+            grid_y + half_external,
+            grid_x + w,
+            grid_y + h - half_external,
+            external_width,
+            external_stroke.as_str(),
+        ),
+        (
+            grid_x - half_external,
+            grid_y + h,
+            grid_x + w + half_external,
+            grid_y + h,
+            external_width,
+            external_stroke.as_str(),
+        ),
+        (
+            grid_x,
+            grid_y + half_external,
+            grid_x,
+            grid_y + h - half_external,
+            external_width,
+            external_stroke.as_str(),
+        ),
+        (
+            grid_x + half_w,
+            grid_y + half_external,
+            grid_x + half_w,
+            grid_y + h - half_external,
+            internal_width,
+            internal_stroke.as_str(),
+        ),
+        (
+            grid_x + half_external,
+            grid_y + half_h,
+            grid_x + w - half_external,
+            grid_y + half_h,
+            internal_width,
+            internal_stroke.as_str(),
+        ),
+    ];
+    for (x1, y1, x2, y2, stroke_width, stroke) in lines {
+        svg.push_str(&format!(
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" style=\"stroke: {}; stroke-width: {};\"/>",
+            fmt(x1),
+            fmt(y1),
+            fmt(x2),
+            fmt(y2),
+            stroke,
+            fmt(stroke_width)
+        ));
+    }
+    svg.push_str("</g>");
 
     // Title
     if let Some(ref title) = layout.title {
-        svg.push_str(&text_block_svg(
-            grid_x + half_w,
-            layout.title_y,
+        svg.push_str("<g class=\"title\">");
+        svg.push_str(&text_svg(
             title,
-            theme,
-            config,
-            false,
-            Some(theme.primary_text_color.as_str()),
+            &theme.quadrant.title_fill,
+            quadrant_config.title_font_size,
+            "hanging",
+            "middle",
+            layout.width / 2.0,
+            quadrant_config.title_padding,
+            0.0,
         ));
+        svg.push_str("</g>");
     }
 
     // Quadrant labels
+    let q_label_top = !layout.points.is_empty();
+    let q_baseline = if q_label_top { "hanging" } else { "middle" };
     let label_positions = [
-        (grid_x + half_w + half_w / 2.0, grid_y + 15.0), // Q1 top-right
-        (grid_x + half_w / 2.0, grid_y + 15.0),          // Q2 top-left
-        (grid_x + half_w / 2.0, grid_y + half_h + 15.0), // Q3 bottom-left
-        (grid_x + half_w + half_w / 2.0, grid_y + half_h + 15.0), // Q4 bottom-right
+        (
+            grid_x + half_w + half_w / 2.0,
+            if q_label_top {
+                grid_y + quadrant_config.quadrant_text_top_padding
+            } else {
+                grid_y + half_h / 2.0
+            },
+        ),
+        (
+            grid_x + half_w / 2.0,
+            if q_label_top {
+                grid_y + quadrant_config.quadrant_text_top_padding
+            } else {
+                grid_y + half_h / 2.0
+            },
+        ),
+        (
+            grid_x + half_w / 2.0,
+            if q_label_top {
+                grid_y + half_h + quadrant_config.quadrant_text_top_padding
+            } else {
+                grid_y + half_h + half_h / 2.0
+            },
+        ),
+        (
+            grid_x + half_w + half_w / 2.0,
+            if q_label_top {
+                grid_y + half_h + quadrant_config.quadrant_text_top_padding
+            } else {
+                grid_y + half_h + half_h / 2.0
+            },
+        ),
     ];
+    svg.push_str("<g class=\"labels\">");
     for (i, label_opt) in layout.quadrant_labels.iter().enumerate() {
         if let Some(label) = label_opt {
             let (lx, ly) = label_positions[i];
-            svg.push_str(&text_block_svg(
+            svg.push_str(&text_svg(
+                label,
+                &theme.quadrant.text_fills[i],
+                quadrant_config.quadrant_label_font_size,
+                q_baseline,
+                "middle",
                 lx,
                 ly,
-                label,
-                theme,
-                config,
-                false,
-                Some("#131300"),
+                0.0,
             ));
         }
     }
 
     // Axis labels
+    let has_points = !layout.points.is_empty();
+    let x_axis_position = if has_points {
+        "bottom"
+    } else {
+        quadrant_config.x_axis_position.as_str()
+    };
+    let title_space = if layout.title.is_some() {
+        quadrant_config.title_font_size + quadrant_config.title_padding * 2.0
+    } else {
+        0.0
+    };
+    let draw_x_middle = layout.x_axis_right.is_some();
+    let draw_y_middle = layout.y_axis_top.is_some();
+    let x_label_y = if x_axis_position == "top" {
+        quadrant_config.x_axis_label_padding + title_space
+    } else {
+        quadrant_config.x_axis_label_padding + grid_y + h + quadrant_config.quadrant_padding
+    };
+    let x_anchor = if draw_x_middle { "middle" } else { "start" };
     if let Some(ref x_left) = layout.x_axis_left {
-        svg.push_str(&text_block_svg(
-            grid_x + half_w / 2.0,
-            grid_y + h + 20.0,
+        let x = grid_x + if draw_x_middle { half_w / 2.0 } else { 0.0 };
+        svg.push_str(&text_svg(
             x_left,
-            theme,
-            config,
-            false,
-            Some("#131300"),
+            &theme.quadrant.x_axis_text_fill,
+            quadrant_config.x_axis_label_font_size,
+            "hanging",
+            x_anchor,
+            x,
+            x_label_y,
+            0.0,
         ));
     }
     if let Some(ref x_right) = layout.x_axis_right {
-        svg.push_str(&text_block_svg(
-            grid_x + half_w + half_w / 2.0,
-            grid_y + h + 20.0,
+        let x = grid_x + half_w + if draw_x_middle { half_w / 2.0 } else { 0.0 };
+        svg.push_str(&text_svg(
             x_right,
-            theme,
-            config,
-            false,
-            Some("#131300"),
+            &theme.quadrant.x_axis_text_fill,
+            quadrant_config.x_axis_label_font_size,
+            "hanging",
+            x_anchor,
+            x,
+            x_label_y,
+            0.0,
         ));
     }
+    let y_axis_x = if quadrant_config.y_axis_position == "left" {
+        quadrant_config.y_axis_label_padding
+    } else {
+        quadrant_config.y_axis_label_padding + grid_x + w + quadrant_config.quadrant_padding
+    };
+    let y_anchor = if draw_y_middle { "middle" } else { "start" };
     if let Some(ref y_bottom) = layout.y_axis_bottom {
-        let axis_x = grid_x - theme.font_size * 2.2;
-        let axis_y = grid_y + half_h + half_h / 2.0;
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"#131300\"><tspan>{}</tspan></text>",
-            axis_x,
-            axis_y,
-            normalize_font_family(&theme.font_family),
-            theme.font_size,
-            y_bottom.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
+        let y = grid_y + h - if draw_y_middle { half_h / 2.0 } else { 0.0 };
+        svg.push_str(&text_svg(
+            y_bottom,
+            &theme.quadrant.y_axis_text_fill,
+            quadrant_config.y_axis_label_font_size,
+            "hanging",
+            y_anchor,
+            y_axis_x,
+            y,
+            -90.0,
         ));
     }
     if let Some(ref y_top) = layout.y_axis_top {
-        let axis_x = grid_x - theme.font_size * 2.2;
-        let axis_y = grid_y + half_h / 2.0;
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"#131300\"><tspan>{}</tspan></text>",
-            axis_x,
-            axis_y,
-            normalize_font_family(&theme.font_family),
-            theme.font_size,
-            y_top.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
+        let y = grid_y + half_h - if draw_y_middle { half_h / 2.0 } else { 0.0 };
+        svg.push_str(&text_svg(
+            y_top,
+            &theme.quadrant.y_axis_text_fill,
+            quadrant_config.y_axis_label_font_size,
+            "hanging",
+            y_anchor,
+            y_axis_x,
+            y,
+            -90.0,
         ));
     }
+    svg.push_str("</g>");
 
     // Data points
+    svg.push_str("<g class=\"data-points\">");
     for point in &layout.points {
         svg.push_str(&format!(
-            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"5\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-            point.x, point.y, point.color, point.color
+            "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"/>",
+            fmt(point.x),
+            fmt(point.y),
+            fmt(point.radius),
+            escape_xml(&point.color),
+            escape_xml(&point.stroke_color),
+            escape_xml(&point.stroke_width)
         ));
-        svg.push_str(&text_block_svg(
-            point.x,
-            point.y + 15.0,
+        svg.push_str(&text_svg(
             &point.label,
-            theme,
-            config,
-            false,
-            Some("#131300"),
+            &theme.quadrant.point_text_fill,
+            quadrant_config.point_label_font_size,
+            "hanging",
+            "middle",
+            point.x,
+            point.y + quadrant_config.point_text_padding,
+            0.0,
         ));
     }
+    svg.push_str("</g></g>");
 
     svg
 }
 
 fn render_gantt(
     layout: &crate::layout::GanttLayout,
-    theme: &Theme,
-    config: &LayoutConfig,
+    _theme: &Theme,
+    _config: &LayoutConfig,
 ) -> String {
     let mut svg = String::new();
-    let chart_left = layout.chart_x;
-    let chart_right = layout.chart_x + layout.chart_width;
-    let full_width = chart_right + layout.label_x;
-    let bar_height = (layout.row_height * 0.82)
-        .min(layout.row_height - 4.0)
-        .max(theme.font_size * 1.1);
+    let font_family = "trebuchet ms,verdana,arial,sans-serif";
+    let axis_y = layout.chart_y + layout.chart_height;
+    let grid_top = 35.0;
+    let grid_y2 = -axis_y + grid_top;
 
-    // Title
+    for range in &layout.exclude_ranges {
+        svg.push_str(&format!(
+            "<rect x=\"{:.0}\" y=\"{:.0}\" width=\"{:.0}\" height=\"{:.0}\" fill=\"#eeeeee\"/>",
+            range.x, range.y, range.width, range.height
+        ));
+    }
+
+    svg.push_str(&format!(
+        "<g class=\"grid\" transform=\"translate({:.0}, {:.0})\" fill=\"none\" font-size=\"10\" font-family=\"sans-serif\" text-anchor=\"middle\">",
+        layout.chart_x, axis_y
+    ));
+    svg.push_str(&format!(
+        "<path class=\"domain\" stroke=\"currentColor\" d=\"M0.5,{:.0}V0.5H{:.1}V{:.0}\"/>",
+        grid_y2,
+        layout.chart_width + 0.5,
+        grid_y2
+    ));
+    for tick in &layout.ticks {
+        let local_x = tick.x - layout.chart_x;
+        svg.push_str(&format!(
+            "<g class=\"tick\" opacity=\"1\" transform=\"translate({:.1},0)\"><line stroke=\"currentColor\" y2=\"{:.0}\"/><text fill=\"#000\" y=\"3\" dy=\"1em\" stroke=\"none\" font-size=\"10\" style=\"text-anchor: middle;\">{}</text></g>",
+            local_x,
+            grid_y2,
+            escape_xml(&tick.label)
+        ));
+    }
+    svg.push_str("</g>");
+
+    svg.push_str("<g>");
+    let mut rendered_section_orders = HashSet::new();
+    for task in &layout.tasks {
+        if !rendered_section_orders.insert(task.order) {
+            continue;
+        }
+        let fill = match task.section_index {
+            0 => "#6666ff",
+            2 => "#fff400",
+            _ => "#ffffff",
+        };
+        let opacity = if task.section_index == 0 { 0.098 } else { 0.2 };
+        svg.push_str(&format!(
+            "<rect x=\"0\" y=\"{:.0}\" width=\"{:.1}\" height=\"{:.0}\" fill=\"{}\" opacity=\"{:.3}\" stroke=\"none\"/>",
+            task.order as f32 * layout.row_height + layout.chart_y - 2.0,
+            layout.chart_x + layout.chart_width + 37.5,
+            layout.row_height,
+            fill,
+            opacity
+        ));
+    }
+    svg.push_str("</g>");
+
+    svg.push_str("<g>");
+    for task in &layout.tasks {
+        let (stroke, stroke_width) = gantt_task_stroke(task);
+        let transform = if task.milestone {
+            format!(
+                " transform=\"translate({:.2} {:.2}) rotate(45) scale(0.8,0.8) translate({:.2} {:.2})\"",
+                task.transform_origin_x,
+                task.transform_origin_y,
+                -task.transform_origin_x,
+                -task.transform_origin_y
+            )
+        } else {
+            String::new()
+        };
+        svg.push_str(&format!(
+            "<rect id=\"my-svg-{}\" rx=\"3\" ry=\"3\" x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{} />",
+            escape_xml(&task.id),
+            task.x,
+            task.y,
+            task.width.max(0.0),
+            task.height,
+            task.color,
+            stroke,
+            stroke_width,
+            transform
+        ));
+    }
+    for task in &layout.tasks {
+        let label_text = task
+            .label
+            .lines
+            .iter()
+            .find(|line| !line.text().trim().is_empty())
+            .map(|line| line.text().into_owned())
+            .unwrap_or_default();
+        if label_text.is_empty() {
+            continue;
+        }
+        let fill = gantt_task_text_fill(task);
+        let font_size = if task.vert { 15.0 } else { 11.0 };
+        let font_style = if task.milestone {
+            " font-style=\"italic\""
+        } else {
+            ""
+        };
+        svg.push_str(&format!(
+            "<text id=\"my-svg-{}-text\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{}\" font-family=\"{}\" font-size=\"{:.0}\" fill=\"{}\"{}>{}</text>",
+            escape_xml(&task.id),
+            task.label_x,
+            task.label_y,
+            task.label_anchor,
+            font_family,
+            font_size,
+            fill,
+            font_style,
+            escape_xml(&label_text)
+        ));
+    }
+    svg.push_str("</g>");
+
+    svg.push_str("<g>");
+    for section in &layout.sections {
+        let label_text = section
+            .label
+            .lines
+            .iter()
+            .find(|line| !line.text().trim().is_empty())
+            .map(|line| line.text().into_owned())
+            .unwrap_or_default();
+        if label_text.is_empty() {
+            continue;
+        }
+        svg.push_str(&format!(
+            "<text dy=\"0em\" x=\"10\" y=\"{:.0}\" font-size=\"11\" fill=\"#333\" text-anchor=\"start\" font-family=\"{}\"><tspan alignment-baseline=\"central\" x=\"10\">{}</tspan></text>",
+            section.y,
+            font_family,
+            escape_xml(&label_text)
+        ));
+    }
+    svg.push_str("</g>");
+
+    if let Some(today_x) = layout.today_x {
+        svg.push_str(&format!(
+            "<g class=\"today\"><line x1=\"{:.0}\" x2=\"{:.0}\" y1=\"25\" y2=\"{:.0}\" fill=\"none\" stroke=\"red\" stroke-width=\"2\"/></g>",
+            today_x,
+            today_x,
+            axis_y + 25.0
+        ));
+    }
+
     if let Some(ref title) = layout.title {
-        svg.push_str(&text_block_svg(
+        let title_text = title
+            .lines
+            .first()
+            .map(|line| line.text().into_owned())
+            .unwrap_or_default();
+        svg.push_str(&format!(
+            "<text x=\"{:.0}\" y=\"{:.0}\" text-anchor=\"middle\" font-size=\"18\" fill=\"#333\" font-family=\"{}\">{}</text>",
             layout.chart_x + layout.chart_width / 2.0,
             layout.title_y,
-            title,
-            theme,
-            config,
-            false,
-            Some(theme.primary_text_color.as_str()),
+            font_family,
+            escape_xml(&title_text)
         ));
-    }
-
-    // Grid/ticks
-    let axis_y = layout.chart_y + layout.chart_height + layout.row_height * 0.85;
-    let tick_font = theme.font_size * 0.8;
-    for tick in &layout.ticks {
+    } else {
         svg.push_str(&format!(
-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#E2E8F0\" stroke-width=\"1\"/>",
-            tick.x, layout.chart_y, tick.x, layout.chart_y + layout.chart_height
+            "<text x=\"{:.0}\" y=\"{:.0}\" text-anchor=\"middle\" font-size=\"18\" fill=\"#333\" font-family=\"{}\"/>",
+            layout.chart_x + layout.chart_width / 2.0,
+            layout.title_y,
+            font_family
         ));
-        if !tick.label.trim().is_empty() {
-            svg.push_str(&text_line_svg_with_font_size(
-                tick.x,
-                axis_y,
-                tick.label.as_str(),
-                theme,
-                tick_font,
-                theme.text_color.as_str(),
-                "middle",
-            ));
-        }
-    }
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1\"/>",
-        chart_left,
-        layout.chart_y + layout.chart_height,
-        chart_right,
-        layout.chart_y + layout.chart_height,
-        theme.line_color
-    ));
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#E2E8F0\" stroke-width=\"1\"/>",
-        chart_left,
-        layout.chart_y,
-        chart_left,
-        layout.chart_y + layout.chart_height
-    ));
-
-    // Draw sections
-    let section_font = theme.font_size * 0.9;
-    let task_font = theme.font_size * 0.85;
-    for section in &layout.sections {
-        let label_band_width = layout.chart_x;
-        svg.push_str(&format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" fill-opacity=\"0.22\" stroke=\"none\"/>",
-            0.0,
-            section.y,
-            label_band_width,
-            section.height,
-            section.band_color
-        ));
-        svg.push_str(&format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" fill-opacity=\"0.12\" stroke=\"none\"/>",
-            layout.chart_x,
-            section.y,
-            layout.chart_width,
-            section.height,
-            section.band_color
-        ));
-        svg.push_str(&format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" fill-opacity=\"0.9\" stroke=\"none\"/>",
-            0.0,
-            section.y,
-            (theme.font_size * 0.3).max(3.0),
-            section.height,
-            section.color
-        ));
-        let label_y = (section.y + layout.row_height * 0.55)
-            .min(section.y + section.height - layout.row_height * 0.45);
-        svg.push_str(&text_block_svg_with_font_size(
-            layout.section_label_x,
-            label_y,
-            &section.label,
-            theme,
-            config,
-            section_font,
-            "start",
-            Some(theme.primary_text_color.as_str()),
-            false,
-        ));
-    }
-
-    let mut row_lines: Vec<f32> = Vec::new();
-    row_lines.push(layout.chart_y);
-    for section in &layout.sections {
-        row_lines.push(section.y);
-        row_lines.push(section.y + section.height);
-    }
-    for task in &layout.tasks {
-        row_lines.push(task.y);
-    }
-    row_lines.push(layout.chart_y + layout.chart_height);
-    row_lines.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    row_lines.dedup_by(|a, b| (*a - *b).abs() < 0.5);
-    for y in row_lines {
-        svg.push_str(&format!(
-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#E2E8F0\" stroke-width=\"1\"/>",
-            0.0, y, full_width, y
-        ));
-    }
-
-    let gantt_label_color = |fill: &str| -> String {
-        if let Some((_, _, l)) = parse_color_to_hsl(fill) {
-            if l < 55.0 {
-                "#FFFFFF".to_string()
-            } else {
-                "#0F172A".to_string()
-            }
-        } else {
-            theme.primary_text_color.clone()
-        }
-    };
-
-    // Draw tasks as bars
-    for task in &layout.tasks {
-        let row_center = task.y + layout.row_height / 2.0;
-        let bar_y = row_center - bar_height / 2.0;
-        let mut label_rendered_inside = false;
-        if matches!(task.status, Some(crate::ir::GanttStatus::Milestone)) {
-            let size = bar_height * 0.6;
-            let cx = task.x;
-            let cy = row_center;
-            let points = format!(
-                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
-                cx,
-                cy - size,
-                cx + size,
-                cy,
-                cx,
-                cy + size,
-                cx - size,
-                cy
-            );
-            svg.push_str(&format!(
-                "<polygon points=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-                points, task.color, theme.primary_border_color
-            ));
-        } else {
-            svg.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-                task.x,
-                bar_y,
-                task.width,
-                bar_height,
-                task.color,
-                theme.primary_border_color
-            ));
-            let label_text_owned = task
-                .label
-                .lines
-                .iter()
-                .find(|line| !line.text().trim().is_empty())
-                .map(|s| s.text().into_owned())
-                .unwrap_or_default();
-            let label_text = label_text_owned.as_str();
-            if !label_text.is_empty() {
-                let font_size = task_font * 0.95;
-                let text_width = text_metrics::get_computed_text_length(
-                    label_text,
-                    font_size,
-                    &theme.font_family,
-                );
-                let pad = (font_size * 0.6).max(6.0);
-                if task.width >= text_width + pad * 2.0 && bar_height >= font_size * 1.1 {
-                    let text_x = task.x + task.width / 2.0;
-                    let text_y = row_center;
-                    svg.push_str(&format!(
-                        "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{:.2}\" fill=\"{}\">{}</text>",
-                        text_x,
-                        text_y,
-                        normalize_font_family(&theme.font_family),
-                        font_size,
-                        escape_xml(&gantt_label_color(&task.color)),
-                        escape_xml(label_text)
-                    ));
-                    label_rendered_inside = true;
-                }
-            }
-        }
-        // Task label
-        if !label_rendered_inside {
-            svg.push_str(&text_block_svg_with_font_size(
-                layout.task_label_x,
-                row_center,
-                &task.label,
-                theme,
-                config,
-                task_font,
-                "start",
-                Some(theme.primary_text_color.as_str()),
-                false,
-            ));
-        }
-    }
-
-    // Today marker: a vertical dashed red line at the current date position.
-    if let Some(today_x) = layout.today_x {
-        if today_x >= layout.chart_x && today_x <= layout.chart_x + layout.chart_width {
-            svg.push_str(&format!(
-                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#d33\" stroke-width=\"1.5\" stroke-dasharray=\"3,3\"/>",
-                today_x, layout.chart_y, today_x, layout.chart_y + layout.chart_height
-            ));
-        }
     }
 
     svg
+}
+
+fn gantt_task_stroke(task: &crate::layout::GanttTaskLayout) -> (&'static str, &'static str) {
+    if task.vert {
+        ("navy", "2")
+    } else if task.crit {
+        ("#ff8888", "2")
+    } else if task.done {
+        ("grey", "2")
+    } else {
+        ("#534fbc", "2")
+    }
+}
+
+fn gantt_task_text_fill(task: &crate::layout::GanttTaskLayout) -> &'static str {
+    if task.vert {
+        "navy"
+    } else if !task.label_inside {
+        "black"
+    } else if task.active || task.done {
+        "black"
+    } else {
+        "white"
+    }
 }
 
 fn render_xychart(
@@ -4394,90 +6059,99 @@ fn render_xychart(
     config: &LayoutConfig,
 ) -> String {
     let mut svg = String::new();
+    let chart_config = &config.xychart;
+    let x_axis_config = &chart_config.x_axis;
+    let y_axis_config = &chart_config.y_axis;
+    let plot_bottom = layout.plot_y + layout.plot_height;
+    let x_axis_line_y = plot_bottom + x_axis_config.axis_line_width / 2.0;
+    let x_tick_start_y = plot_bottom
+        + if x_axis_config.show_axis_line {
+            x_axis_config.axis_line_width
+        } else {
+            0.0
+        };
+    let x_label_y = plot_bottom
+        + x_axis_config.label_padding
+        + if x_axis_config.show_tick {
+            x_axis_config.tick_length
+        } else {
+            0.0
+        }
+        + if x_axis_config.show_axis_line {
+            x_axis_config.axis_line_width
+        } else {
+            0.0
+        };
+    let y_axis_line_x = layout.plot_x - y_axis_config.axis_line_width / 2.0;
+    let y_tick_start_x = layout.plot_x
+        - if y_axis_config.show_axis_line {
+            y_axis_config.axis_line_width
+        } else {
+            0.0
+        };
+    let y_label_x = layout.plot_x
+        - if y_axis_config.show_label {
+            y_axis_config.label_padding
+        } else {
+            0.0
+        }
+        - if y_axis_config.show_tick {
+            y_axis_config.tick_length
+        } else {
+            0.0
+        }
+        - if y_axis_config.show_axis_line {
+            y_axis_config.axis_line_width
+        } else {
+            0.0
+        };
 
-    // Background
     svg.push_str(&format!(
-        "<rect x=\"0\" y=\"0\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        layout.width, layout.height, theme.background
+        "<g class=\"main\"><rect width=\"{:.2}\" height=\"{:.2}\" class=\"background\" fill=\"{}\"/>",
+        layout.width,
+        layout.height,
+        escape_xml(&theme.xy_chart.background_color)
     ));
 
-    // Title
     if let Some(ref title) = layout.title {
-        svg.push_str(&text_block_svg(
+        svg.push_str("<g class=\"chart-title\">");
+        svg.push_str(&format!(
+            "<text x=\"0\" y=\"0\" fill=\"{}\" font-size=\"{:.0}\" dominant-baseline=\"middle\" text-anchor=\"middle\" transform=\"translate({:.2}, {:.2}) rotate(0)\">{}</text>",
+            escape_xml(&theme.xy_chart.title_color),
+            chart_config.title_font_size,
             layout.width / 2.0,
             layout.title_y,
-            title,
-            theme,
-            config,
-            false,
-            Some(theme.primary_text_color.as_str()),
+            escape_xml(&text_block_plain(title))
         ));
+        svg.push_str("</g>");
     }
 
-    // Plot area border
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\"/>",
-        layout.plot_x, layout.plot_y, layout.plot_width, layout.plot_height, theme.line_color
-    ));
-
-    // Y-axis ticks and labels
-    for (label, y) in &layout.y_axis_ticks {
-        // Tick line
-        svg.push_str(&format!(
-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"2,2\"/>",
-            layout.plot_x, y, layout.plot_x + layout.plot_width, y, "#ccc"
-        ));
-        // Label
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
-            layout.plot_x - 5.0, y + theme.font_size / 3.0,
-            normalize_font_family(&theme.font_family), theme.font_size * 0.8,
-            theme.primary_text_color, escape_xml(label)
-        ));
-    }
-
-    // X-axis categories
-    for (label, x) in &layout.x_axis_categories {
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
-            x, layout.plot_y + layout.plot_height + 20.0,
-            normalize_font_family(&theme.font_family), theme.font_size * 0.9,
-            theme.primary_text_color, escape_xml(label)
-        ));
-    }
-
-    // Y-axis label
-    if let Some(ref y_label) = layout.y_axis_label {
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\" transform=\"rotate(-90, {:.2}, {:.2})\">{}</text>",
-            layout.y_axis_label_x, layout.plot_y + layout.plot_height / 2.0,
-            normalize_font_family(&theme.font_family), theme.font_size,
-            theme.primary_text_color,
-            layout.y_axis_label_x, layout.plot_y + layout.plot_height / 2.0,
-            escape_xml(&y_label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
-        ));
-    }
-
-    // X-axis label
-    if let Some(ref x_label) = layout.x_axis_label {
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
-            layout.plot_x + layout.plot_width / 2.0, layout.x_axis_label_y,
-            normalize_font_family(&theme.font_family), theme.font_size,
-            theme.primary_text_color,
-            escape_xml(&x_label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
-        ));
-    }
-
-    // Bars
+    svg.push_str("<g class=\"plot\">");
     for bar in &layout.bars {
         svg.push_str(&format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"none\"/>",
-            bar.x, bar.y, bar.width, bar.height, escape_xml(&bar.color)
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0\"/>",
+            bar.x,
+            bar.y,
+            bar.width,
+            bar.height,
+            escape_xml(&bar.color),
+            escape_xml(&bar.color)
         ));
     }
+    if chart_config.show_data_label && !layout.bars.is_empty() {
+        let label_size = xy_data_label_font_size(&layout.bars);
+        for bar in &layout.bars {
+            svg.push_str(&format!(
+                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"hanging\" fill=\"{}\" font-size=\"{:.0}px\">{}</text>",
+                bar.x + bar.width / 2.0,
+                bar.y + 10.0,
+                escape_xml(&theme.xy_chart.data_label_color),
+                label_size,
+                escape_xml(&format_xy_value(bar.value))
+            ));
+        }
+    }
 
-    // Lines
     for line in &layout.lines {
         if line.points.len() >= 2 {
             let path: String = line
@@ -4493,20 +6167,160 @@ fn render_xychart(
                 })
                 .collect();
             svg.push_str(&format!(
-                "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
-                path, escape_xml(&line.color)
+                "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\"/>",
+                path,
+                escape_xml(&line.color)
             ));
-            // Draw points
-            for (x, y) in &line.points {
-                svg.push_str(&format!(
-                    "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"4\" fill=\"{}\" stroke=\"white\" stroke-width=\"1\"/>",
-                    x, y, escape_xml(&line.color)
-                ));
-            }
         }
     }
+    svg.push_str("</g>");
+
+    svg.push_str("<g class=\"bottom-axis\">");
+    if x_axis_config.show_axis_line {
+        svg.push_str(&format!(
+            "<g class=\"axis-line\"><path d=\"M {:.2},{:.2} L {:.2},{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.0}\"/></g>",
+            layout.plot_x,
+            x_axis_line_y,
+            layout.width,
+            x_axis_line_y,
+            escape_xml(&theme.xy_chart.x_axis_line_color),
+            x_axis_config.axis_line_width
+        ));
+    }
+    if x_axis_config.show_label {
+        svg.push_str("<g class=\"label\">");
+        for (label, x) in &layout.x_axis_categories {
+            svg.push_str(&format!(
+                "<text x=\"0\" y=\"0\" fill=\"{}\" font-size=\"{:.0}\" dominant-baseline=\"text-before-edge\" text-anchor=\"middle\" transform=\"translate({:.2}, {:.2}) rotate(0)\">{}</text>",
+                escape_xml(&theme.xy_chart.x_axis_label_color),
+                x_axis_config.label_font_size,
+                x,
+                x_label_y,
+                escape_xml(label)
+            ));
+        }
+        svg.push_str("</g>");
+    }
+    if x_axis_config.show_tick {
+        svg.push_str("<g class=\"ticks\">");
+        for (_, x) in &layout.x_axis_categories {
+            svg.push_str(&format!(
+                "<path d=\"M {:.2},{:.2} L {:.2},{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.0}\"/>",
+                x,
+                x_tick_start_y,
+                x,
+                x_tick_start_y + x_axis_config.tick_length,
+                escape_xml(&theme.xy_chart.x_axis_tick_color),
+                x_axis_config.tick_width
+            ));
+        }
+        svg.push_str("</g>");
+    }
+    if x_axis_config.show_title
+        && let Some(ref x_label) = layout.x_axis_label
+    {
+        svg.push_str(&format!(
+            "<g class=\"title\"><text x=\"0\" y=\"0\" fill=\"{}\" font-size=\"{:.0}\" dominant-baseline=\"text-before-edge\" text-anchor=\"middle\" transform=\"translate({:.2}, {:.2}) rotate(0)\">{}</text></g>",
+            escape_xml(&theme.xy_chart.x_axis_title_color),
+            x_axis_config.title_font_size,
+            layout.plot_x + layout.plot_width / 2.0,
+            layout.x_axis_label_y,
+            escape_xml(&text_block_plain(x_label))
+        ));
+    }
+    svg.push_str("</g>");
+
+    svg.push_str("<g class=\"left-axis\">");
+    if y_axis_config.show_axis_line {
+        svg.push_str(&format!(
+            "<g class=\"axisl-line\"><path d=\"M {:.2},{:.2} L {:.2},{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.0}\"/></g>",
+            y_axis_line_x,
+            layout.plot_y,
+            y_axis_line_x,
+            plot_bottom,
+            escape_xml(&theme.xy_chart.y_axis_line_color),
+            y_axis_config.axis_line_width
+        ));
+    }
+    if y_axis_config.show_label {
+        svg.push_str("<g class=\"label\">");
+        for (label, y) in &layout.y_axis_ticks {
+            svg.push_str(&format!(
+                "<text x=\"0\" y=\"0\" fill=\"{}\" font-size=\"{:.0}\" dominant-baseline=\"middle\" text-anchor=\"end\" transform=\"translate({:.2}, {:.2}) rotate(0)\">{}</text>",
+                escape_xml(&theme.xy_chart.y_axis_label_color),
+                y_axis_config.label_font_size,
+                y_label_x,
+                y,
+                escape_xml(label)
+            ));
+        }
+        svg.push_str("</g>");
+    }
+    if y_axis_config.show_tick {
+        svg.push_str("<g class=\"ticks\">");
+        for (_, y) in &layout.y_axis_ticks {
+            svg.push_str(&format!(
+                "<path d=\"M {:.2},{:.2} L {:.2},{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.0}\"/>",
+                y_tick_start_x,
+                y,
+                y_tick_start_x - y_axis_config.tick_length,
+                y,
+                escape_xml(&theme.xy_chart.y_axis_tick_color),
+                y_axis_config.tick_width
+            ));
+        }
+        svg.push_str("</g>");
+    }
+    if y_axis_config.show_title
+        && let Some(ref y_label) = layout.y_axis_label
+    {
+        svg.push_str(&format!(
+            "<g class=\"title\"><text x=\"0\" y=\"0\" fill=\"{}\" font-size=\"{:.0}\" dominant-baseline=\"text-before-edge\" text-anchor=\"middle\" transform=\"translate({:.2}, {:.2}) rotate(270)\">{}</text></g>",
+            escape_xml(&theme.xy_chart.y_axis_title_color),
+            y_axis_config.title_font_size,
+            layout.y_axis_label_x,
+            layout.plot_y + layout.plot_height / 2.0,
+            escape_xml(&text_block_plain(y_label))
+        ));
+    }
+    svg.push_str("</g></g>");
 
     svg
+}
+
+fn text_block_plain(block: &TextBlock) -> String {
+    block
+        .lines
+        .iter()
+        .map(|line| line.text().into_owned())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn xy_data_label_font_size(bars: &[crate::layout::XYChartBarLayout]) -> f32 {
+    let mut size: f32 = 25.0;
+    for bar in bars {
+        let label_len = format_xy_value(bar.value).chars().count().max(1) as f32;
+        let width_limit = bar.width / (label_len * 0.72);
+        let height_limit = (bar.height - 10.0).max(8.0);
+        size = size.min(width_limit).min(height_limit);
+    }
+    size.floor().clamp(8.0, 25.0)
+}
+
+fn format_xy_value(value: f32) -> String {
+    let normalized = if value.abs() < 0.000_001 { 0.0 } else { value };
+    if (normalized - normalized.round()).abs() < 0.000_001 {
+        return format!("{:.0}", normalized.round());
+    }
+    let mut text = format!("{:.6}", normalized);
+    while text.contains('.') && text.ends_with('0') {
+        text.pop();
+    }
+    if text.ends_with('.') {
+        text.pop();
+    }
+    text
 }
 
 fn render_timeline(
@@ -4757,9 +6571,10 @@ fn render_timeline(
             .collect::<Vec<_>>()
             .join(" ");
         svg.push_str(&format!(
-            "<text x=\"{x}\" font-size=\"4ex\" font-weight=\"bold\" font-family=\"'Helvetica Neue', Helvetica, Arial, sans-serif\" y=\"{y}\">{text}</text>",
+            "<text x=\"{x}\" font-size=\"4ex\" font-weight=\"bold\" font-family=\"{ff}\" y=\"{y}\">{text}</text>",
             x = layout.title_x,
             y = layout.title_y,
+            ff = font_family,
             text = escape_xml(&title_text),
         ));
     }
@@ -4780,14 +6595,23 @@ fn render_journey(layout: &JourneyLayout, theme: &Theme, config: &LayoutConfig) 
     let mut svg = String::new();
 
     if let Some(ref title) = layout.title {
-        svg.push_str(&text_block_svg(
-            layout.width / 2.0,
+        let title_text = title
+            .lines
+            .iter()
+            .map(|line| line.text())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let title_x = layout
+            .sections
+            .first()
+            .map(|section| section.x)
+            .unwrap_or(0.0);
+        svg.push_str(&format!(
+            "<text x=\"{title_x:.2}\" y=\"{:.2}\" font-size=\"4ex\" font-weight=\"bold\" font-family=\"{}\" fill=\"{}\">{}</text>",
             layout.title_y,
-            title,
-            theme,
-            config,
-            false,
-            Some(theme.primary_text_color.as_str()),
+            normalize_font_family(&theme.font_family),
+            escape_xml(&theme.primary_text_color),
+            escape_xml(&title_text)
         ));
     }
 
@@ -4800,29 +6624,26 @@ fn render_journey(layout: &JourneyLayout, theme: &Theme, config: &LayoutConfig) 
             actor.y,
             actor.radius,
             actor.color,
-            theme.line_color
+            "#000"
         ));
-        let label_x = actor.x + actor.radius + layout.actor_gap;
-        svg.push_str(&text_line_svg(
-            label_x,
-            layout.actor_label_y,
-            actor.name.as_str(),
-            theme,
-            theme.primary_text_color.as_str(),
-            "start",
+        svg.push_str(&format!(
+            "<text x=\"50\" y=\"{:.2}\" fill=\"#666\" font-family=\"{}\" font-size=\"{}\" text-anchor=\"start\">{}</text>",
+            actor.y + 7.0,
+            normalize_font_family(&theme.font_family),
+            theme.font_size,
+            escape_xml(&actor.name)
         ));
     }
 
     for section in &layout.sections {
         let fill = section.color.as_str();
         svg.push_str(&format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"8\" ry=\"8\" fill=\"{}\" fill-opacity=\"0.18\" stroke=\"{}\" stroke-width=\"1\"/>",
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\"/>",
             section.x,
             section.y,
             section.width,
             section.height,
-            fill,
-            theme.cluster_border
+            fill
         ));
         if !section.label.lines.is_empty()
             && !section
@@ -4840,21 +6661,44 @@ fn render_journey(layout: &JourneyLayout, theme: &Theme, config: &LayoutConfig) 
                 theme,
                 config,
                 false,
-                Some(theme.primary_text_color.as_str()),
+                Some("#fff"),
             ));
         }
     }
 
     for task in &layout.tasks {
+        let center_x = task.x + task.width / 2.0;
         svg.push_str(&format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"10\" ry=\"10\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1.2\"/>",
+            "<line x1=\"{center_x:.2}\" y1=\"{:.2}\" x2=\"{center_x:.2}\" y2=\"450\" stroke=\"#666\" stroke-width=\"1\" stroke-dasharray=\"4 2\"/>",
+            task.y
+        ));
+        if let Some(score) = task.score {
+            svg.push_str(&render_journey_face(center_x, task.score_y, score));
+        }
+        svg.push_str(&format!(
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\"/>",
             task.x,
             task.y,
             task.width,
             task.height,
-            theme.primary_color,
-            theme.primary_border_color
+            task.score_color
         ));
+        if let Some(actor_y) = task.actor_y {
+            let mut x_pos = task.x + 14.0;
+            for actor in &task.actors {
+                let color = actor_colors
+                    .get(actor)
+                    .map(|c| c.as_str())
+                    .unwrap_or("#8FBC8F");
+                svg.push_str(&format!(
+                    "<circle cx=\"{x_pos:.2}\" cy=\"{actor_y:.2}\" r=\"{:.2}\" fill=\"{}\" stroke=\"#000\" stroke-width=\"1\"><title>{}</title></circle>",
+                    layout.actor_radius,
+                    color,
+                    escape_xml(actor)
+                ));
+                x_pos += 10.0;
+            }
+        }
         let label_x = task.x + task.width / 2.0;
         let label_y = task.y + task.height / 2.0;
         svg.push_str(&text_block_svg(
@@ -4864,72 +6708,66 @@ fn render_journey(layout: &JourneyLayout, theme: &Theme, config: &LayoutConfig) 
             theme,
             config,
             false,
-            Some(theme.primary_text_color.as_str()),
+            Some("#fff"),
         ));
-
-        if let Some(score) = task.score {
-            let score_x = task.x + layout.score_radius + theme.font_size * 0.2;
-            svg.push_str(&format!(
-                "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-                score_x,
-                task.score_y,
-                layout.score_radius,
-                task.score_color,
-                theme.line_color
-            ));
-            let score_text = format!("{:.0}", score);
-            svg.push_str(&text_line_svg(
-                score_x,
-                task.score_y + theme.font_size * 0.35,
-                score_text.as_str(),
-                theme,
-                theme.primary_text_color.as_str(),
-                "middle",
-            ));
-        }
-
-        if let Some(actor_y) = task.actor_y {
-            let count = task.actors.len();
-            if count > 0 {
-                let total_width = count as f32 * layout.actor_radius * 2.0
-                    + (count.saturating_sub(1)) as f32 * layout.actor_gap;
-                let start_x = task.x + task.width / 2.0 - total_width / 2.0;
-                for (idx, actor) in task.actors.iter().enumerate() {
-                    let color = actor_colors
-                        .get(actor)
-                        .map(|c| c.as_str())
-                        .unwrap_or(theme.secondary_color.as_str());
-                    let cx = start_x
-                        + idx as f32 * (layout.actor_radius * 2.0 + layout.actor_gap)
-                        + layout.actor_radius;
-                    svg.push_str(&format!(
-                        "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-                        cx,
-                        actor_y,
-                        layout.actor_radius,
-                        color,
-                        theme.line_color
-                    ));
-                }
-            }
-        }
     }
 
     if let Some((x1, y, x2)) = layout.baseline {
         svg.push_str(&format!(
-            "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{}\" stroke-width=\"2\"/>",
-            theme.line_color
+            "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"black\" stroke-width=\"4\"/>"
         ));
-        let arrow = 8.0;
         svg.push_str(&format!(
-            "<polygon points=\"{x2:.2},{y:.2} {ax:.2},{ay1:.2} {ax:.2},{ay2:.2}\" fill=\"{}\"/>",
-            theme.line_color,
-            ax = x2 - arrow,
-            ay1 = y - arrow * 0.6,
-            ay2 = y + arrow * 0.6
+            "<polygon points=\"{x2:.2},{y:.2} {ax:.2},{ay1:.2} {ax:.2},{ay2:.2}\" fill=\"black\"/>",
+            ax = x2 - 6.0,
+            ay1 = y - 4.0,
+            ay2 = y + 4.0
         ));
     }
 
+    svg
+}
+
+fn render_journey_face(cx: f32, cy: f32, score: f32) -> String {
+    let radius = 15.0_f32;
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{radius:.2}\" fill=\"#FFF8DC\" stroke=\"#999\" stroke-width=\"2\"/>"
+    ));
+    svg.push_str(&format!(
+        "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"1.5\" fill=\"#666\" stroke=\"#666\" stroke-width=\"2\"/>",
+        cx - radius / 3.0,
+        cy - radius / 3.0
+    ));
+    svg.push_str(&format!(
+        "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"1.5\" fill=\"#666\" stroke=\"#666\" stroke-width=\"2\"/>",
+        cx + radius / 3.0,
+        cy - radius / 3.0
+    ));
+    if score > 3.0 {
+        svg.push_str(&format!(
+            "<path d=\"M {:.2} {:.2} A 7.5 7.5 0 0 0 {:.2} {:.2}\" fill=\"none\" stroke=\"#666\" stroke-width=\"1\"/>",
+            cx - 7.5,
+            cy + 2.0,
+            cx + 7.5,
+            cy + 2.0
+        ));
+    } else if score < 3.0 {
+        svg.push_str(&format!(
+            "<path d=\"M {:.2} {:.2} A 7.5 7.5 0 0 1 {:.2} {:.2}\" fill=\"none\" stroke=\"#666\" stroke-width=\"1\"/>",
+            cx - 7.5,
+            cy + 7.0,
+            cx + 7.5,
+            cy + 7.0
+        ));
+    } else {
+        svg.push_str(&format!(
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#666\" stroke-width=\"1\"/>",
+            cx - 5.0,
+            cy + 7.0,
+            cx + 5.0,
+            cy + 7.0
+        ));
+    }
     svg
 }
 
@@ -4947,7 +6785,7 @@ fn render_gitgraph(gitgraph: &GitGraphLayout, theme: &Theme, config: &LayoutConf
                 crate::ir::Direction::BottomTop => {
                     (branch.pos, gitgraph.max_pos, branch.pos, gg.default_pos)
                 }
-                _ => (0.0, branch.pos, gitgraph.max_pos, branch.pos),
+                _ => (0.0, branch.pos - 2.0, gitgraph.max_pos, branch.pos - 2.0),
             };
             svg.push_str(&format!(
                 "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{}\" stroke-width=\"{}\" stroke-dasharray=\"{}\"/>",
@@ -4983,7 +6821,7 @@ fn render_gitgraph(gitgraph: &GitGraphLayout, theme: &Theme, config: &LayoutConf
                 &branch.name,
                 &theme.font_family,
                 branch_font_size,
-                gg.branch_label_line_height,
+                1.0,
                 text_color,
             ));
         }
@@ -5288,6 +7126,48 @@ fn text_block_svg_anchor(
     )
 }
 
+fn sequence_text_block_svg(
+    x: f32,
+    y: f32,
+    label: &TextBlock,
+    theme: &Theme,
+    _edge: bool,
+    override_color: Option<&str>,
+) -> String {
+    text_block_svg_with_font_size_and_line_height(
+        x,
+        y,
+        label,
+        theme,
+        theme.font_size,
+        "middle",
+        override_color,
+        false,
+        SEQUENCE_TEXT_LINE_HEIGHT,
+    )
+}
+
+fn sequence_text_block_svg_anchor(
+    x: f32,
+    y: f32,
+    label: &TextBlock,
+    theme: &Theme,
+    anchor: &str,
+    override_color: Option<&str>,
+) -> String {
+    text_block_svg_with_font_size_and_line_height(
+        x,
+        y,
+        label,
+        theme,
+        theme.font_size,
+        anchor,
+        override_color,
+        false,
+        SEQUENCE_TEXT_LINE_HEIGHT,
+    )
+}
+
 fn text_block_svg_with_font_size(
     x: f32,
     y: f32,
@@ -5299,7 +7179,31 @@ fn text_block_svg_with_font_size(
     override_color: Option<&str>,
     baseline: bool,
 ) -> String {
-    let total_height = label.lines.len() as f32 * font_size * config.label_line_height;
+    text_block_svg_with_font_size_and_line_height(
+        x,
+        y,
+        label,
+        theme,
+        font_size,
+        anchor,
+        override_color,
+        baseline,
+        config.label_line_height,
+    )
+}
+
+fn text_block_svg_with_font_size_and_line_height(
+    x: f32,
+    y: f32,
+    label: &TextBlock,
+    theme: &Theme,
+    font_size: f32,
+    anchor: &str,
+    override_color: Option<&str>,
+    baseline: bool,
+    line_height_factor: f32,
+) -> String {
+    let total_height = label.lines.len() as f32 * font_size * line_height_factor;
     let start_y = if baseline {
         y
     } else {
@@ -5316,7 +7220,7 @@ fn text_block_svg_with_font_size(
         fill
     ));
 
-    let line_height = font_size * config.label_line_height;
+    let line_height = font_size * line_height_factor;
     for (idx, line) in label.lines.iter().enumerate() {
         let dy = if idx == 0 { 0.0 } else { line_height };
         let line_text = line.text();
@@ -5509,6 +7413,18 @@ fn render_c4(c4: &C4Layout, config: &LayoutConfig) -> String {
         svg.push_str(&render_c4_rel(rel, conf, idx == 0));
     }
     svg.push_str("</g>");
+
+    if let Some(title) = &c4.title {
+        let box_width = c4.viewbox_width - 2.0 * conf.diagram_margin_x;
+        let title_x = box_width / 2.0 - 4.0 * conf.diagram_margin_x;
+        let title_y = 2.0 * conf.diagram_margin_y;
+        svg.push_str(&format!(
+            "<text x=\"{:.1}\" y=\"{:.0}\">{}</text>",
+            title_x,
+            title_y,
+            escape_xml(title)
+        ));
+    }
 
     svg
 }
@@ -5811,8 +7727,9 @@ fn render_c4_rel(rel: &C4RelLayout, conf: &crate::config::C4Config, straight: bo
     let text_color = rel.text_color.as_deref().unwrap_or(&conf.boundary_stroke);
     let mid_x = rel.start.0.min(rel.end.0) + (rel.start.0 - rel.end.0).abs() / 2.0 + rel.offset_x;
     let mid_y = rel.start.1.min(rel.end.1) + (rel.start.1 - rel.end.1).abs() / 2.0 + rel.offset_y;
+    let label_x = mid_x + rel.label.width / 2.0;
     svg.push_str(&c4_text_svg(
-        mid_x,
+        label_x,
         mid_y,
         &rel.label.lines,
         &conf.message_font_family,
@@ -5822,10 +7739,12 @@ fn render_c4_rel(rel: &C4RelLayout, conf: &crate::config::C4Config, straight: bo
         false,
     ));
     if let Some(techn) = &rel.techn {
+        let techn_lines = c4_bracketed_lines(&techn.lines);
+        let techn_x = mid_x + rel.label.width.max(techn.width) / 2.0;
         svg.push_str(&c4_text_svg(
-            mid_x,
+            techn_x,
             mid_y + conf.message_font_size + 5.0,
-            &techn.lines,
+            &techn_lines,
             &conf.message_font_family,
             conf.message_font_size,
             &conf.message_font_weight,
@@ -5834,6 +7753,23 @@ fn render_c4_rel(rel: &C4RelLayout, conf: &crate::config::C4Config, straight: bo
         ));
     }
     svg
+}
+
+fn c4_bracketed_lines(lines: &[String]) -> Vec<String> {
+    match lines {
+        [] => Vec::new(),
+        [line] => vec![format!("[{line}]")],
+        _ => {
+            let mut bracketed = lines.to_vec();
+            if let Some(first) = bracketed.first_mut() {
+                first.insert(0, '[');
+            }
+            if let Some(last) = bracketed.last_mut() {
+                last.push(']');
+            }
+            bracketed
+        }
+    }
 }
 
 fn c4_text_svg(
@@ -6019,13 +7955,18 @@ fn c4_shape_font_weight(conf: &crate::config::C4Config, kind: crate::ir::C4Shape
     }
 }
 
+fn is_class_annotation_label_text(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.starts_with('\u{00ab}') && trimmed.ends_with('\u{00bb}')
+}
+
 fn text_block_svg_class(
     node: &crate::layout::NodeLayout,
     theme: &Theme,
     config: &LayoutConfig,
     override_color: Option<&str>,
 ) -> String {
-    let line_height = theme.font_size * config.class_label_line_height();
+    let line_height = theme.font_size * config.class_diagram_label_line_height();
     let total_height = node.label.lines.len() as f32 * line_height;
     let start_y = node.y + node.height / 2.0 - total_height / 2.0 + theme.font_size;
     let center_x = node.x + node.width / 2.0;
@@ -6056,10 +7997,15 @@ fn text_block_svg_class(
         );
     };
 
+    let mut annotation_lines: Vec<(usize, &str)> = Vec::new();
     let mut title_lines: Vec<(usize, &str)> = Vec::new();
     for (idx, line) in text_lines.iter().enumerate().take(divider_idx) {
         if !line.trim().is_empty() {
-            title_lines.push((idx, line.as_str()));
+            if is_class_annotation_label_text(line) {
+                annotation_lines.push((idx, line.as_str()));
+            } else {
+                title_lines.push((idx, line.as_str()));
+            }
         }
     }
     let mut member_lines: Vec<(usize, &str)> = Vec::new();
@@ -6070,6 +8016,18 @@ fn text_block_svg_class(
     }
 
     let mut svg = String::new();
+    if !annotation_lines.is_empty() {
+        svg.push_str(&text_lines_svg(
+            &annotation_lines,
+            center_x,
+            start_y,
+            line_height,
+            "middle",
+            theme,
+            fill,
+            false,
+        ));
+    }
     if !title_lines.is_empty() {
         svg.push_str(&text_lines_svg(
             &title_lines,
@@ -6317,6 +8275,7 @@ fn divider_lines_svg(
     theme: &Theme,
     line_height: f32,
     extend_to_border: bool,
+    render_as_class_path: bool,
 ) -> String {
     if !node
         .label
@@ -6338,7 +8297,13 @@ fn divider_lines_svg(
         .style
         .stroke_width
         .map(|value| value.to_string())
-        .unwrap_or_else(|| "1.0".to_string());
+        .unwrap_or_else(|| {
+            if render_as_class_path {
+                "1.3".to_string()
+            } else {
+                "1.0".to_string()
+            }
+        });
     let dash = node
         .style
         .stroke_dasharray
@@ -6358,9 +8323,16 @@ fn divider_lines_svg(
         }
         let baseline_y = start_y + idx as f32 * line_height;
         let y = baseline_y - theme.font_size * 0.35;
-        svg.push_str(&format!(
-            "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}/>",
-        ));
+        if render_as_class_path {
+            let d = class_box_rough_line_path(x1, y, x2, y + 0.001);
+            svg.push_str(&format!(
+                "<g class=\"divider\"><path d=\"{d}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\" fill=\"none\"{dash}/></g>",
+            ));
+        } else {
+            svg.push_str(&format!(
+                "<line x1=\"{x1:.2}\" y1=\"{y:.2}\" x2=\"{x2:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}/>",
+            ));
+        }
     }
 
     svg
@@ -6842,7 +8814,7 @@ fn render_sequence_actor_shape(
     svg: &mut String,
     node: &crate::layout::NodeLayout,
     theme: &Theme,
-    config: &LayoutConfig,
+    _config: &LayoutConfig,
     _is_footbox: bool,
 ) {
     use crate::ir::NodeShape;
@@ -6899,12 +8871,11 @@ fn render_sequence_actor_shape(
             // Label below the figure
             if !hide_label {
                 let label_y = leg_bot + 8.0;
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     cx,
                     label_y,
                     &node.label,
                     theme,
-                    config,
                     false,
                     node.style.text_color.as_deref(),
                 ));
@@ -6936,12 +8907,11 @@ fn render_sequence_actor_shape(
             ));
             if !hide_label {
                 let label_y = glyph_y + radius + 16.0;
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     cx,
                     label_y,
                     &node.label,
                     theme,
-                    config,
                     false,
                     node.style.text_color.as_deref(),
                 ));
@@ -6963,12 +8933,11 @@ fn render_sequence_actor_shape(
             ));
             if !hide_label {
                 let label_y = cy + radius + 12.0;
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     cx,
                     label_y,
                     &node.label,
                     theme,
-                    config,
                     false,
                     node.style.text_color.as_deref(),
                 ));
@@ -6994,12 +8963,11 @@ fn render_sequence_actor_shape(
             ));
             if !hide_label {
                 let label_y = underline_y + 12.0;
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     cx,
                     label_y,
                     &node.label,
                     theme,
-                    config,
                     false,
                     node.style.text_color.as_deref(),
                 ));
@@ -7029,12 +8997,11 @@ fn render_sequence_actor_shape(
             if !hide_label {
                 let cx = x + w / 2.0;
                 let cy = y + h / 2.0;
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     cx,
                     cy,
                     &node.label,
                     theme,
-                    config,
                     false,
                     node.style.text_color.as_deref(),
                 ));
@@ -7075,12 +9042,11 @@ fn render_sequence_actor_shape(
             ));
             if !hide_label {
                 let cx = node.x + w / 2.0;
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     cx,
                     cy,
                     &node.label,
                     theme,
-                    config,
                     false,
                     node.style.text_color.as_deref(),
                 ));
@@ -7119,12 +9085,11 @@ fn render_sequence_actor_shape(
                 // the cylinder. text_block_svg adds ~4 px baseline pad on top
                 // of this offset.
                 let label_y = node.y + cyl_h + ry + 4.0;
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     actor_cx,
                     label_y,
                     &node.label,
                     theme,
-                    config,
                     false,
                     node.style.text_color.as_deref(),
                 ));
@@ -7140,12 +9105,11 @@ fn render_sequence_actor_shape(
             if !hide_label {
                 let cx = node.x + node.width / 2.0;
                 let cy = node.y + node.height / 2.0;
-                svg.push_str(&text_block_svg(
+                svg.push_str(&sequence_text_block_svg(
                     cx,
                     cy,
                     &node.label,
                     theme,
-                    config,
                     false,
                     node.style.text_color.as_deref(),
                 ));
@@ -7161,6 +9125,13 @@ fn escape_xml(input: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+fn escape_xml_text_node(input: &str) -> String {
+    input
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(feature = "png")]
@@ -7205,10 +9176,11 @@ fn link_attrs(link: &crate::ir::NodeLink) -> String {
     attrs
 }
 
-const CLASS_OPEN_MARKER_EXTENT: f32 = 17.0;
+const CLASS_OPEN_MARKER_EXTENT: f32 = 17.25;
 const CLASS_DEPENDENCY_MARKER_EXTENT: f32 = 6.0;
 const CLASS_DECORATION_MARKER_EXTENT: f32 = 18.0;
 const CLASS_GENERIC_MARKER_EXTENT: f32 = 8.0;
+const CLASS_LOLLIPOP_MARKER_EXTENT: f32 = 6.0;
 
 fn class_arrow_marker_extent(arrow: bool, kind: Option<crate::ir::EdgeArrowhead>) -> f32 {
     if !arrow {
@@ -7225,6 +9197,7 @@ fn class_decoration_marker_extent(decoration: Option<crate::ir::EdgeDecoration>)
     match decoration {
         Some(crate::ir::EdgeDecoration::Diamond)
         | Some(crate::ir::EdgeDecoration::DiamondFilled) => CLASS_DECORATION_MARKER_EXTENT,
+        Some(crate::ir::EdgeDecoration::Lollipop) => CLASS_LOLLIPOP_MARKER_EXTENT,
         Some(crate::ir::EdgeDecoration::Circle) | Some(crate::ir::EdgeDecoration::Cross) => {
             CLASS_GENERIC_MARKER_EXTENT
         }
@@ -7294,6 +9267,13 @@ fn edge_decoration_svg(
             "<path d=\"M -5 -5 L 5 5 M -5 5 L 5 -5\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
             stroke, stroke_width
         ),
+        crate::ir::EdgeDecoration::Lollipop => {
+            let cx = if _at_start { -6.0 } else { 6.0 };
+            format!(
+                "<circle cx=\"{cx}\" cy=\"0\" r=\"6\" fill=\"#ECECFF\" stroke=\"{}\" stroke-width=\"{}\"/>",
+                stroke, stroke_width
+            )
+        }
         crate::ir::EdgeDecoration::Diamond => {
             let points = "0,0 9,6 18,0 9,-6";
             format!(
@@ -7331,6 +9311,67 @@ fn edge_decoration_svg(
     )
 }
 
+fn default_edge_stroke_for_kind(kind: crate::ir::DiagramKind, theme: &Theme) -> String {
+    if matches!(
+        kind,
+        crate::ir::DiagramKind::Block
+            | crate::ir::DiagramKind::Class
+            | crate::ir::DiagramKind::Flowchart
+            | crate::ir::DiagramKind::Sequence
+    ) && theme.line_color.eq_ignore_ascii_case("#2F3B4D")
+    {
+        "#333333".to_string()
+    } else {
+        theme.line_color.clone()
+    }
+}
+
+fn color_with_opacity(color: &str, opacity: f32) -> String {
+    let opacity = opacity.clamp(0.0, 1.0);
+    if let Some((r, g, b)) = parse_hex_rgb(color.trim()) {
+        format!("rgba({r}, {g}, {b}, {opacity})")
+    } else {
+        color.to_string()
+    }
+}
+
+fn default_kanban_section_fill(index_zero_based: usize) -> &'static str {
+    const COLORS: [&str; 11] = [
+        "hsl(80, 100%, 86.2745098039%)",
+        "hsl(270, 100%, 86.2745098039%)",
+        "hsl(300, 100%, 86.2745098039%)",
+        "hsl(330, 100%, 86.2745098039%)",
+        "hsl(0, 100%, 86.2745098039%)",
+        "hsl(30, 100%, 86.2745098039%)",
+        "hsl(90, 100%, 86.2745098039%)",
+        "hsl(150, 100%, 86.2745098039%)",
+        "hsl(180, 100%, 86.2745098039%)",
+        "hsl(210, 100%, 86.2745098039%)",
+        "hsl(60, 100%, 83.5294117647%)",
+    ];
+    COLORS[index_zero_based % COLORS.len()]
+}
+
+fn parse_hex_rgb(value: &str) -> Option<(u8, u8, u8)> {
+    let hex = value.strip_prefix('#')?;
+    match hex.len() {
+        3 => {
+            let mut chars = hex.chars();
+            let r = chars.next()?.to_digit(16)? as u8;
+            let g = chars.next()?.to_digit(16)? as u8;
+            let b = chars.next()?.to_digit(16)? as u8;
+            Some((r * 17, g * 17, b * 17))
+        }
+        6 => {
+            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+            Some((r, g, b))
+        }
+        _ => None,
+    }
+}
+
 fn arrowhead_svg(point: (f32, f32), angle_deg: f32, stroke: &str, stroke_width: f32) -> String {
     let size = (stroke_width * 2.2 + 6.0).clamp(6.0, 14.0);
     let half = size * 0.6;
@@ -7358,6 +9399,165 @@ fn edge_endpoint_angle(points: &[(f32, f32)], start: bool) -> f32 {
     dy.atan2(dx).to_degrees()
 }
 
+fn render_kanban_item_node(
+    node: &crate::layout::NodeLayout,
+    theme: &Theme,
+    config: &LayoutConfig,
+) -> String {
+    let parts = kanban_render_parts(&node.label);
+    let fill = node.style.fill.as_deref().unwrap_or("#FFFFFF");
+    let stroke = node.style.stroke.as_deref().unwrap_or("#9370DB");
+    let stroke_width = node.style.stroke_width.unwrap_or(1.0);
+    let mut out = String::new();
+
+    out.push_str(&format!(
+        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"5\" ry=\"5\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+        node.x, node.y, node.width, node.height, fill, stroke, stroke_width
+    ));
+
+    if !parts.title_lines.is_empty() {
+        let title_block = TextBlock {
+            width: node.label.width,
+            height: node.label.height,
+            lines: parts.title_lines,
+        };
+        let title_x = node.x + 10.0;
+        let title_y = node.y + 4.0 + title_block.height / 2.0;
+        out.push_str(&text_block_svg_with_font_size(
+            title_x,
+            title_y,
+            &title_block,
+            theme,
+            config,
+            theme.font_size,
+            "start",
+            node.style.text_color.as_deref(),
+            false,
+        ));
+    }
+
+    let footer_baseline = node.y + node.height - 12.0;
+    if let Some(ticket) = parts.ticket.as_deref() {
+        out.push_str(&format!(
+            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" text-decoration=\"underline\"><tspan x=\"{:.2}\" dy=\"0.00\">{}</tspan></text>",
+            node.x + 10.0,
+            footer_baseline,
+            normalize_font_family(&theme.font_family),
+            theme.font_size,
+            theme.primary_text_color,
+            node.x + 10.0,
+            escape_xml(ticket)
+        ));
+    }
+    if let Some(assigned) = parts.assigned.as_deref() {
+        let assigned_width =
+            text_metrics::measure_text_width(assigned, theme.font_size, &theme.font_family)
+                .unwrap_or_else(|| assigned.chars().count() as f32 * theme.font_size * 0.56);
+        let assigned_x = node.x + node.width - assigned_width - 10.0;
+        out.push_str(&format!(
+            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"start\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\"><tspan x=\"{:.2}\" dy=\"0.00\">{}</tspan></text>",
+            assigned_x,
+            footer_baseline,
+            normalize_font_family(&theme.font_family),
+            theme.font_size,
+            theme.primary_text_color,
+            assigned_x,
+            escape_xml(assigned)
+        ));
+    }
+
+    if let Some(color) = parts.priority.as_deref().and_then(kanban_priority_color) {
+        let line_x = node.x + 2.0;
+        out.push_str(&format!(
+            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke-width=\"4\" stroke=\"{}\"/>",
+            line_x,
+            node.y + 2.0,
+            line_x,
+            node.y + node.height - 2.0,
+            color
+        ));
+    }
+
+    out
+}
+
+struct KanbanRenderParts {
+    title_lines: Vec<TextLine>,
+    ticket: Option<String>,
+    assigned: Option<String>,
+    priority: Option<String>,
+}
+
+fn kanban_render_parts(label: &TextBlock) -> KanbanRenderParts {
+    let mut title_lines = Vec::new();
+    let mut ticket = None;
+    let mut assigned = None;
+    let mut priority = None;
+
+    for line in &label.lines {
+        let text = line.text();
+        if is_kanban_metadata_line(&text) {
+            for (key, value) in parse_kanban_metadata_pairs(&text) {
+                match key.as_str() {
+                    "ticket" => ticket = Some(value),
+                    "assigned" => assigned = Some(value),
+                    "priority" => priority = Some(value),
+                    _ => {}
+                }
+            }
+        } else {
+            title_lines.push(line.clone());
+        }
+    }
+
+    KanbanRenderParts {
+        title_lines,
+        ticket,
+        assigned,
+        priority,
+    }
+}
+
+fn is_kanban_metadata_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    lower.contains("ticket:") || lower.contains("assigned:") || lower.contains("priority:")
+}
+
+fn parse_kanban_metadata_pairs(input: &str) -> Vec<(String, String)> {
+    input
+        .split([',', '\n'])
+        .filter_map(|pair| {
+            let (key, value) = pair.split_once(':')?;
+            let key = key
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_ascii_lowercase();
+            let value = value
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string();
+            if key.is_empty() {
+                None
+            } else {
+                Some((key, value))
+            }
+        })
+        .collect()
+}
+
+fn kanban_priority_color(priority: &str) -> Option<&'static str> {
+    match priority.to_ascii_lowercase().as_str() {
+        "very high" => Some("red"),
+        "high" => Some("orange"),
+        "medium" => None,
+        "low" => Some("blue"),
+        "very low" => Some("lightblue"),
+        _ => None,
+    }
+}
+
 #[cfg(feature = "png")]
 fn primary_font(fonts: &str) -> String {
     fonts
@@ -7368,21 +9568,43 @@ fn primary_font(fonts: &str) -> String {
         .to_string()
 }
 
-fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutConfig) -> String {
-    let mut raw = shape_svg_inner(node, theme, config);
+fn shape_svg(
+    node: &crate::layout::NodeLayout,
+    theme: &Theme,
+    config: &LayoutConfig,
+    diagram_kind: crate::ir::DiagramKind,
+) -> String {
+    if is_flowchart_icon_shape(node.shape) {
+        let raw = flowchart_icon_shape_svg(node, theme);
+        return if config.look == crate::ir::DiagramLook::HandDrawn {
+            let seed = hand_drawn_seed(node.x, node.y, node.width, node.height);
+            hand_drawn_path_jitter(&raw, 1.5, seed)
+        } else {
+            raw
+        };
+    }
+
+    let mut raw = if diagram_kind == crate::ir::DiagramKind::Class {
+        class_diagram_box_svg(node, theme)
+            .unwrap_or_else(|| shape_svg_inner(node, theme, config, diagram_kind))
+    } else {
+        shape_svg_inner(node, theme, config, diagram_kind)
+    };
     // If the node has an icon, render it inside the shape
     if let Some(icon_name) = &node.icon {
-        let icon_size = node.height.min(node.width) * 0.5;
-        let ix = node.x + (node.width - icon_size) / 2.0;
-        let iy = node.y + (node.height - icon_size) / 2.0;
-        let fill = node
-            .style
-            .stroke
-            .as_ref()
-            .unwrap_or(&theme.primary_border_color);
-        raw.push_str(&crate::icons::render_icon_svg(
-            icon_name, ix, iy, icon_size, fill,
-        ));
+        if crate::icons::lookup_icon(icon_name).is_some() {
+            let icon_size = node.height.min(node.width) * 0.5;
+            let ix = node.x + (node.width - icon_size) / 2.0;
+            let iy = node.y + (node.height - icon_size) / 2.0;
+            let fill = node
+                .style
+                .stroke
+                .as_ref()
+                .unwrap_or(&theme.primary_border_color);
+            raw.push_str(&crate::icons::render_icon_svg(
+                icon_name, ix, iy, icon_size, fill,
+            ));
+        }
     }
     // If the node has an image, render it inside the shape
     if let Some(img_url) = &node.img {
@@ -7402,10 +9624,760 @@ fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutCon
     }
 }
 
+fn is_flowchart_icon_shape(shape: crate::ir::NodeShape) -> bool {
+    matches!(
+        shape,
+        crate::ir::NodeShape::Icon
+            | crate::ir::NodeShape::IconCircle
+            | crate::ir::NodeShape::IconSquare
+            | crate::ir::NodeShape::IconRounded
+    )
+}
+
+fn flowchart_icon_visual_size(shape: crate::ir::NodeShape) -> f32 {
+    match shape {
+        crate::ir::NodeShape::IconCircle => {
+            FLOWCHART_ICON_ASSET_SIZE * std::f32::consts::SQRT_2
+                + FLOWCHART_ICON_CIRCLE_PADDING * 2.0
+        }
+        crate::ir::NodeShape::IconSquare | crate::ir::NodeShape::IconRounded => {
+            FLOWCHART_ICON_ASSET_SIZE + FLOWCHART_ICON_SQUARE_PADDING * 2.0
+        }
+        crate::ir::NodeShape::Icon => FLOWCHART_ICON_ASSET_SIZE,
+        _ => FLOWCHART_ICON_ASSET_SIZE,
+    }
+}
+
+fn flowchart_icon_label_center_y(node: &crate::layout::NodeLayout) -> f32 {
+    let icon_box = flowchart_icon_visual_size(node.shape);
+    node.y
+        + icon_box
+        + FLOWCHART_ICON_LABEL_PADDING
+        + FLOWCHART_ICON_LABEL_TOP_INSET
+        + node.label.height / 2.0
+}
+
+fn treemap_shape_svg(node: &crate::layout::NodeLayout, theme: &Theme) -> String {
+    let fill = node.style.fill.as_deref().unwrap_or(&theme.primary_color);
+    let stroke = node.style.stroke.as_deref().unwrap_or(fill);
+    let stroke_width =
+        node.style
+            .stroke_width
+            .unwrap_or(if node.is_treemap_leaf { 3.0 } else { 2.0 });
+    if node.is_treemap_leaf {
+        format!(
+            "<rect class=\"treemapLeaf\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" fill-opacity=\"0.3\" stroke=\"{}\" stroke-width=\"{}\"/>",
+            node.x,
+            node.y,
+            node.width,
+            node.height,
+            escape_xml(fill),
+            escape_xml(stroke),
+            stroke_width
+        )
+    } else {
+        format!(
+            "<rect class=\"treemapSection\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" fill-opacity=\"0.6\" stroke=\"{}\" stroke-width=\"{}\" stroke-opacity=\"0.4\"/>",
+            node.x,
+            node.y,
+            node.width,
+            node.height,
+            escape_xml(fill),
+            escape_xml(stroke),
+            stroke_width
+        )
+    }
+}
+
+fn treemap_section_label_svg(node: &crate::layout::NodeLayout, theme: &Theme) -> String {
+    let label = first_text_line(&node.label);
+    if label.trim().is_empty() {
+        return String::new();
+    }
+    let fill = node
+        .style
+        .text_color
+        .as_deref()
+        .unwrap_or(theme.primary_text_color.as_str());
+    let font_family = normalize_font_family(&theme.font_family);
+    let y = node.y + 12.5;
+    let mut out = format!(
+        "<text class=\"treemapSectionLabel\" x=\"{:.2}\" y=\"{:.2}\" dominant-baseline=\"middle\" font-family=\"{}\" font-weight=\"bold\" style=\"dominant-baseline: middle; font-size: 12px; fill:{}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\">{}</text>",
+        node.x + 6.0,
+        y,
+        font_family,
+        escape_xml(fill),
+        escape_xml(&label)
+    );
+    if let Some(sub_label) = node.sub_label.as_ref() {
+        let value = first_text_line(sub_label);
+        if !value.trim().is_empty() {
+            out.push_str(&format!(
+                "<text class=\"treemapSectionValue\" x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{}\" font-style=\"italic\" style=\"text-anchor: end; dominant-baseline: middle; font-size: 10px; fill:{}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;\">{}</text>",
+                node.x + node.width - 10.0,
+                y,
+                font_family,
+                escape_xml(fill),
+                escape_xml(&value)
+            ));
+        }
+    }
+    out
+}
+
+fn treemap_leaf_label_svg(node: &crate::layout::NodeLayout, theme: &Theme) -> String {
+    let label = first_text_line(&node.label);
+    if label.trim().is_empty() {
+        return String::new();
+    }
+    let fill = node
+        .style
+        .text_color
+        .as_deref()
+        .unwrap_or(theme.primary_text_color.as_str());
+    let base_fill = node.treemap_base_text_color.as_deref().unwrap_or(fill);
+    let label_fill_style = if base_fill != fill {
+        format!(
+            "fill:{};fill:{} !important",
+            escape_xml(base_fill),
+            escape_xml(fill)
+        )
+    } else {
+        format!("fill:{}", escape_xml(fill))
+    };
+    let value_fill_style = if base_fill != fill {
+        format!("fill:{} !important", escape_xml(fill))
+    } else {
+        format!("fill:{}", escape_xml(fill))
+    };
+    let clip_id = format!("clip-my-svg-{}", node.id);
+    let escaped_clip_id = escape_xml(&clip_id);
+    let clip_width = (node.width - 4.0).max(0.0);
+    let clip_height = (node.height - 4.0).max(0.0);
+    let font_family = normalize_font_family(&theme.font_family);
+    let center_x = node.x + node.width / 2.0;
+    let center_y = node.y + node.height / 2.0;
+    let mut out = format!(
+        "<clipPath id=\"{escaped_clip_id}\"><rect x=\"{clip_x:.2}\" y=\"{clip_y:.2}\" width=\"{clip_width:.2}\" height=\"{clip_height:.2}\"/></clipPath>",
+        clip_x = node.x,
+        clip_y = node.y,
+        clip_width = clip_width,
+        clip_height = clip_height
+    );
+
+    let Some((label_font, value_font)) = treemap_leaf_font_sizes(node, &label, theme) else {
+        out.push_str(&format!(
+            "<text class=\"treemapLabel\" x=\"{:.2}\" y=\"{:.2}\" font-family=\"{}\" style=\"text-anchor: middle; dominant-baseline: middle; font-size: 38px; {}; display: none;\" clip-path=\"url(#{})\">{}</text>",
+            center_x,
+            center_y,
+            font_family,
+            label_fill_style,
+            escaped_clip_id,
+            escape_xml(&label)
+        ));
+        return out;
+    };
+
+    out.push_str(&format!(
+        "<text class=\"treemapLabel\" x=\"{:.2}\" y=\"{:.2}\" font-family=\"{}\" style=\"text-anchor: middle; dominant-baseline: middle; font-size: {}px; {};\" clip-path=\"url(#{})\">{}</text>",
+        center_x,
+        center_y,
+        font_family,
+        label_font,
+        label_fill_style,
+        escaped_clip_id,
+        escape_xml(&label),
+    ));
+
+    if let Some(sub_label) = node.sub_label.as_ref() {
+        let value = first_text_line(sub_label);
+        let value_y = center_y + label_font / 2.0 + 2.0;
+        let available_width = (node.width - 8.0).max(0.0);
+        let value_bottom = value_y + value_font;
+        if !value.trim().is_empty() {
+            let value_style_suffix = if treemap_estimated_text_width(&value, value_font, theme)
+                <= available_width
+                && value_bottom <= node.y + node.height - 4.0
+            {
+                String::new()
+            } else {
+                " display: none;".to_string()
+            };
+            out.push_str(&format!(
+                "<text class=\"treemapValue\" x=\"{:.2}\" y=\"{:.2}\" font-family=\"{}\" style=\"text-anchor: middle; dominant-baseline: hanging; font-size: {}px; {};{}\" clip-path=\"url(#{})\">{}</text>",
+                center_x,
+                value_y,
+                font_family,
+                value_font,
+                value_fill_style,
+                value_style_suffix,
+                escaped_clip_id,
+                escape_xml(&value)
+            ));
+        }
+    }
+
+    out
+}
+
+fn treemap_leaf_font_sizes(
+    node: &crate::layout::NodeLayout,
+    label: &str,
+    theme: &Theme,
+) -> Option<(f32, f32)> {
+    let available_width = node.width - 8.0;
+    let available_height = node.height - 8.0;
+    if available_width < 10.0 || available_height < 10.0 {
+        return None;
+    }
+
+    let mut label_font = 38.0;
+    while treemap_estimated_text_width(label, label_font, theme) > available_width
+        && label_font > 8.0
+    {
+        label_font -= 1.0;
+    }
+
+    let mut value_font = treemap_value_font_size(label_font);
+    while label_font + 2.0 + value_font > available_height && label_font > 8.0 {
+        label_font -= 1.0;
+        value_font = treemap_value_font_size(label_font);
+    }
+
+    if label_font < 8.0 || treemap_estimated_text_width(label, label_font, theme) > available_width
+    {
+        None
+    } else {
+        Some((label_font, value_font))
+    }
+}
+
+fn treemap_value_font_size(label_font: f32) -> f32 {
+    (label_font * 0.6).round().clamp(6.0, 28.0)
+}
+
+fn treemap_estimated_text_width(text: &str, font_size: f32, theme: &Theme) -> f32 {
+    // Mermaid asks the browser's shaped SVG text node for getComputedTextLength().
+    // Our ttf advance sum is a hair more conservative for some Trebuchet strings,
+    // so keep the browser-style fitting loop from shrinking on sub-pixel drift.
+    (text_metrics::get_computed_text_length(text, font_size, &theme.font_family) - 1.0).max(0.0)
+}
+
+fn first_text_line(label: &crate::layout::TextBlock) -> String {
+    label
+        .lines
+        .first()
+        .map(|line| line.text().into_owned())
+        .unwrap_or_default()
+}
+
+fn class_diagram_box_svg(node: &crate::layout::NodeLayout, theme: &Theme) -> Option<String> {
+    let (fill, stroke) = match node.shape {
+        crate::ir::NodeShape::Rectangle => (
+            node.style
+                .fill
+                .as_deref()
+                .unwrap_or(&theme.primary_color)
+                .to_string(),
+            node.style
+                .stroke
+                .as_deref()
+                .unwrap_or(&theme.primary_border_color)
+                .to_string(),
+        ),
+        crate::ir::NodeShape::Note => (
+            node.style
+                .fill
+                .as_deref()
+                .unwrap_or(&theme.sequence_note_fill)
+                .to_string(),
+            node.style
+                .stroke
+                .as_deref()
+                .unwrap_or(&theme.sequence_note_border)
+                .to_string(),
+        ),
+        _ => return None,
+    };
+    let dash = node
+        .style
+        .stroke_dasharray
+        .as_ref()
+        .map(|value| format!(" stroke-dasharray=\"{}\"", value))
+        .unwrap_or_else(|| " stroke-dasharray=\"0 0\"".to_string());
+    let stroke_width = node
+        .style
+        .stroke_width
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "1.3".to_string());
+    let fill_d = class_box_fill_path(node.x, node.y, node.width, node.height);
+    let stroke_d = class_box_rough_rect_path(node.x, node.y, node.width, node.height);
+
+    Some(format!(
+        "<g class=\"basic label-container outer-path\"><path d=\"{fill_d}\" stroke=\"none\" stroke-width=\"0\" fill=\"{fill}\"/><path d=\"{stroke_d}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\" fill=\"none\"{dash}/></g>",
+    ))
+}
+
+fn class_box_fill_path(x: f32, y: f32, width: f32, height: f32) -> String {
+    let right = x + width;
+    let bottom = y + height;
+    format!("M{x:.2} {y:.2} L{right:.2} {y:.2} L{right:.2} {bottom:.2} L{x:.2} {bottom:.2}")
+}
+
+fn class_box_rough_rect_path(x: f32, y: f32, width: f32, height: f32) -> String {
+    let right = x + width;
+    let bottom = y + height;
+    [
+        class_box_rough_line_path(x, y, right, y),
+        class_box_rough_line_path(right, y, right, bottom),
+        class_box_rough_line_path(right, bottom, x, bottom),
+        class_box_rough_line_path(x, bottom, x, y),
+    ]
+    .join(" ")
+}
+
+fn class_box_rough_line_path(x1: f32, y1: f32, x2: f32, y2: f32) -> String {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let c1a = (x1 + dx * 0.31, y1 + dy * 0.31);
+    let c2a = (x1 + dx * 0.68, y1 + dy * 0.68);
+    let c1b = (x1 + dx * 0.42, y1 + dy * 0.42);
+    let c2b = (x1 + dx * 0.57, y1 + dy * 0.57);
+    format!(
+        "M{x1:.2} {y1:.2} C{:.2} {:.2}, {:.2} {:.2}, {x2:.2} {y2:.2} M{x1:.2} {y1:.2} C{:.2} {:.2}, {:.2} {:.2}, {x2:.2} {y2:.2}",
+        c1a.0, c1a.1, c2a.0, c2a.1, c1b.0, c1b.1, c2b.0, c2b.1
+    )
+}
+
+fn flowchart_icon_shape_svg(node: &crate::layout::NodeLayout, theme: &Theme) -> String {
+    let fill = node.style.fill.as_ref().unwrap_or(&theme.primary_color);
+    let stroke = match node.shape {
+        crate::ir::NodeShape::IconCircle
+        | crate::ir::NodeShape::IconSquare
+        | crate::ir::NodeShape::IconRounded => fill,
+        _ => node
+            .style
+            .stroke
+            .as_ref()
+            .unwrap_or(&theme.primary_border_color),
+    };
+    let icon_box = flowchart_icon_visual_size(node.shape);
+    let icon_x = node.x + (node.width - FLOWCHART_ICON_ASSET_SIZE) / 2.0;
+    let icon_y = node.y + (icon_box - FLOWCHART_ICON_ASSET_SIZE) / 2.0;
+    let mut svg = String::new();
+
+    match node.shape {
+        crate::ir::NodeShape::IconCircle => {
+            let cx = node.x + node.width / 2.0;
+            let cy = node.y + icon_box / 2.0;
+            let r = icon_box / 2.0;
+            svg.push_str(&format!(
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.3\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+            ));
+        }
+        crate::ir::NodeShape::IconSquare | crate::ir::NodeShape::IconRounded => {
+            let x = node.x + (node.width - icon_box) / 2.0;
+            let y = node.y;
+            let radius = if node.shape == crate::ir::NodeShape::IconRounded {
+                icon_box * 0.1
+            } else {
+                0.0
+            };
+            svg.push_str(&format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{icon_box:.2}\" height=\"{icon_box:.2}\" rx=\"{radius:.2}\" ry=\"{radius:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>",
+            ));
+        }
+        crate::ir::NodeShape::Icon => {}
+        _ => {}
+    }
+
+    if node.icon.is_some() {
+        svg.push_str(&crate::icons::render_unknown_icon_svg(
+            icon_x,
+            icon_y,
+            FLOWCHART_ICON_ASSET_SIZE,
+        ));
+    }
+    svg
+}
+
+fn left_inv_arrow_notch(width: f32, height: f32) -> f32 {
+    (height * 0.5).min(width * 0.35)
+}
+
+fn flowchart_odd_notch(height: f32) -> f32 {
+    height / 4.0
+}
+
+fn flowchart_curly_brace_radius(total_height: f32) -> f32 {
+    if total_height <= 60.0 {
+        5.0
+    } else {
+        total_height / 12.0
+    }
+}
+
+fn flowchart_curly_circle_points(
+    center_x: f32,
+    center_y: f32,
+    radius: f32,
+    count: usize,
+    start_angle: f32,
+    end_angle: f32,
+    invert: bool,
+) -> Vec<(f32, f32)> {
+    let start = start_angle.to_radians();
+    let end = end_angle.to_radians();
+    let step = (end - start) / (count.saturating_sub(1).max(1) as f32);
+    (0..count)
+        .map(|idx| {
+            let angle = start + step * idx as f32;
+            let x = center_x + radius * angle.cos();
+            let y = center_y + radius * angle.sin();
+            if invert { (-x, -y) } else { (x, y) }
+        })
+        .collect()
+}
+
+fn flowchart_curly_brace_left_points(x: f32, y: f32, width: f32, height: f32) -> Vec<(f32, f32)> {
+    let radius = flowchart_curly_brace_radius(height);
+    let body_width = (width - radius * 2.0).max(1.0);
+    let body_height = (height - radius * 2.0).max(1.0);
+    let center_x = x + width / 2.0;
+    let center_y = y + height / 2.0;
+
+    let mut points = Vec::new();
+    points.extend(flowchart_curly_circle_points(
+        body_width / 2.0,
+        -body_height / 2.0,
+        radius,
+        30,
+        -90.0,
+        0.0,
+        true,
+    ));
+    points.push((-body_width / 2.0 - radius, radius));
+    points.extend(flowchart_curly_circle_points(
+        body_width / 2.0 + radius * 2.0,
+        -radius,
+        radius,
+        20,
+        -180.0,
+        -270.0,
+        true,
+    ));
+    points.extend(flowchart_curly_circle_points(
+        body_width / 2.0 + radius * 2.0,
+        radius,
+        radius,
+        20,
+        -90.0,
+        -180.0,
+        true,
+    ));
+    points.push((-body_width / 2.0 - radius, -body_height / 2.0));
+    points.extend(flowchart_curly_circle_points(
+        body_width / 2.0,
+        body_height / 2.0,
+        radius,
+        20,
+        0.0,
+        90.0,
+        true,
+    ));
+
+    points
+        .into_iter()
+        .map(|(px, py)| (center_x + px + radius, center_y + py))
+        .collect()
+}
+
+fn flowchart_curly_brace_right_points(x: f32, y: f32, width: f32, height: f32) -> Vec<(f32, f32)> {
+    let radius = flowchart_curly_brace_radius(height);
+    let body_width = (width - radius * 2.0).max(1.0);
+    let body_height = (height - radius * 2.0).max(1.0);
+    let center_x = x + width / 2.0;
+    let center_y = y + height / 2.0;
+
+    let mut points = Vec::new();
+    points.extend(flowchart_curly_circle_points(
+        body_width / 2.0,
+        -body_height / 2.0,
+        radius,
+        20,
+        -90.0,
+        0.0,
+        false,
+    ));
+    points.push((body_width / 2.0 + radius, -radius));
+    points.extend(flowchart_curly_circle_points(
+        body_width / 2.0 + radius * 2.0,
+        -radius,
+        radius,
+        20,
+        -180.0,
+        -270.0,
+        false,
+    ));
+    points.extend(flowchart_curly_circle_points(
+        body_width / 2.0 + radius * 2.0,
+        radius,
+        radius,
+        20,
+        -90.0,
+        -180.0,
+        false,
+    ));
+    points.push((body_width / 2.0 + radius, body_height / 2.0));
+    points.extend(flowchart_curly_circle_points(
+        body_width / 2.0,
+        body_height / 2.0,
+        radius,
+        20,
+        0.0,
+        90.0,
+        false,
+    ));
+
+    points
+        .into_iter()
+        .map(|(px, py)| (center_x + px - radius, center_y + py))
+        .collect()
+}
+
+fn flowchart_curly_braces_points(
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+) -> (Vec<(f32, f32)>, Vec<(f32, f32)>) {
+    let radius = flowchart_curly_brace_radius(height);
+    let body_width = (width - radius * 2.5).max(1.0);
+    let body_height = (height - radius * 2.0).max(1.0);
+    let center_x = x + width / 2.0;
+    let center_y = y + height / 2.0;
+    let group_shift = radius - radius / 4.0;
+    let to_absolute = |(px, py): (f32, f32)| (center_x + px + group_shift, center_y + py);
+
+    let mut left_points = Vec::new();
+    left_points.extend(flowchart_curly_circle_points(
+        body_width / 2.0,
+        -body_height / 2.0,
+        radius,
+        30,
+        -90.0,
+        0.0,
+        true,
+    ));
+    left_points.push((-body_width / 2.0 - radius, radius));
+    left_points.extend(flowchart_curly_circle_points(
+        body_width / 2.0 + radius * 2.0,
+        -radius,
+        radius,
+        20,
+        -180.0,
+        -270.0,
+        true,
+    ));
+    left_points.extend(flowchart_curly_circle_points(
+        body_width / 2.0 + radius * 2.0,
+        radius,
+        radius,
+        20,
+        -90.0,
+        -180.0,
+        true,
+    ));
+    left_points.push((-body_width / 2.0 - radius, -body_height / 2.0));
+    left_points.extend(flowchart_curly_circle_points(
+        body_width / 2.0,
+        body_height / 2.0,
+        radius,
+        20,
+        0.0,
+        90.0,
+        true,
+    ));
+
+    let mut right_points = Vec::new();
+    right_points.extend(flowchart_curly_circle_points(
+        -body_width / 2.0 + radius + radius / 2.0,
+        -body_height / 2.0,
+        radius,
+        20,
+        -90.0,
+        -180.0,
+        true,
+    ));
+    right_points.push((body_width / 2.0 - radius / 2.0, radius));
+    right_points.extend(flowchart_curly_circle_points(
+        -body_width / 2.0 - radius / 2.0,
+        -radius,
+        radius,
+        20,
+        0.0,
+        90.0,
+        true,
+    ));
+    right_points.extend(flowchart_curly_circle_points(
+        -body_width / 2.0 - radius / 2.0,
+        radius,
+        radius,
+        20,
+        -90.0,
+        0.0,
+        true,
+    ));
+    right_points.push((body_width / 2.0 - radius / 2.0, -radius));
+    right_points.extend(flowchart_curly_circle_points(
+        -body_width / 2.0 + radius + radius / 2.0,
+        body_height / 2.0,
+        radius,
+        30,
+        -180.0,
+        -270.0,
+        true,
+    ));
+
+    (
+        left_points.into_iter().map(to_absolute).collect(),
+        right_points.into_iter().map(to_absolute).collect(),
+    )
+}
+
+fn block_arrow_points(shape: crate::ir::NodeShape, width: f32, height: f32) -> Vec<(f32, f32)> {
+    let midpoint = height / 2.0;
+    let padding = 4.0;
+    let raw = match shape {
+        crate::ir::NodeShape::BlockArrowAll => vec![
+            (0.0, 0.0),
+            (midpoint, 0.0),
+            (width / 2.0, 2.0 * padding),
+            (width - midpoint, 0.0),
+            (width, 0.0),
+            (width, -height / 3.0),
+            (width + 2.0 * padding, -height / 2.0),
+            (width, -2.0 * height / 3.0),
+            (width, -height),
+            (width - midpoint, -height),
+            (width / 2.0, -height - 2.0 * padding),
+            (midpoint, -height),
+            (0.0, -height),
+            (0.0, -2.0 * height / 3.0),
+            (-2.0 * padding, -height / 2.0),
+            (0.0, -height / 3.0),
+        ],
+        crate::ir::NodeShape::BlockArrowXUp => vec![
+            (midpoint, 0.0),
+            (width - midpoint, 0.0),
+            (width, -height / 2.0),
+            (width - midpoint, -height),
+            (midpoint, -height),
+            (0.0, -height / 2.0),
+        ],
+        crate::ir::NodeShape::BlockArrowXDown => vec![
+            (0.0, 0.0),
+            (midpoint, -height),
+            (width - midpoint, -height),
+            (width, 0.0),
+        ],
+        crate::ir::NodeShape::BlockArrowYRight => vec![
+            (0.0, 0.0),
+            (width, -midpoint),
+            (width, -height + midpoint),
+            (0.0, -height),
+        ],
+        crate::ir::NodeShape::BlockArrowYLeft => vec![
+            (width, 0.0),
+            (0.0, -midpoint),
+            (0.0, -height + midpoint),
+            (width, -height),
+        ],
+        crate::ir::NodeShape::BlockArrowX => vec![
+            (midpoint, 0.0),
+            (midpoint, -padding),
+            (width - midpoint, -padding),
+            (width - midpoint, 0.0),
+            (width, -height / 2.0),
+            (width - midpoint, -height),
+            (width - midpoint, -height + padding),
+            (midpoint, -height + padding),
+            (midpoint, -height),
+            (0.0, -height / 2.0),
+        ],
+        crate::ir::NodeShape::BlockArrowY => vec![
+            (width / 2.0, 0.0),
+            (0.0, -padding),
+            (midpoint, -padding),
+            (midpoint, -height + padding),
+            (0.0, -height + padding),
+            (width / 2.0, -height),
+            (width, -height + padding),
+            (width - midpoint, -height + padding),
+            (width - midpoint, -padding),
+            (width, -padding),
+        ],
+        crate::ir::NodeShape::BlockArrowRightUp => {
+            vec![(0.0, 0.0), (width, -midpoint), (0.0, -height)]
+        }
+        crate::ir::NodeShape::BlockArrowRightDown => {
+            vec![(0.0, 0.0), (width, 0.0), (0.0, -height)]
+        }
+        crate::ir::NodeShape::BlockArrowLeftUp => {
+            vec![(width, 0.0), (0.0, -midpoint), (width, -height)]
+        }
+        crate::ir::NodeShape::BlockArrowLeftDown => {
+            vec![(width, 0.0), (0.0, 0.0), (width, -height)]
+        }
+        crate::ir::NodeShape::BlockArrowRight => vec![
+            (midpoint, -padding),
+            (midpoint, -padding),
+            (width - midpoint, -padding),
+            (width - midpoint, 0.0),
+            (width, -height / 2.0),
+            (width - midpoint, -height),
+            (width - midpoint, -height + padding),
+            (midpoint, -height + padding),
+            (midpoint, -height + padding),
+        ],
+        crate::ir::NodeShape::BlockArrowLeft => vec![
+            (midpoint, 0.0),
+            (midpoint, -padding),
+            (width - midpoint, -padding),
+            (width - midpoint, -height + padding),
+            (midpoint, -height + padding),
+            (midpoint, -height),
+            (0.0, -height / 2.0),
+        ],
+        crate::ir::NodeShape::BlockArrowUp => vec![
+            (midpoint, -padding),
+            (midpoint, -height + padding),
+            (0.0, -height + padding),
+            (width / 2.0, -height),
+            (width, -height + padding),
+            (width - midpoint, -height + padding),
+            (width - midpoint, -padding),
+        ],
+        crate::ir::NodeShape::BlockArrowDown => vec![
+            (width / 2.0, 0.0),
+            (0.0, -padding),
+            (midpoint, -padding),
+            (midpoint, -height + padding),
+            (width - midpoint, -height + padding),
+            (width - midpoint, -padding),
+            (width, -padding),
+        ],
+        _ => Vec::new(),
+    };
+
+    raw.into_iter().map(|(px, py)| (px, py + height)).collect()
+}
+
 fn shape_svg_inner(
     node: &crate::layout::NodeLayout,
     theme: &Theme,
     config: &LayoutConfig,
+    diagram_kind: crate::ir::DiagramKind,
 ) -> String {
     let stroke = node
         .style
@@ -7435,6 +10407,9 @@ fn shape_svg_inner(
             stroke,
             node.style.stroke_width.unwrap_or(1.0)
         ),
+        crate::ir::NodeShape::Text => format!(
+            "<rect class=\"text\" x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"0\" ry=\"0\" fill=\"none\" stroke=\"none\" stroke-width=\"0\"/>",
+        ),
         crate::ir::NodeShape::Note => {
             let note_fill = node
                 .style
@@ -7451,16 +10426,36 @@ fn shape_svg_inner(
                 node.style.stroke_width.unwrap_or(1.0)
             )
         }
-        crate::ir::NodeShape::ForkJoin => format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"2\" ry=\"2\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
-            x,
-            y,
-            w,
-            h,
-            fill,
-            stroke,
-            node.style.stroke_width.unwrap_or(1.0)
-        ),
+        crate::ir::NodeShape::ForkJoin => {
+            let (render_y, render_h) = if diagram_kind == crate::ir::DiagramKind::State
+                && h > STATE_FORK_JOIN_RENDER_HEIGHT
+            {
+                (
+                    y + (h - STATE_FORK_JOIN_RENDER_HEIGHT) * 0.5,
+                    STATE_FORK_JOIN_RENDER_HEIGHT,
+                )
+            } else {
+                (y, h)
+            };
+            let (fork_fill, fork_stroke) = if diagram_kind == crate::ir::DiagramKind::State {
+                (
+                    theme.primary_text_color.as_str(),
+                    theme.primary_text_color.as_str(),
+                )
+            } else {
+                (fill.as_str(), stroke.as_str())
+            };
+            format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"2\" ry=\"2\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+                x,
+                render_y,
+                w,
+                render_h,
+                fork_fill,
+                fork_stroke,
+                node.style.stroke_width.unwrap_or(1.0)
+            )
+        }
         crate::ir::NodeShape::ActorBox => format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"3\" ry=\"3\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
@@ -7532,7 +10527,12 @@ fn shape_svg_inner(
                 cx, cy, r, circle_fill, circle_stroke, stroke_width
             );
             if node.shape == crate::ir::NodeShape::DoubleCircle {
-                let r2 = r - 4.0;
+                let inner_gap = if label_empty || is_state_end {
+                    4.0
+                } else {
+                    5.0
+                };
+                let r2 = r - inner_gap;
                 if r2 > 0.0 {
                     let inner_fill = if label_empty || is_state_end {
                         theme.background.as_str()
@@ -7570,7 +10570,7 @@ fn shape_svg_inner(
             node.style.stroke_width.unwrap_or(1.0)
         ),
         crate::ir::NodeShape::RoundRect => format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"10\" ry=\"10\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"5\" ry=\"5\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
             y,
             w,
@@ -7581,23 +10581,17 @@ fn shape_svg_inner(
         ),
         crate::ir::NodeShape::Cylinder => {
             let stroke_width = node.style.stroke_width.unwrap_or(1.0);
-            let ry = (h * 0.12).clamp(6.0, 14.0);
             let rx = w / 2.0;
+            let ry = rx / (2.5 + w / 50.0);
             let y_top = y + ry;
             let y_bot = y + h - ry;
             let x_right = x + w;
-            let body_d = format!(
-                "M {x:.2},{y_top:.2} A {rx:.2},{ry:.2} 0 0,0 {x_right:.2},{y_top:.2} L {x_right:.2},{y_bot:.2} A {rx:.2},{ry:.2} 0 0,1 {x:.2},{y_bot:.2} Z"
+            let cylinder_d = format!(
+                "M {x:.2},{y_top:.2} A {rx:.2},{ry:.2} 0 0,0 {x_right:.2},{y_top:.2} A {rx:.2},{ry:.2} 0 0,0 {x:.2},{y_top:.2} L {x:.2},{y_bot:.2} A {rx:.2},{ry:.2} 0 0,0 {x_right:.2},{y_bot:.2} L {x_right:.2},{y_top:.2}"
             );
-            let lid_d =
-                format!("M {x:.2},{y_top:.2} A {rx:.2},{ry:.2} 0 0,1 {x_right:.2},{y_top:.2}");
-            let mut svg = format!(
-                "<path d=\"{body_d}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}{join}/>"
-            );
-            svg.push_str(&format!(
-                "<path d=\"{lid_d}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}{join}/>"
-            ));
-            svg
+            format!(
+                "<path d=\"{cylinder_d}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}{join}/>"
+            )
         }
         crate::ir::NodeShape::Subroutine => {
             let stroke_width = node.style.stroke_width.unwrap_or(1.0);
@@ -7619,8 +10613,9 @@ fn shape_svg_inner(
             svg
         }
         crate::ir::NodeShape::Hexagon => {
-            let x1 = x + w * 0.25;
-            let x2 = x + w * 0.75;
+            let notch = (h / 4.0).min(w / 2.0);
+            let x1 = x + notch;
+            let x2 = x + w - notch;
             let y_mid = y + h / 2.0;
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
@@ -7646,7 +10641,7 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::Parallelogram | crate::ir::NodeShape::ParallelogramAlt => {
-            let offset = w * 0.18;
+            let offset = h / 2.0;
             let (p1, p2, p3, p4) = if node.shape == crate::ir::NodeShape::Parallelogram {
                 (
                     (x + offset, y),
@@ -7675,7 +10670,7 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::Trapezoid | crate::ir::NodeShape::TrapezoidAlt => {
-            let offset = w * 0.18;
+            let offset = h / 2.0;
             let (p1, p2, p3, p4) = if node.shape == crate::ir::NodeShape::Trapezoid {
                 (
                     (x + offset, y),
@@ -7703,20 +10698,48 @@ fn shape_svg_inner(
                 node.style.stroke_width.unwrap_or(1.0)
             )
         }
+        crate::ir::NodeShape::BlockArrowRight
+        | crate::ir::NodeShape::BlockArrowLeft
+        | crate::ir::NodeShape::BlockArrowUp
+        | crate::ir::NodeShape::BlockArrowDown
+        | crate::ir::NodeShape::BlockArrowX
+        | crate::ir::NodeShape::BlockArrowY
+        | crate::ir::NodeShape::BlockArrowXUp
+        | crate::ir::NodeShape::BlockArrowXDown
+        | crate::ir::NodeShape::BlockArrowYRight
+        | crate::ir::NodeShape::BlockArrowYLeft
+        | crate::ir::NodeShape::BlockArrowRightUp
+        | crate::ir::NodeShape::BlockArrowRightDown
+        | crate::ir::NodeShape::BlockArrowLeftUp
+        | crate::ir::NodeShape::BlockArrowLeftDown
+        | crate::ir::NodeShape::BlockArrowAll => {
+            let points = block_arrow_points(node.shape, w, h)
+                .into_iter()
+                .map(|(px, py)| format!("{:.2},{:.2}", x + px, y + py))
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!(
+                "<polygon points=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+                points,
+                fill,
+                stroke,
+                node.style.stroke_width.unwrap_or(1.0)
+            )
+        }
         crate::ir::NodeShape::Asymmetric => {
-            let slant = w * 0.22;
+            let notch = left_inv_arrow_notch(w, h);
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
                 x,
                 y,
-                x + w - slant,
+                x + w,
                 y,
                 x + w,
-                y + h / 2.0,
-                x + w - slant,
                 y + h,
                 x,
-                y + h
+                y + h,
+                x + notch,
+                y + h / 2.0
             );
             format!(
                 "<polygon points=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
@@ -7763,26 +10786,25 @@ fn shape_svg_inner(
             svg
         }
         crate::ir::NodeShape::Document => {
-            // Curved trapezoid matching mermaid-js `doc` shape:
-            // left side tapers (pointed at middle), right side is a
-            // semicircular arc.
-            let sw = node.style.stroke_width.unwrap_or(1.0);
-            let radius = h / 2.0;
-            let rw = (w - radius).max(0.0); // where the arc starts
-            let tw = h / 4.0; // trapezoid indent
+            // Mermaid's `doc` is a wave-edged rectangle: flat top/sides,
+            // with a sine wave along the bottom.
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let wave_amplitude = flowchart_wave_document_amplitude(h);
+            let body_height = h - wave_amplitude * 2.0;
+            let wave_baseline = y + body_height + wave_amplitude;
+            let mut d = format!("M {x:.2} {wave_baseline:.2}");
+            let steps = 50;
+            let cycles = 0.8;
+            let frequency = 2.0 * std::f32::consts::PI * cycles / w;
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let px = x + t * w;
+                let py = wave_baseline + wave_amplitude * (frequency * (px - x)).sin();
+                d.push_str(&format!(" L {px:.2} {py:.2}"));
+            }
+            d.push_str(&format!(" L {:.2} {y:.2} L {x:.2} {y:.2} Z", x + w));
             format!(
-                "<path d=\"M {rx:.2} {y:.2} \
-                 L {lx:.2} {y:.2} \
-                 L {x:.2} {my:.2} \
-                 L {lx:.2} {by:.2} \
-                 L {rx:.2} {by:.2} \
-                 A {r:.2} {r:.2} 0 0 0 {rx:.2} {y:.2} \
-                 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                rx = x + rw,
-                lx = x + tw,
-                my = y + h / 2.0,
-                by = y + h,
-                r = radius,
+                "<path d=\"{d}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             )
         }
         crate::ir::NodeShape::StackedDocument => {
@@ -7864,7 +10886,7 @@ fn shape_svg_inner(
         }
         crate::ir::NodeShape::Hourglass => {
             // Hourglass: two triangles meeting at the center.
-            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let sw = node.style.stroke_width.unwrap_or(1.3);
             format!(
                 "<polygon points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 x,
@@ -7878,38 +10900,38 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::LightningBolt => {
-            // Lightning bolt / event trigger.
-            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let gap = 7.0;
+            let bolt_height = h / 2.0;
             format!(
                 "<polygon points=\"{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x + w * 0.35,
-                y,
                 x + w,
                 y,
-                x + w * 0.45,
-                y + h * 0.45,
-                x + w * 0.7,
-                y + h * 0.45,
                 x,
-                y + h,
-                x + w * 0.55,
-                y + h * 0.55,
+                y + bolt_height + gap / 2.0,
+                x + w - 2.0 * gap,
+                y + bolt_height + gap / 2.0,
+                x,
+                y + 2.0 * bolt_height,
+                x + w,
+                y + bolt_height - gap / 2.0,
+                x + 2.0 * gap,
+                y + bolt_height - gap / 2.0,
             )
         }
         crate::ir::NodeShape::WindowPane => {
-            // Grid/window layout: rectangle divided into 4 quadrants.
-            let sw = node.style.stroke_width.unwrap_or(1.0);
-            let mx = x + w / 2.0;
-            let my = y + h / 2.0;
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let mx = x + FLOWCHART_WINDOW_PANE_OFFSET;
+            let my = y + FLOWCHART_WINDOW_PANE_OFFSET;
             let rect = format!(
                 "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             );
             let vert = format!(
-                "<line x1=\"{mx:.2}\" y1=\"{y:.2}\" x2=\"{mx:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                "<line x1=\"{mx:.2}\" y1=\"{y:.2}\" x2=\"{mx:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}/>",
                 y2 = y + h,
             );
             let horiz = format!(
-                "<line x1=\"{x:.2}\" y1=\"{my:.2}\" x2=\"{x2:.2}\" y2=\"{my:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                "<line x1=\"{x:.2}\" y1=\"{my:.2}\" x2=\"{x2:.2}\" y2=\"{my:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}/>",
                 x2 = x + w,
             );
             format!("{rect}{vert}{horiz}")
@@ -7917,7 +10939,11 @@ fn shape_svg_inner(
         crate::ir::NodeShape::LeanRight => {
             // Lean right: parallelogram leaning right.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let offset = w * 0.15;
+            let offset = if diagram_kind == crate::ir::DiagramKind::Flowchart {
+                h / 2.0
+            } else {
+                w * 0.15
+            };
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
                 x + offset,
@@ -7936,7 +10962,11 @@ fn shape_svg_inner(
         crate::ir::NodeShape::LeanLeft => {
             // Lean left: parallelogram leaning left.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let offset = w * 0.15;
+            let offset = if diagram_kind == crate::ir::DiagramKind::Flowchart {
+                h / 2.0
+            } else {
+                w * 0.15
+            };
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
                 x,
@@ -7953,40 +10983,18 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::LinedCylinder => {
-            // Cylinder with horizontal lines on the body.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let ry = (h * 0.1).max(6.0);
             let rx = w / 2.0;
-            let body_h = h - 2.0 * ry;
-            let cx = x + rx;
-            let mut s = format!(
-                "<ellipse cx=\"{cx:.2}\" cy=\"{:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                y + ry,
-            );
-            s.push_str(&format!(
-                "<rect x=\"{x:.2}\" y=\"{:.2}\" width=\"{w:.2}\" height=\"{body_h:.2}\" fill=\"{fill}\" stroke=\"none\"/>",
-                y + ry,
-            ));
-            // Side lines
-            s.push_str(&format!(
-                "<line x1=\"{x:.2}\" y1=\"{:.2}\" x2=\"{x:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                y + ry, y + ry + body_h,
-            ));
-            s.push_str(&format!(
-                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                x + w, y + ry, x + w, y + ry + body_h,
-            ));
-            // Bottom ellipse
-            s.push_str(&format!(
-                "<ellipse cx=\"{cx:.2}\" cy=\"{:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                y + h - ry,
-            ));
-            // Horizontal divider line (the "lined" part)
-            let line_y = y + ry + ry * 0.7;
-            s.push_str(&format!(
-                "<ellipse cx=\"{cx:.2}\" cy=\"{line_y:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-            ));
-            s
+            let ry = flowchart_cylinder_ry(w);
+            let body_h = (h - ry * 2.0).max(0.0);
+            let outer_offset = body_h * 0.1;
+            format!(
+                "<path d=\"M{x:.2},{y1:.2} a{rx:.2},{ry:.2} 0,0,0 {w:.2},0 a{rx:.2},{ry:.2} 0,0,0 {neg_w:.2},0 l0,{body_h:.2} a{rx:.2},{ry:.2} 0,0,0 {w:.2},0 l0,{neg_body_h:.2} M{x:.2},{inner_y:.2} a{rx:.2},{ry:.2} 0,0,0 {w:.2},0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                y1 = y + ry,
+                neg_w = -w,
+                neg_body_h = -body_h,
+                inner_y = y + ry + outer_offset,
+            )
         }
         crate::ir::NodeShape::Comment => {
             // Callout comment: rectangle with a folded corner.
@@ -8001,22 +11009,21 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::OddShape => {
-            // Odd / irregular: an octagon-like shape.
-            let sw = node.style.stroke_width.unwrap_or(1.0);
-            let cut = (w.min(h) * 0.15).min(10.0);
+            // Mermaid's `odd` shape is `rect_left_inv_arrow`: a rectangle
+            // with an inverted arrow notch on the left.
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let notch = flowchart_odd_notch(h);
             let points = format!(
-                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
-                x + cut,
-                y,
-                x + w - cut,
+                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
+                x,
                 y,
                 x + w,
-                y + h / 2.0,
-                x + w - cut,
-                y + h,
-                x + cut,
+                y,
+                x + w,
                 y + h,
                 x,
+                y + h,
+                x + notch,
                 y + h / 2.0,
             );
             format!(
@@ -8024,138 +11031,216 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::BraceLeft => {
-            // Left brace shape: a curly brace on the left side.
-            let sw = node.style.stroke_width.unwrap_or(1.0);
-            let r = (h * 0.15).max(6.0);
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let d = points_to_path(&flowchart_curly_brace_left_points(x, y, w, h));
             format!(
-                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"{r:.2}\" ry=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+                "<path d=\"{d}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             )
         }
         crate::ir::NodeShape::BraceRight => {
-            let sw = node.style.stroke_width.unwrap_or(1.0);
-            let r = (h * 0.15).max(6.0);
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let d = points_to_path(&flowchart_curly_brace_right_points(x, y, w, h));
             format!(
-                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"{r:.2}\" ry=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+                "<path d=\"{d}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
+        }
+        crate::ir::NodeShape::BraceBoth => {
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let (left_points, right_points) = flowchart_curly_braces_points(x, y, w, h);
+            let left_d = points_to_path(&left_points);
+            let right_d = points_to_path(&right_points);
+            format!(
+                "<path d=\"{left_d}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/><path d=\"{right_d}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             )
         }
         crate::ir::NodeShape::LinedDocument => {
-            // Document shape with horizontal lines inside.
-            let sw = node.style.stroke_width.unwrap_or(1.0);
-            let wave = h * 0.12;
-            let doc = format!(
-                "<path d=\"M {x:.2} {y:.2} h {w:.2} v {bh:.2} q {q1x:.2} {q1y:.2} {qmx:.2} 0 q {q2x:.2} {q2y:.2} {qmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                bh = h - wave,
-                q1x = w * 0.25,
-                q1y = wave * 2.0,
-                qmx = w * -0.5,
-                q2x = w * -0.25,
-                q2y = wave * -2.0,
-            );
-            // Add 2-3 horizontal lines inside the document
-            let line_spacing = (h - wave) / 4.0;
-            let mut lines = doc;
-            for i in 1..=3 {
-                let ly = y + line_spacing * i as f32;
-                if ly < y + h - wave - 2.0 {
-                    lines.push_str(&format!(
-                        "<line x1=\"{x:.2}\" y1=\"{ly:.2}\" x2=\"{x2:.2}\" y2=\"{ly:.2}\" stroke=\"{stroke}\" stroke-width=\"{lw:.2}\"/>",
-                        x2 = x + w, lw = sw * 0.5,
-                    ));
-                }
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let wave_amplitude = flowchart_wave_document_amplitude(h);
+            let body_height = h - wave_amplitude * 2.0;
+            let body_width = w / 1.1;
+            let side_overhang = (w - body_width) / 2.0;
+            let wave_baseline = y + body_height + wave_amplitude;
+            let x_right = x + w;
+            let mut d = format!("M {x:.2} {y:.2} L {x:.2} {wave_baseline:.2}");
+            let steps = 50;
+            let cycles = 0.8;
+            let frequency = 2.0 * std::f32::consts::PI * cycles / w.max(f32::EPSILON);
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let px = x + t * w;
+                let py = wave_baseline + wave_amplitude * (frequency * (px - x)).sin();
+                d.push_str(&format!(" L {px:.2} {py:.2}"));
             }
-            lines
+            d.push_str(&format!(" L {x_right:.2} {y:.2} L {x:.2} {y:.2} Z"));
+
+            let line_x = x + side_overhang;
+            let line_bottom = y + (body_height + wave_amplitude) * 1.05;
+            format!(
+                "<path d=\"{d}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>\
+                 <line x1=\"{line_x:.2}\" y1=\"{y:.2}\" x2=\"{line_x:.2}\" y2=\"{line_bottom:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}/>"
+            )
         }
         crate::ir::NodeShape::TagDocument => {
-            // Curved trapezoid (doc shape) with a folded corner in the
-            // top area, matching mermaid-js tag-doc.
-            let sw = node.style.stroke_width.unwrap_or(1.0);
-            let radius = h / 2.0;
-            let rw = (w - radius).max(0.0);
-            let tw = h / 4.0;
-            let fold = (w.min(h) * 0.15).min(14.0);
-            let doc = format!(
-                "<path d=\"M {rx:.2} {y:.2} \
-                 L {fx:.2} {y:.2} L {fx:.2} {fy:.2} L {lx:.2} {fy:.2} \
-                 L {lx:.2} {y:.2} \
-                 L {x:.2} {my:.2} \
-                 L {lx:.2} {by:.2} \
-                 L {rx:.2} {by:.2} \
-                 A {r:.2} {r:.2} 0 0 0 {rx:.2} {y:.2} \
-                 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                rx = x + rw,
-                lx = x + tw,
-                fx = x + tw + fold,
-                fy = y + fold,
-                my = y + h / 2.0,
-                by = y + h,
-                r = radius,
-            );
-            let fold_line = format!(
-                "<path d=\"M {fx:.2} {y:.2} v {fold:.2} h {nf:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                fx = x + tw + fold,
-                nf = -fold,
-            );
-            format!("{doc}{fold_line}")
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let wave_amplitude = flowchart_wave_document_amplitude(h);
+            let body_height = h - wave_amplitude * 2.0;
+            let body_width = w / 1.1;
+            let final_height = body_height + wave_amplitude;
+            let center_x = x + w / 2.0;
+            let center_y = y + h / 2.0;
+            let to_abs = |px: f32, py: f32| -> (f32, f32) {
+                (center_x + px, center_y + py - wave_amplitude / 2.0)
+            };
+
+            let left = -body_width * 0.55;
+            let right = body_width * 0.55;
+            let top = -final_height / 2.0;
+            let baseline = final_height / 2.0;
+            let steps = 50;
+            let cycles = 0.8;
+            let frequency = 2.0 * std::f32::consts::PI * cycles / (right - left).max(f32::EPSILON);
+            let (sx, sy) = to_abs(left, baseline);
+            let mut body_path = format!("M {sx:.2} {sy:.2}");
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let px = left + t * (right - left);
+                let py = baseline + wave_amplitude * (frequency * (px - left)).sin();
+                let (ax, ay) = to_abs(px, py);
+                body_path.push_str(&format!(" L {ax:.2} {ay:.2}"));
+            }
+            let (right_top_x, right_top_y) = to_abs(right, top);
+            let (left_top_x, left_top_y) = to_abs(left, top);
+            body_path.push_str(&format!(
+                " L {right_top_x:.2} {right_top_y:.2} L {left_top_x:.2} {left_top_y:.2} Z"
+            ));
+
+            let tag_width = body_width * 0.2;
+            let tag_height = body_height * 0.2;
+            let tag_x = -body_width / 2.0 + body_width * 0.05;
+            let tag_y = -final_height / 2.0 - tag_height * 0.4;
+            let tag_bottom = tag_y + body_height;
+            let tag_left = tag_x + body_width - tag_width;
+            let tag_right = tag_x + body_width;
+            let tag_sine_start_y = tag_bottom * 1.25;
+            let tag_sine_end_y = tag_bottom * 1.3;
+            let tag_delta_x = tag_left - tag_right;
+            let tag_delta_y = tag_sine_end_y - tag_sine_start_y;
+            let tag_frequency = 2.0 * std::f32::consts::PI * 0.5 / tag_delta_x;
+            let tag_mid_y = tag_sine_start_y + tag_delta_y / 2.0;
+            let (p1x, p1y) = to_abs(tag_left, tag_bottom * 1.3);
+            let (p2x, p2y) = to_abs(tag_right, tag_bottom - tag_height);
+            let (p3x, p3y) = to_abs(tag_right, tag_bottom * 0.9);
+            let mut tag_path =
+                format!("M {p1x:.2} {p1y:.2} L {p2x:.2} {p2y:.2} L {p3x:.2} {p3y:.2}");
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let px = tag_right + t * tag_delta_x;
+                let py = tag_mid_y - body_height * 0.02 * (tag_frequency * (px - tag_right)).sin();
+                let (ax, ay) = to_abs(px, py);
+                tag_path.push_str(&format!(" L {ax:.2} {ay:.2}"));
+            }
+            tag_path.push_str(" Z");
+
+            format!(
+                "<path d=\"{body_path}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>\
+                 <path d=\"{tag_path}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
         }
         crate::ir::NodeShape::CurvedTrapezoid => {
-            // Trapezoid with bezier-curved left and right edges.
-            let sw = node.style.stroke_width.unwrap_or(1.0);
-            let inset = w * 0.15;
-            let cp = h * 0.3; // control point offset for curves
+            // Mermaid's display shape: left trapezoid plus right semicircle.
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let radius = h / 2.0;
+            let rw = w - radius;
+            let tw = h / 4.0;
             format!(
-                "<path d=\"M {x1:.2} {y:.2} h {tw:.2} C {cx1:.2} {cy1:.2} {cx2:.2} {cy2:.2} {x4:.2} {y4:.2} h {bw:.2} C {cx3:.2} {cy3:.2} {cx4:.2} {cy4:.2} {x1:.2} {y:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x1 = x + inset,
-                tw = w - 2.0 * inset,
-                cx1 = x + w - inset + cp * 0.3,
-                cy1 = y + cp,
-                cx2 = x + w + cp * 0.1,
-                cy2 = y + h - cp,
-                x4 = x + w,
-                y4 = y + h,
-                bw = -w,
-                cx3 = x - cp * 0.1,
-                cy3 = y + h - cp,
-                cx4 = x + inset - cp * 0.3,
-                cy4 = y + cp,
+                "<path d=\"M {rw_x:.2} {y:.2} L {tw_x:.2} {y:.2} L {x:.2} {mid_y:.2} L {tw_x:.2} {bottom_y:.2} L {rw_x:.2} {bottom_y:.2} A {radius:.2} {radius:.2} 0 0 0 {rw_x:.2} {y:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                rw_x = x + rw,
+                tw_x = x + tw,
+                mid_y = y + h / 2.0,
+                bottom_y = y + h,
             )
         }
         crate::ir::NodeShape::Cloud => {
-            // Cloud shape using overlapping elliptical arcs.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let cx = x + w / 2.0;
-            let cy = y + h / 2.0;
-            let rx = w / 2.0;
-            let ry = h / 2.0;
-            // Build cloud from overlapping arcs
+            let cw = w * 0.78;
+            let ch = h * 0.42;
+            let sx = x + w * 0.10;
+            let sy = y + h * 0.32;
+            let r1 = 0.15 * cw;
+            let r2 = 0.25 * cw;
+            let r3 = 0.35 * cw;
+            let r4 = 0.20 * cw;
             format!(
-                "<path d=\"M {x1:.2} {cy:.2} \
-                a {a1rx:.2} {a1ry:.2} 0 0 1 {a1dx:.2} {a1dy:.2} \
-                a {a2rx:.2} {a2ry:.2} 0 0 1 {a2dx:.2} {a2dy:.2} \
-                a {a3rx:.2} {a3ry:.2} 0 0 1 {a3dx:.2} {a3dy:.2} \
-                a {a4rx:.2} {a4ry:.2} 0 0 1 {a4dx:.2} {a4dy:.2} \
-                a {a5rx:.2} {a5ry:.2} 0 0 1 {a5dx:.2} {a5dy:.2} \
-                Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x1 = x,
-                a1rx = rx * 0.45,
-                a1ry = ry * 0.65,
-                a1dx = rx * 0.35,
-                a1dy = -ry * 0.75,
-                a2rx = rx * 0.50,
-                a2ry = ry * 0.55,
-                a2dx = rx * 0.65,
-                a2dy = -ry * 0.15,
-                a3rx = rx * 0.50,
-                a3ry = ry * 0.60,
-                a3dx = rx * 0.35,
-                a3dy = ry * 0.70,
-                a4rx = rx * 0.55,
-                a4ry = ry * 0.55,
-                a4dx = -rx * 0.50,
-                a4dy = ry * 0.45,
-                a5rx = rx * 0.50,
-                a5ry = ry * 0.60,
-                a5dx = -rx * 0.85,
-                a5dy = -ry * 0.25,
+                "<path d=\"M {sx:.2} {sy:.2} \
+                a {r1:.2} {r1:.2} 0 0 1 {dx1:.2} {dy1:.2} \
+                a {r3:.2} {r3:.2} 1 0 1 {dx2:.2} {dy2:.2} \
+                a {r2:.2} {r2:.2} 1 0 1 {dx3:.2} {dy3:.2} \
+                a {r1:.2} {r1:.2} 1 0 1 {dx4:.2} {dy4:.2} \
+                a {r4:.2} {r4:.2} 1 0 1 {dx5:.2} {dy5:.2} \
+                a {r2:.2} {r1:.2} 1 0 1 {dx6:.2} {dy6:.2} \
+                a {r3:.2} {r3:.2} 1 0 1 {dx7:.2} 0 \
+                a {r1:.2} {r1:.2} 1 0 1 {dx8:.2} {dy8:.2} \
+                a {r1:.2} {r1:.2} 1 0 1 {dx9:.2} {dy9:.2} \
+                a {r4:.2} {r4:.2} 1 0 1 {dx10:.2} {dy10:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                dx1 = cw * 0.25,
+                dy1 = -cw * 0.10,
+                dx2 = cw * 0.40,
+                dy2 = -cw * 0.10,
+                dx3 = cw * 0.35,
+                dy3 = cw * 0.20,
+                dx4 = cw * 0.15,
+                dy4 = ch * 0.35,
+                dx5 = -cw * 0.15,
+                dy5 = ch * 0.65,
+                dx6 = -cw * 0.25,
+                dy6 = cw * 0.15,
+                dx7 = -cw * 0.50,
+                dx8 = -cw * 0.25,
+                dy8 = -cw * 0.15,
+                dx9 = -cw * 0.10,
+                dy9 = -ch * 0.35,
+                dx10 = cw * 0.10,
+                dy10 = -ch * 0.65,
+            )
+        }
+        crate::ir::NodeShape::Bang => {
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let effective_width = w / FLOWCHART_BANG_BBOX_SCALE;
+            let effective_height = h / FLOWCHART_BANG_BBOX_SCALE;
+            let sx = x + effective_width * 0.1;
+            let sy = y + effective_height * 0.1;
+            let r = 0.15 * effective_width;
+            let r_small = r * 0.8;
+            format!(
+                "<path d=\"M {sx:.2} {sy:.2} \
+                a {r:.2} {r:.2} 1 0 0 {dx1:.2} {dy1:.2} \
+                a {r:.2} {r:.2} 1 0 0 {dx1:.2} 0 \
+                a {r:.2} {r:.2} 1 0 0 {dx1:.2} 0 \
+                a {r:.2} {r:.2} 1 0 0 {dx1:.2} {dy4:.2} \
+                a {r:.2} {r:.2} 1 0 0 {dx5:.2} {dy5:.2} \
+                a {r_small:.2} {r_small:.2} 1 0 0 0 {dy6:.2} \
+                a {r:.2} {r:.2} 1 0 0 {dx7:.2} {dy5:.2} \
+                a {r:.2} {r:.2} 1 0 0 {dx8:.2} {dy8:.2} \
+                a {r:.2} {r:.2} 1 0 0 {dx8:.2} 0 \
+                a {r:.2} {r:.2} 1 0 0 {dx8:.2} 0 \
+                a {r:.2} {r:.2} 1 0 0 {dx8:.2} {dy11:.2} \
+                a {r:.2} {r:.2} 1 0 0 {dx12:.2} {dy12:.2} \
+                a {r_small:.2} {r_small:.2} 1 0 0 0 {dy13:.2} \
+                a {r:.2} {r:.2} 1 0 0 {dx14:.2} {dy12:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
+                dx1 = effective_width * 0.25,
+                dy1 = -effective_height * 0.10,
+                dy4 = effective_height * 0.10,
+                dx5 = effective_width * 0.15,
+                dy5 = effective_height * 0.33,
+                dy6 = effective_height * 0.34,
+                dx7 = -effective_width * 0.15,
+                dx8 = -effective_width * 0.25,
+                dy8 = effective_height * 0.15,
+                dy11 = -effective_height * 0.15,
+                dx12 = -effective_width * 0.10,
+                dy12 = -effective_height * 0.33,
+                dy13 = -effective_height * 0.34,
+                dx14 = effective_width * 0.10,
             )
         }
         crate::ir::NodeShape::Triangle => {
@@ -8223,7 +11308,7 @@ fn shape_svg_inner(
         crate::ir::NodeShape::SlopedRect => {
             // Rectangle with sloped top edge (manual input).
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let slope = h * 0.2;
+            let slope = h / 3.0;
             format!(
                 "<path d=\"M {x:.2} {y1:.2} L {x2:.2} {y:.2} v {h:.2} h {nw:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 y1 = y + slope,
@@ -8232,28 +11317,26 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::NotchedPentagon => {
-            // Pentagon with flat top and notched bottom (loop limit).
+            // Mermaid's loop-limit "trapezoidal pentagon": narrow top with
+            // upper side shoulders.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let notch = h * 0.25;
-            let inset = w * 0.15;
             let points = format!(
-                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
+                "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
+                x + w * 0.1,
+                y,
+                x + w * 0.9,
+                y,
+                x + w,
+                y + h * 0.2,
+                x + w,
+                y + h,
                 x,
-                y,
-                x + w,
-                y,
-                x + w,
-                y + h - notch,
-                x + w - inset,
                 y + h,
-                x + inset,
-                y + h,
+                x,
+                y + h * 0.2,
             );
-            // Close with line back to start through the left notch point
             format!(
-                "<polygon points=\"{points} {:.2},{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                x,
-                y + h - notch,
+                "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
             )
         }
         crate::ir::NodeShape::StackedRect => {
@@ -8333,51 +11416,32 @@ fn shape_svg_inner(
             format!("{circ}{line1}{line2}")
         }
         crate::ir::NodeShape::HorizontalCylinder => {
-            // Cylinder rotated 90 degrees (horizontal).
+            // Matches Mermaid's tiltedCylinder path: the visible bbox is
+            // body width plus one radius of arc overshoot on each side.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let rx = (w * 0.1).max(6.0);
+            let rx = flowchart_tilted_cylinder_rx(h);
             let ry = h / 2.0;
-            let body_w = w - 2.0 * rx;
-            let cy = y + ry;
-            // Left ellipse cap
-            let mut s = format!(
-                "<ellipse cx=\"{:.2}\" cy=\"{cy:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                x + rx,
-            );
-            // Body rect
-            s.push_str(&format!(
-                "<rect x=\"{:.2}\" y=\"{y:.2}\" width=\"{body_w:.2}\" height=\"{h:.2}\" fill=\"{fill}\" stroke=\"none\"/>",
-                x + rx,
-            ));
-            // Top/bottom lines
-            s.push_str(&format!(
-                "<line x1=\"{:.2}\" y1=\"{y:.2}\" x2=\"{:.2}\" y2=\"{y:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                x + rx, x + rx + body_w,
-            ));
-            s.push_str(&format!(
-                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                x + rx, y + h, x + rx + body_w, y + h,
-            ));
-            // Right ellipse cap
-            s.push_str(&format!(
-                "<ellipse cx=\"{:.2}\" cy=\"{cy:.2}\" rx=\"{rx:.2}\" ry=\"{ry:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                x + w - rx,
-            ));
-            s
+            let body_w = (w - 2.0 * rx).max(10.0);
+            let start_x = x + rx;
+            let bottom_y = y + h;
+            let top_y = y;
+            let inner_x = start_x + body_w;
+            let neg_h = -h;
+            let neg_body_w = -body_w;
+            format!(
+                "<path d=\"M{start_x:.2},{bottom_y:.2} a{rx:.2},{ry:.2} 0,0,1 0,{neg_h:.2} l{body_w:.2},0 a{rx:.2},{ry:.2} 0,0,1 0,{h:.2} M{inner_x:.2},{top_y:.2} a{rx:.2},{ry:.2} 0,0,0 0,{h:.2} l{neg_body_w:.2},0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+            )
         }
         crate::ir::NodeShape::DividedRect => {
-            // Rectangle with a horizontal divider line at 20% from the
-            // top, matching mermaid-js dividedRectangle (rectOffset = h * 0.2).
-            let sw = node.style.stroke_width.unwrap_or(1.0);
-            let rect = format!(
-                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"0\" ry=\"0\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
-            );
-            let div_y = y + h * 0.2;
-            let line = format!(
-                "<line x1=\"{x:.2}\" y1=\"{div_y:.2}\" x2=\"{:.2}\" y2=\"{div_y:.2}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
-                x + w,
-            );
-            format!("{rect}{line}")
+            // Mermaid computes an inner height, then adds a 20% header strip.
+            // The visible divider is therefore 1/6 of the total rendered height.
+            let sw = node.style.stroke_width.unwrap_or(1.3);
+            let div_y = y + flowchart_divided_rect_offset(h);
+            format!(
+                "<path d=\"M {x:.2} {div_y:.2} L {x2:.2} {div_y:.2} L {x2:.2} {y2:.2} L {x:.2} {y2:.2} L {x:.2} {y:.2} L {x2:.2} {y:.2} L {x2:.2} {div_y:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\" fill-rule=\"evenodd\"{dash}{join}/>",
+                x2 = x + w,
+                y2 = y + h,
+            )
         }
         crate::ir::NodeShape::LinedRect => {
             // Rectangle with vertical lines (lined process).
@@ -8403,11 +11467,11 @@ fn shape_svg_inner(
         crate::ir::NodeShape::WavyRect => {
             // Paper tape: rectangle with wavy top and bottom edges.
             let sw = node.style.stroke_width.unwrap_or(1.0);
-            let wave = h * 0.10;
-            // Path: start at top-left with wavy top edge, straight sides, wavy bottom edge
+            let wave = h / 12.0;
+            let top_baseline = y + wave;
+            let bottom_baseline = y + h - wave;
             format!(
-                "<path d=\"M {x:.2} {y_mid:.2} q {q1x:.2} {q1y_up:.2} {qmx:.2} 0 q {q2x:.2} {q2y_dn:.2} {qmx:.2} 0 v {body:.2} q {nq1x:.2} {q2y_dn:.2} {nqmx:.2} 0 q {nq2x:.2} {q1y_up:.2} {nqmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
-                y_mid = y + wave,
+                "<path d=\"M {x:.2} {bottom_baseline:.2} q {q1x:.2} {q2y_dn:.2} {qmx:.2} 0 q {q2x:.2} {q1y_up:.2} {qmx:.2} 0 V {top_baseline:.2} q {nq1x:.2} {q1y_up:.2} {nqmx:.2} 0 q {nq2x:.2} {q2y_dn:.2} {nqmx:.2} 0 Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>",
                 q1x = w * 0.25,
                 q1y_up = -wave * 2.0,
                 qmx = w * 0.5,
@@ -8416,7 +11480,6 @@ fn shape_svg_inner(
                 nq1x = -(w * 0.25),
                 nqmx = -(w * 0.5),
                 nq2x = -(w * 0.25),
-                body = h - wave * 2.0,
             )
         }
         _ => format!(
@@ -8439,6 +11502,31 @@ mod tests {
     use crate::ir::{Direction, Graph};
     use crate::layout::compute_layout;
     use crate::parser::parse_mermaid;
+
+    fn svg_text_y_for_label(svg: &str, label: &str) -> f32 {
+        let label_pos = svg
+            .find(label)
+            .unwrap_or_else(|| panic!("missing label {label} in svg"));
+        let text_pos = svg[..label_pos]
+            .rfind("<text ")
+            .unwrap_or_else(|| panic!("missing text tag for label {label}"));
+        let tag_end = svg[text_pos..]
+            .find('>')
+            .map(|offset| text_pos + offset)
+            .unwrap_or_else(|| panic!("unterminated text tag for label {label}"));
+        let tag = &svg[text_pos..tag_end];
+        let y_start = tag
+            .find(" y=\"")
+            .map(|offset| offset + 4)
+            .unwrap_or_else(|| panic!("missing y attribute for label {label}: {tag}"));
+        let y_end = tag[y_start..]
+            .find('"')
+            .map(|offset| y_start + offset)
+            .unwrap_or_else(|| panic!("unterminated y attribute for label {label}: {tag}"));
+        tag[y_start..y_end]
+            .parse::<f32>()
+            .unwrap_or_else(|err| panic!("invalid y attribute for label {label}: {err}"))
+    }
 
     #[test]
     fn render_svg_basic() {
@@ -8483,6 +11571,305 @@ mod tests {
         assert!(svg.contains("id=\"edge-0\""));
         assert!(svg.contains("data-edge-id=\"edge-0\""));
         assert!(svg.contains("data-label-kind=\"center\""));
+    }
+
+    #[test]
+    fn render_svg_declares_and_embeds_mermaid_font() {
+        let parsed = parse_mermaid("flowchart LR\nA-->B").unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        assert!(svg.contains("svg{font-family:\"trebuchet ms\",verdana,arial,sans-serif;"));
+        assert!(svg.contains("font-size:16px;fill:#333;"));
+        if crate::text_metrics::embedded_font_data(&theme.font_family).is_some() {
+            assert!(svg.contains("@font-face"));
+            assert!(svg.contains("data:font/"));
+            assert!(svg.contains("base64,"));
+        }
+    }
+
+    #[test]
+    fn sequence_default_colors_match_mermaid_element_defaults() {
+        let parsed = parse_mermaid(
+            "sequenceDiagram\nAlice->>+John: Hello\nNote over Alice: Remember\nJohn-->>-Alice: Back",
+        )
+        .unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        assert!(svg.contains("stroke=\"#9370DB\" stroke-width=\"0.5\""));
+        assert!(svg.contains("fill=\"#ECECFF\" stroke=\"#9370DB\""));
+        assert!(svg.contains("fill=\"#FFF5AD\" stroke=\"#AAAA33\""));
+        assert!(svg.contains("fill=\"#f4f4f4\" stroke=\"#666\""));
+        assert!(svg.contains("stroke=\"#333333\" stroke-width=\"1.5\""));
+        assert!(svg.contains("id=\"arrow-seq-0\""));
+        assert!(svg.contains("fill=\"#333333\" stroke=\"#333333\""));
+        assert!(!svg.contains("#2F3B4D"));
+        assert!(!svg.contains("stroke=\"#999\""));
+    }
+
+    #[test]
+    fn sequence_loop_frames_use_mermaid_label_box_defaults() {
+        let parsed = parse_mermaid(
+            "sequenceDiagram\nAlice->>John: Begin\nloop every tick\nAlice->>John: Ping\nend",
+        )
+        .unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        let seq = match &layout.diagram {
+            DiagramData::Sequence(seq) => seq,
+            _ => panic!("expected sequence layout"),
+        };
+        let frame = seq.frames.first().expect("expected one loop frame");
+        assert_eq!(frame.label_box.2, 50.0);
+        assert_eq!(frame.label_box.3, 20.0);
+        assert!(svg.contains("stroke=\"#9370DB\" stroke-width=\"2.0\" stroke-dasharray=\"2 2\""));
+        assert!(svg.contains("fill=\"#ECECFF\" stroke=\"#9370DB\" stroke-width=\"1.1\""));
+    }
+
+    #[test]
+    fn render_tree_view_uses_mermaid_tree_shell_and_annotations() {
+        let parsed = parse_mermaid(
+            "treeView-beta\n    src/\n        App.tsx :::highlight icon(react) ## main component\n        config.toml\n        secret icon()",
+        )
+        .unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        assert!(svg.starts_with("<svg id=\"my-svg\""));
+        assert!(svg.contains("xmlns:xlink=\"http://www.w3.org/1999/xlink\""));
+        assert!(svg.contains("aria-roledescription=\"treeView\""));
+        assert!(svg.contains("<g class=\"tree-view\">"));
+        assert!(svg.contains("id=\"tv-icon-my-svg-folder\""));
+        assert!(svg.contains("id=\"tv-icon-my-svg-react\""));
+        assert!(svg.contains("id=\"tv-icon-my-svg-config\""));
+        assert!(!svg.contains("xlink:href=\"#tv-icon-my-svg-folder\""));
+        assert!(svg.contains("class=\"treeView-highlight-bg\""));
+        assert!(svg.contains("class=\"treeView-node-description\""));
+        assert!(svg.contains(">main component</text>"));
+        assert!(!svg.contains("id=\"arrow-0\""));
+    }
+
+    #[test]
+    fn sankey_text_nodes_preserve_quote_glyphs() {
+        let parsed =
+            parse_mermaid("sankey-beta\nA,\"B \"\"quoted\"\"\",1\nAgricultural 'waste',C,1")
+                .unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        assert!(svg.contains("B \"quoted\"\n1"));
+        assert!(svg.contains("Agricultural 'waste'\n1"));
+        assert!(!svg.contains("B &quot;quoted&quot;"));
+        assert!(!svg.contains("Agricultural &apos;waste&apos;"));
+    }
+
+    #[test]
+    fn sankey_svg_shell_matches_mermaid_setup() {
+        let parsed = parse_mermaid("sankey-beta\nA,B,1").unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        assert!(svg.starts_with("<svg id=\"my-svg\" xmlns=\"http://www.w3.org/2000/svg\""));
+        assert!(svg.contains("xmlns:xlink=\"http://www.w3.org/1999/xlink\""));
+        assert!(svg.contains("role=\"graphics-document document\""));
+        assert!(svg.contains("aria-roledescription=\"sankey\""));
+        assert!(svg.contains("</style><g/><g class=\"nodes\">"));
+    }
+
+    #[test]
+    fn eventmodeling_data_blocks_use_xml_safe_nbsp() {
+        let parsed = parse_mermaid(concat!(
+            "eventmodeling\n",
+            "tf 01 cmd AddItem [[AddItem01]]\n",
+            "data AddItem01 {\n",
+            "  productId: 7\n",
+            "  quantity: 2\n",
+            "}\n",
+        ))
+        .unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        assert!(!svg.contains("&nbsp;"));
+        assert!(svg.contains("productId:\u{00a0}7"));
+        assert!(svg.contains("quantity:\u{00a0}2"));
+        assert!(svg.contains("productId:\u{00a0}7\n\u{00a0}quantity:\u{00a0}2"));
+        assert!(!svg.contains("productId:\u{00a0}7\n\u{00a0}\u{00a0}quantity:\u{00a0}2"));
+    }
+
+    #[test]
+    fn cynefin_renders_framework_regions_items_and_transitions() {
+        let parsed = parse_mermaid(
+            "cynefin-beta\n\
+title Decision space\n\
+complex\n\
+  \"Probe\"\n\
+complicated\n\
+  \"Analyse\"\n\
+confusion\n\
+  \"Unknown\"\n\
+  \"Mixed\"\n\
+  \"Ambiguous\"\n\
+  \"Overflow\"\n\
+complex --> complicated: \"clarify\"",
+        )
+        .unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        assert!(svg.starts_with("<svg id=\"my-svg\" xmlns=\"http://www.w3.org/2000/svg\""));
+        assert!(svg.contains("aria-roledescription=\"cynefin\""));
+        assert!(svg.contains("viewBox=\"0 0 880 680\""));
+        assert!(svg.contains("class=\"cynefinBoundary\""));
+        assert!(svg.contains("class=\"cynefinCliff\""));
+        assert!(svg.contains(">Probe &#8594; Sense &#8594; Respond</text>"));
+        assert!(svg.contains(">+1 more</text>"));
+        assert!(svg.contains("marker-end=\"url(#cynefin-arrow-my-svg)\""));
+        assert!(svg.contains(">clarify</text>"));
+    }
+
+    #[test]
+    fn kanban_metadata_renders_footer_fields_not_body_text() {
+        let parsed = parse_mermaid(
+            "kanban\n  todo[Todo]\n    id3[Update Database Function]@{ ticket: MC-2037, assigned: 'knsv', priority: 'High' }",
+        )
+        .unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(svg.contains(">MC-2037</tspan>"));
+        assert!(svg.contains(">knsv</tspan>"));
+        assert!(svg.contains("y=\"103.00\""));
+        assert!(!svg.contains("y=\"99.00\""));
+        assert!(svg.contains("stroke=\"orange\""));
+        assert!(!svg.contains("ticket: MC-2037"));
+        assert!(!svg.contains("assigned:"));
+        assert!(!svg.contains("priority:"));
+    }
+
+    #[test]
+    fn kanban_section_label_stays_inside_header_band() {
+        let parsed =
+            parse_mermaid("kanban\n  column1[Column Title]\n    task1[Task Description]").unwrap();
+        let theme = Theme::mermaid_default();
+        let layout = compute_layout(&parsed.graph, &theme, &LayoutConfig::default());
+        let svg = render_svg(&layout, &theme, &LayoutConfig::default());
+
+        assert!(svg.contains("<text x=\"110.00\" y=\"26.00\""));
+        assert!(svg.contains("<rect x=\"17.50\" y=\"35.00\" width=\"185.00\""));
+        assert!(!svg.contains("<text x=\"110.00\" y=\"38.00\""));
+    }
+
+    #[test]
+    fn flowchart_cluster_label_stays_inside_title_band() {
+        let source = r#"flowchart TB
+    md[("hello-fed MD<br/>(replicated on both members)")]
+    subgraph FED0["fed0 deploy controller"]
+        d0[reconcile vc-a1<br/>OWNED -> deploy]
+        d0x[reconcile vc-b1<br/>FOREIGN -> skip]
+    end
+    subgraph FED1["fed1 deploy controller"]
+        d1x[reconcile vc-a1<br/>FOREIGN -> skip]
+        d1[reconcile vc-b1<br/>OWNED -> deploy]
+    end
+    md --> d0 & d0x & d1 & d1x
+    d0 ==>|kubectl apply| pa["pod: hello-world<br/>default-fedten-vc-a1-default<br/>fed0cluster1"]
+    d1 ==>|kubectl apply| pb["pod: hello-world<br/>default-fedten-vc-b1-default<br/>fed1cluster1"]"#;
+        let parsed = parse_mermaid(source).expect("failed to parse realworld phase-08 fixture");
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        for (label, first_child_id) in [
+            ("fed0 deploy controller", "d0"),
+            ("fed1 deploy controller", "d1x"),
+        ] {
+            let subgraph = layout
+                .subgraphs
+                .iter()
+                .find(|subgraph| subgraph.label == label)
+                .unwrap_or_else(|| panic!("missing subgraph {label}"));
+            let child = layout
+                .nodes
+                .get(first_child_id)
+                .unwrap_or_else(|| panic!("missing child {first_child_id}"));
+            let rendered_label_y = svg_text_y_for_label(&svg, label);
+            let expected_label_y = subgraph.y + theme.font_size;
+
+            assert!(
+                (rendered_label_y - expected_label_y).abs() <= 0.05,
+                "flowchart cluster labels should render inside Mermaid's top title band; got label y {rendered_label_y:.2}, expected {expected_label_y:.2}"
+            );
+            assert!(
+                rendered_label_y + 4.0 < child.y,
+                "flowchart cluster label {label} should not overlap first child {first_child_id}; label y {rendered_label_y:.2}, child top {:.2}",
+                child.y
+            );
+        }
+    }
+
+    #[test]
+    fn flowchart_cluster_rects_use_classic_square_corners() {
+        let parsed = parse_mermaid("flowchart TB\nsubgraph A[Group]\n  b[Node]\nend").unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        assert!(svg.contains("rx=\"0\" ry=\"0\" fill=\"#FFFFDE\" stroke=\"#AAAA33\""));
+        assert!(!svg.contains("rx=\"10\" ry=\"10\" fill=\"#FFFFDE\" stroke=\"#AAAA33\""));
+    }
+
+    #[test]
+    fn flowchart_normal_edges_use_mermaid_common_stroke_width() {
+        let parsed = parse_mermaid("flowchart LR\n  A --> B\n  B ==> C").unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+        let edge0 = svg
+            .split("<path")
+            .find(|part| part.contains("data-edge-id=\"edge-0\""))
+            .expect("missing normal flowchart edge");
+        let edge1 = svg
+            .split("<path")
+            .find(|part| part.contains("data-edge-id=\"edge-1\""))
+            .expect("missing thick flowchart edge");
+
+        assert!(edge0.contains("stroke-width=\"1\""));
+        assert!(!edge0.contains("stroke-width=\"2\""));
+        assert!(edge1.contains("stroke-width=\"3.5\""));
+    }
+
+    #[test]
+    fn class_inline_annotation_renders_as_annotation_row() {
+        let parsed = parse_mermaid("classDiagram\nclass Shape <<interface>>").unwrap();
+        let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
+        let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
+
+        assert!(svg.contains(">\u{00ab}interface\u{00bb}</tspan>"));
+        assert!(svg.contains(">Shape</tspan>"));
+        assert!(!svg.contains("&lt;&lt;interface&gt;&gt;"));
+        assert!(!svg.contains("Shape &lt;&lt;"));
     }
 
     #[test]
@@ -8574,9 +11961,18 @@ mod tests {
         let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
         let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
 
-        assert!(svg.contains(
-            "y1=\"50.75\" x2=\"150.82\" y2=\"50.75\" stroke=\"#f66\" stroke-width=\"2\" stroke-opacity=\"0.6\" stroke-dasharray=\"5 5\""
-        ));
+        let header_divider = svg
+            .split("/>")
+            .find(|element| {
+                element.contains("<line ")
+                    && element.contains("y1=\"50.75\"")
+                    && element.contains("y2=\"50.75\"")
+                    && element.contains("stroke-opacity=\"0.6\"")
+            })
+            .expect("header divider line should be rendered");
+        assert!(header_divider.contains("stroke=\"#f66\""));
+        assert!(header_divider.contains("stroke-width=\"2\""));
+        assert!(header_divider.contains("stroke-dasharray=\"5 5\""));
     }
 
     #[test]
@@ -8660,23 +12056,26 @@ mod tests {
             img_h: None,
             sub_label: None,
             is_treemap_leaf: false,
+            treemap_base_text_color: None,
         };
 
-        let svg = divider_lines_svg(&node, &Theme::modern(), 20.0, true);
+        let svg = divider_lines_svg(&node, &Theme::modern(), 20.0, true, true);
 
-        assert!(svg.contains("x1=\"10.00\""));
-        assert!(svg.contains("x2=\"130.00\""));
-        assert!(!svg.contains("x1=\"16.00\""));
-        assert!(!svg.contains("x2=\"124.00\""));
+        let expected_y = 20.0 + 90.0 / 2.0 - (5.0 * 20.0) / 2.0 + 14.0 + 20.0 - 14.0 * 0.35;
+        assert!(svg.contains(&format!("M10.00 {expected_y:.2}")));
+        assert!(svg.contains(&format!("130.00 {expected_y:.2}")));
+        assert!(!svg.contains("M16.00"));
+        assert!(!svg.contains("124.00"));
+        assert!(!svg.contains("<line"));
     }
 
     #[test]
     fn rendered_class_diagram_dividers_touch_class_box_edges() {
-        fn attr_f32(element: &str, attr: &str) -> f32 {
+        fn attr_str<'a>(element: &'a str, attr: &str) -> &'a str {
             let needle = format!("{attr}=\"");
             let start = element.find(&needle).unwrap() + needle.len();
             let end = start + element[start..].find('"').unwrap();
-            element[start..end].parse::<f32>().unwrap()
+            &element[start..end]
         }
 
         fn elements<'a>(svg: &'a str, tag: &str) -> Vec<&'a str> {
@@ -8692,6 +12091,19 @@ mod tests {
             out
         }
 
+        fn divider_path_elements(svg: &str) -> Vec<&str> {
+            let needle = "<g class=\"divider\"><path ";
+            let mut out = Vec::new();
+            let mut offset = 0;
+            while let Some(relative_start) = svg[offset..].find(needle) {
+                let start = offset + relative_start + "<g class=\"divider\">".len();
+                let end = start + svg[start..].find('>').unwrap() + 1;
+                out.push(&svg[start..end]);
+                offset = end;
+            }
+            out
+        }
+
         let parsed = crate::parser::parse_mermaid(
             "classDiagram\nclass BankAccount\nBankAccount : +String owner\nBankAccount : +deposit(amount)",
         )
@@ -8699,22 +12111,21 @@ mod tests {
         let layout = compute_layout(&parsed.graph, &Theme::modern(), &LayoutConfig::default());
         let svg = render_svg(&layout, &Theme::modern(), &LayoutConfig::default());
 
-        let class_rect = elements(&svg, "rect")
-            .into_iter()
-            .find(|element| element.contains("stroke="))
-            .expect("class rectangle");
-        let rect_x = attr_f32(class_rect, "x");
-        let rect_right = rect_x + attr_f32(class_rect, "width");
-        let divider_lines: Vec<&str> = elements(&svg, "line")
-            .into_iter()
-            .filter(|element| element.contains("stroke-width=\"1.0\""))
-            .collect();
+        let class_node = layout.nodes.get("BankAccount").expect("class node");
+        let rect_x = class_node.x;
+        let rect_right = class_node.x + class_node.width;
+        let divider_paths = divider_path_elements(&svg);
 
-        assert_eq!(divider_lines.len(), 2);
-        for line in divider_lines {
-            assert!((attr_f32(line, "x1") - rect_x).abs() < 0.01, "{line}");
-            assert!((attr_f32(line, "x2") - rect_right).abs() < 0.01, "{line}");
+        assert_eq!(divider_paths.len(), 2);
+        for path in divider_paths {
+            let d = attr_str(path, "d");
+            assert!(d.contains(&format!("M{rect_x:.2} ")), "{path}");
+            assert!(d.contains(&format!("{rect_right:.2} ")), "{path}");
         }
+        assert!(
+            elements(&svg, "line").is_empty(),
+            "class dividers should render as Mermaid classBox paths"
+        );
     }
 
     #[test]
@@ -8750,9 +12161,10 @@ mod tests {
             img_h: None,
             sub_label: None,
             is_treemap_leaf: false,
+            treemap_base_text_color: None,
         };
 
-        let svg = divider_lines_svg(&node, &Theme::modern(), 20.0, true);
+        let svg = divider_lines_svg(&node, &Theme::modern(), 20.0, true, true);
 
         assert_eq!(svg.matches("stroke=\"#f66\"").count(), 2);
         assert_eq!(svg.matches("stroke-width=\"2\"").count(), 2);
@@ -8798,6 +12210,21 @@ mod tests {
     }
 
     #[test]
+    fn state_notes_render_mermaid_note_edge_connectors() {
+        let parsed = crate::parser::parse_mermaid(
+            "stateDiagram-v2\nState1: The state with a note\nnote right of State1\nImportant information! You can write\nnotes.\nend note\nState1 --> State2\nnote left of State2 : This is a note on State2.",
+        )
+        .unwrap();
+        let theme = Theme::mermaid_default();
+        let layout = compute_layout(&parsed.graph, &theme, &LayoutConfig::default());
+        let svg = render_svg(&layout, &theme, &LayoutConfig::default());
+
+        assert_eq!(svg.matches("transition note-edge").count(), 2);
+        assert_eq!(svg.matches("stroke-dasharray=\"5\"").count(), 2);
+        assert!(!svg.contains("stroke=\"#AAAA33\" stroke-width=\"1\" stroke-dasharray=\"5 3\""));
+    }
+
+    #[test]
     fn class_symbol_render_points_trim_endpoint_to_leave_marker_visible() {
         let edge = crate::layout::EdgeLayout {
             from: "A".to_string(),
@@ -8825,10 +12252,60 @@ mod tests {
 
         let points = class_symbol_render_points(&edge, crate::ir::DiagramKind::Class);
         assert_eq!(points[0], (0.0, 0.0));
-        assert!((points[1].1 - 83.0).abs() < 0.001);
+        assert!((points[1].1 - 82.75).abs() < 0.001);
 
         let flowchart_points = class_symbol_render_points(&edge, crate::ir::DiagramKind::Flowchart);
         assert_eq!(flowchart_points[1], (0.0, 100.0));
+    }
+
+    #[test]
+    fn flowchart_two_point_basis_edges_get_dagre_midpoint() {
+        let points = flowchart_d3_basis_points(&[(0.0, 0.0), (0.0, 60.0)]);
+        assert_eq!(points, vec![(0.0, 0.0), (0.0, 30.0), (0.0, 60.0)]);
+
+        let d = points_to_d3_basis_path(&points);
+        assert!(d.starts_with("M 0.000,0.000 L 0.000,5.000 C"));
+        assert!(d.ends_with("L 0.000,60.000"));
+    }
+
+    #[test]
+    fn flowchart_arrow_paths_are_shortened_like_mermaid_line_with_offset() {
+        let edge = crate::layout::EdgeLayout {
+            from: "A".to_string(),
+            to: "B".to_string(),
+            label: None,
+            start_label: None,
+            end_label: None,
+            label_anchor: None,
+            start_label_anchor: None,
+            end_label_anchor: None,
+            points: vec![(0.0, 0.0), (100.0, 0.0)],
+            directed: true,
+            arrow_start: false,
+            arrow_end: true,
+            arrow_start_kind: None,
+            arrow_end_kind: None,
+            start_decoration: None,
+            end_decoration: None,
+            sequence_arrow_end: None,
+            sequence_arrow_start: None,
+            style: crate::ir::EdgeStyle::Solid,
+            override_style: crate::ir::EdgeStyleOverride::default(),
+            curve: None,
+        };
+
+        let end_only = flowchart_marker_offset_render_points(&edge.points, &edge);
+        assert_eq!(end_only, vec![(0.0, 0.0), (96.0, 0.0)]);
+
+        let mut both_edge = edge.clone();
+        both_edge.arrow_start = true;
+        let both = flowchart_marker_offset_render_points(&both_edge.points, &both_edge);
+        assert_eq!(both, vec![(4.0, 0.0), (96.0, 0.0)]);
+
+        let mut vertical_edge = edge.clone();
+        vertical_edge.points = vec![(0.0, 0.0), (0.0, 100.0)];
+        let vertical = flowchart_marker_offset_render_points(&vertical_edge.points, &vertical_edge);
+        assert_eq!(vertical, vec![(0.0, 0.0), (0.0, 96.0)]);
     }
 
     #[test]
@@ -8965,6 +12442,221 @@ mod tests {
     }
 
     #[test]
+    fn sloped_rect_top_extension_matches_mermaid_manual_input() {
+        let node = crate::layout::NodeLayout {
+            id: "A".to_string(),
+            x: 8.0,
+            y: 8.0,
+            width: 39.4375,
+            height: 81.0,
+            label: crate::layout::TextBlock {
+                lines: vec![crate::layout::TextLine::plain("A".to_string())],
+                width: 9.4375,
+                height: 24.0,
+            },
+            shape: crate::ir::NodeShape::SlopedRect,
+            style: crate::ir::NodeStyle::default(),
+            link: None,
+            anchor_subgraph: None,
+            hidden: false,
+            icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
+            sub_label: None,
+            is_treemap_leaf: false,
+            treemap_base_text_color: None,
+        };
+        let svg = shape_svg(
+            &node,
+            &Theme::modern(),
+            &LayoutConfig::default(),
+            crate::ir::DiagramKind::Flowchart,
+        );
+
+        assert!(svg.contains("M 8.00 35.00 L 47.44 8.00 v 81.00 h -39.44 Z"));
+    }
+
+    #[test]
+    fn notched_pentagon_points_match_mermaid_loop_limit() {
+        let node = crate::layout::NodeLayout {
+            id: "A".to_string(),
+            x: 8.0,
+            y: 8.0,
+            width: 39.4375,
+            height: 54.0,
+            label: crate::layout::TextBlock {
+                lines: vec![crate::layout::TextLine::plain("A".to_string())],
+                width: 9.4375,
+                height: 24.0,
+            },
+            shape: crate::ir::NodeShape::NotchedPentagon,
+            style: crate::ir::NodeStyle::default(),
+            link: None,
+            anchor_subgraph: None,
+            hidden: false,
+            icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
+            sub_label: None,
+            is_treemap_leaf: false,
+            treemap_base_text_color: None,
+        };
+        let svg = shape_svg(
+            &node,
+            &Theme::modern(),
+            &LayoutConfig::default(),
+            crate::ir::DiagramKind::Flowchart,
+        );
+
+        assert!(svg.contains(
+            "points=\"11.94,8.00 43.49,8.00 47.44,18.80 47.44,62.00 8.00,62.00 8.00,18.80\""
+        ));
+    }
+
+    #[test]
+    fn curly_braces_both_sides_match_mermaid_bounds() {
+        let (left_points, right_points) = flowchart_curly_braces_points(8.0, 8.0, 36.9375, 49.0);
+        let all_points = left_points
+            .iter()
+            .chain(right_points.iter())
+            .copied()
+            .collect::<Vec<_>>();
+        let min_x = all_points.iter().map(|(x, _)| *x).fold(f32::MAX, f32::min);
+        let max_x = all_points.iter().map(|(x, _)| *x).fold(f32::MIN, f32::max);
+        let min_y = all_points.iter().map(|(_, y)| *y).fold(f32::MAX, f32::min);
+        let max_y = all_points.iter().map(|(_, y)| *y).fold(f32::MIN, f32::max);
+
+        assert!((min_x - 8.0).abs() <= 0.01);
+        assert!((max_x - 44.9375).abs() <= 0.01);
+        assert!((min_y - 8.0).abs() <= 0.01);
+        assert!((max_y - 57.0).abs() <= 0.01);
+    }
+
+    #[test]
+    fn braces_both_sides_render_two_open_curly_paths() {
+        let node = crate::layout::NodeLayout {
+            id: "A".to_string(),
+            x: 8.0,
+            y: 8.0,
+            width: 36.9375,
+            height: 49.0,
+            label: crate::layout::TextBlock {
+                lines: vec![crate::layout::TextLine::plain("A".to_string())],
+                width: 9.4375,
+                height: 24.0,
+            },
+            shape: crate::ir::NodeShape::BraceBoth,
+            style: crate::ir::NodeStyle::default(),
+            link: None,
+            anchor_subgraph: None,
+            hidden: false,
+            icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
+            sub_label: None,
+            is_treemap_leaf: false,
+            treemap_base_text_color: None,
+        };
+        let svg = shape_svg(
+            &node,
+            &Theme::modern(),
+            &LayoutConfig::default(),
+            crate::ir::DiagramKind::Flowchart,
+        );
+
+        assert_eq!(svg.matches("<path ").count(), 2);
+        assert_eq!(svg.matches("fill=\"none\"").count(), 2);
+        assert!(!svg.contains(" h "));
+    }
+
+    #[test]
+    fn block_arrow_right_points_match_mermaid_compact_blank_arrow() {
+        let node = crate::layout::NodeLayout {
+            id: "blockArrowId6".to_string(),
+            x: 0.0,
+            y: 0.0,
+            width: 24.0,
+            height: 16.0,
+            label: crate::layout::TextBlock {
+                lines: vec![crate::layout::TextLine::plain(" ".to_string())],
+                width: 0.0,
+                height: 24.0,
+            },
+            shape: crate::ir::NodeShape::BlockArrowRight,
+            style: crate::ir::NodeStyle::default(),
+            link: None,
+            anchor_subgraph: None,
+            hidden: false,
+            icon: None,
+            img: None,
+            img_w: None,
+            img_h: None,
+            sub_label: None,
+            is_treemap_leaf: false,
+            treemap_base_text_color: None,
+        };
+        let svg = shape_svg(
+            &node,
+            &Theme::modern(),
+            &LayoutConfig::default(),
+            crate::ir::DiagramKind::Block,
+        );
+
+        assert!(svg.contains(
+            "points=\"8.00,12.00 8.00,12.00 16.00,12.00 16.00,16.00 24.00,8.00 16.00,0.00 16.00,4.00 8.00,4.00 8.00,4.00\""
+        ));
+    }
+
+    #[test]
+    fn flowchart_lean_shape_points_match_mermaid_data_io_geometry() {
+        fn node(shape: crate::ir::NodeShape) -> crate::layout::NodeLayout {
+            crate::layout::NodeLayout {
+                id: "A".to_string(),
+                x: 8.0,
+                y: 8.0,
+                width: 63.4375,
+                height: 39.0,
+                label: crate::layout::TextBlock {
+                    lines: vec![crate::layout::TextLine::plain("A".to_string())],
+                    width: 9.4375,
+                    height: 24.0,
+                },
+                shape,
+                style: crate::ir::NodeStyle::default(),
+                link: None,
+                anchor_subgraph: None,
+                hidden: false,
+                icon: None,
+                img: None,
+                img_w: None,
+                img_h: None,
+                sub_label: None,
+                is_treemap_leaf: false,
+                treemap_base_text_color: None,
+            }
+        }
+
+        let left_svg = shape_svg(
+            &node(crate::ir::NodeShape::LeanLeft),
+            &Theme::modern(),
+            &LayoutConfig::default(),
+            crate::ir::DiagramKind::Flowchart,
+        );
+        assert!(left_svg.contains("points=\"8.00,8.00 51.94,8.00 71.44,47.00 27.50,47.00\""));
+
+        let right_svg = shape_svg(
+            &node(crate::ir::NodeShape::LeanRight),
+            &Theme::modern(),
+            &LayoutConfig::default(),
+            crate::ir::DiagramKind::Flowchart,
+        );
+        assert!(right_svg.contains("points=\"27.50,8.00 71.44,8.00 51.94,47.00 8.00,47.00\""));
+    }
+
+    #[test]
     fn wavy_rect_bottom_edge_stays_within_bounds() {
         // Regression: paper-tape (WavyRect) bottom wave went right instead of
         // left, causing the shape to stretch into neighbouring nodes.
@@ -9036,12 +12728,81 @@ mod tests {
 
 // ── TreeView renderer ───────────────────────────────────────────────────
 
+const TREE_VIEW_FILE_ICON: &str =
+    "M13,9V3.5L18.5,9M6,2C4.89,2 4,2.89 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2H6Z";
+const TREE_VIEW_FOLDER_ICON: &str =
+    "M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z";
+const TREE_VIEW_CONFIG_ICON: &str = "M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z";
+const TREE_VIEW_MARKDOWN_ICON: &str = "M20.56 18H3.44C2.65 18 2 17.37 2 16.59V7.41C2 6.63 2.65 6 3.44 6H20.56C21.35 6 22 6.63 22 7.41V16.59C22 17.37 21.35 18 20.56 18M6.81 15.19V11.53L8.73 13.88L10.65 11.53V15.19H12.58V8.81H10.65L8.73 11.16L6.81 8.81H4.89V15.19H6.81M19.69 12H17.77V8.81H15.85V12H13.92L16.81 15.28L19.69 12Z";
+const TREE_VIEW_RUST_ICON: &str = "M21.9 11.7L21 11.2V11L21.7 10.3C21.8 10.2 21.8 10 21.7 9.9L21.6 9.8L20.7 9.5C20.7 9.4 20.7 9.3 20.6 9.3L21.2 8.5C21.3 8.4 21.3 8.2 21.1 8.1C21.1 8.1 21 8.1 21 8L20 7.8C20 7.7 19.9 7.7 19.9 7.6L20.3 6.7V6.4C20.2 6.3 20.1 6.3 20 6.3H19C19 6.3 19 6.2 18.9 6.2L19.1 5.2C19.1 5 19 4.9 18.9 4.9H18.8L17.8 5.1C17.8 5 17.7 5 17.6 4.9V3.9C17.6 3.7 17.5 3.6 17.3 3.6H17.2L16.3 4H16.2L16 3C16 2.8 15.8 2.7 15.7 2.8H15.6L14.8 3.4C14.7 3.4 14.6 3.4 14.6 3.3L14.3 2.4C14.2 2.3 14.1 2.2 13.9 2.2C13.9 2.2 13.8 2.2 13.8 2.3L13 3H12.8L12.3 2.2C12.2 2 12 2 11.8 2L11.7 2.1L11.2 3H11L10.3 2.3C10.2 2.2 10 2.2 9.9 2.3L9.8 2.4L9.5 3.3C9.4 3.3 9.3 3.3 9.3 3.4L8.5 2.8C8.3 2.7 8.1 2.7 8 2.9V3L7.8 4C7.8 4 7.7 4 7.6 4.1L6.7 3.7C6.6 3.6 6.4 3.7 6.3 3.8V4.9C6.3 5 6.2 5 6.2 5.1L5.2 4.9C5 4.8 4.9 4.9 4.9 5.1V5.2L5.1 6.2C5 6.2 5 6.3 4.9 6.3H3.9C3.7 6.3 3.6 6.4 3.6 6.6V6.7L4 7.6V7.8L3 8C2.8 8 2.7 8.2 2.7 8.3V8.4L3.3 9.2C3.3 9.3 3.3 9.4 3.2 9.4L2.4 9.8C2.3 9.9 2.2 10 2.2 10.2C2.2 10.2 2.2 10.3 2.3 10.3L3 11V11.2L2.2 11.7C2 11.8 2 12 2 12.1L2.1 12.2L3 12.8V13L2.3 13.7C2.2 13.8 2.2 14 2.3 14.1L2.4 14.2L3.3 14.5C3.3 14.6 3.3 14.7 3.4 14.7L2.8 15.5C2.7 15.6 2.7 15.8 2.9 15.9C2.9 15.9 3 15.9 3 16L4 16.2C4 16.3 4.1 16.3 4.1 16.4L3.7 17.3C3.6 17.4 3.7 17.6 3.8 17.7H4.9C5 17.7 5 17.8 5.1 17.8L4.9 18.8C4.9 19 5 19.1 5.1 19.1H5.2L6.2 18.9C6.2 19 6.3 19 6.4 19.1V20.1C6.4 20.3 6.5 20.4 6.7 20.4H6.8L7.7 20H7.8L8 21C8 21.2 8.2 21.3 8.3 21.2H8.4L9.2 20.6C9.3 20.6 9.4 20.6 9.4 20.7L9.7 21.6C9.8 21.7 9.9 21.8 10.1 21.8C10.1 21.8 10.2 21.8 10.2 21.7L11 21H11.2L11.7 21.8C11.8 21.9 12 22 12.1 21.9L12.2 21.8L12.7 21H12.9L13.6 21.7C13.7 21.8 13.9 21.8 14 21.7L14.1 21.6L14.4 20.7C14.5 20.7 14.6 20.7 14.6 20.6L15.4 21.2C15.5 21.3 15.7 21.3 15.8 21.1C15.8 21.1 15.8 21 15.9 21L16.1 20C16.2 20 16.2 19.9 16.3 19.9L17.2 20.3C17.3 20.4 17.5 20.3 17.6 20.2V19.1L17.8 18.9L18.8 19.1C19 19.1 19.1 19 19.1 18.9V18.8L18.9 17.8L19.1 17.6H20.1C20.3 17.6 20.4 17.5 20.4 17.3V17.2L20 16.3C20 16.2 20.1 16.2 20.1 16.1L21.1 15.9C21.3 15.9 21.4 15.7 21.3 15.6V15.5L20.7 14.7L20.8 14.5L21.7 14.2C21.8 14.1 21.9 14 21.9 13.8C21.9 13.8 21.9 13.7 21.8 13.7L21 13V12.8L21.8 12.3C22 12.2 22 12 21.9 11.7C21.9 11.8 21.9 11.8 21.9 11.7M16.2 18.7C15.9 18.6 15.7 18.3 15.7 18C15.8 17.7 16.1 17.5 16.4 17.5C16.7 17.6 16.9 17.9 16.9 18.2C16.9 18.6 16.6 18.8 16.2 18.7M16 16.8C15.7 16.7 15.4 16.9 15.4 17.2L15 18.6C14.1 19 13.1 19.2 12 19.2C10.9 19.2 9.9 19 8.9 18.5L8.6 17.1C8.5 16.8 8.3 16.6 8 16.7L6.8 17C6.6 16.8 6.4 16.5 6.2 16.3H12.2C12.3 16.3 12.3 16.3 12.3 16.2V14.1C12.3 14 12.3 14 12.2 14H10.5V12.7H12.4C12.6 12.7 13.3 12.7 13.6 13.7C13.7 14 13.8 15 14 15.3C14.1 15.6 14.6 16.3 15.1 16.3H18.2C18 16.6 17.8 16.8 17.5 17.1L16 16.8M7.7 18.7C7.4 18.8 7.1 18.6 7 18.2C6.9 17.9 7.1 17.6 7.5 17.5S8.1 17.6 8.2 18C8.2 18.3 8 18.6 7.7 18.7M5.4 9.5C5.5 9.8 5.4 10.2 5.1 10.3C4.8 10.4 4.4 10.3 4.3 10C4.2 9.7 4.3 9.3 4.6 9.2C5 9.1 5.3 9.2 5.4 9.5M4.7 11.1L6 10.6C6.3 10.5 6.4 10.2 6.3 9.9L6 9.3H7V14H5C4.7 13 4.6 12.1 4.7 11.1M10.3 10.7V9.3H12.8C12.9 9.3 13.7 9.4 13.7 10C13.7 10.5 13.1 10.7 12.6 10.7H10.3M19.3 11.9V12.4H18.5C18.4 12.4 18.4 12.4 18.4 12.5V12.8C18.4 13.6 17.9 13.8 17.5 13.8C17.1 13.8 16.7 13.6 16.6 13.4C16.4 12.1 16 11.9 15.4 11.4C16.1 10.9 16.9 10.2 16.9 9.3C16.9 8.3 16.2 7.7 15.8 7.4C15.1 7 14.4 6.9 14.2 6.9H6.6C7.7 5.7 9.1 4.9 10.7 4.6L11.6 5.6C11.8 5.8 12.1 5.8 12.4 5.6L13.4 4.6C15.5 5 17.3 6.3 18.4 8.2L17.7 9.8C17.6 10.1 17.7 10.4 18 10.5L19.3 11.1V11.9M11.6 3.9C11.8 3.7 12.2 3.7 12.4 3.9C12.6 4.1 12.6 4.5 12.4 4.7C12.1 5 11.8 5 11.5 4.7C11.3 4.5 11.4 4.2 11.6 3.9M18.5 9.5C18.6 9.2 19 9.1 19.3 9.2C19.6 9.3 19.7 9.7 19.6 10C19.5 10.3 19.1 10.4 18.8 10.3C18.5 10.2 18.4 9.8 18.5 9.5Z";
+
+fn tree_view_icon_path(icon_id: &str) -> &'static str {
+    match icon_id {
+        "folder" => TREE_VIEW_FOLDER_ICON,
+        "file" => TREE_VIEW_FILE_ICON,
+        "rust" => TREE_VIEW_RUST_ICON,
+        "config" => TREE_VIEW_CONFIG_ICON,
+        "markdown" => TREE_VIEW_MARKDOWN_ICON,
+        "database" => {
+            "M12,3C7.58,3 4,4.79 4,7C4,9.21 7.58,11 12,11C16.42,11 20,9.21 20,7C20,4.79 16.42,3 12,3M4,9V12C4,14.21 7.58,16 12,16C16.42,16 20,14.21 20,12V9C20,11.21 16.42,13 12,13C7.58,13 4,11.21 4,9M4,14V17C4,19.21 7.58,21 12,21C16.42,21 20,19.21 20,17V14C20,16.21 16.42,18 12,18C7.58,18 4,16.21 4,14Z"
+        }
+        "json" => {
+            "M5,3H7V5H5V10A2,2 0 0,1 3,12A2,2 0 0,1 5,14V19H7V21H5C3.93,20.73 3,20.1 3,19V15A2,2 0 0,0 1,13H0V11H1A2,2 0 0,0 3,9V5A2,2 0 0,1 5,3M19,3A2,2 0 0,1 21,5V9A2,2 0 0,0 23,11H24V13H23A2,2 0 0,0 21,15V19A2,2 0 0,1 19,21H17V19H19V14A2,2 0 0,1 21,12A2,2 0 0,1 19,10V5H17V3H19M12,15A1,1 0 0,1 13,16A1,1 0 0,1 12,17A1,1 0 0,1 11,16A1,1 0 0,1 12,15M8,15A1,1 0 0,1 9,16A1,1 0 0,1 8,17A1,1 0 0,1 7,16A1,1 0 0,1 8,15M16,15A1,1 0 0,1 17,16A1,1 0 0,1 16,17A1,1 0 0,1 15,16A1,1 0 0,1 16,15Z"
+        }
+        "lock" => {
+            "M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z"
+        }
+        "terminal" => {
+            "M20,19V7H4V19H20M20,3A2,2 0 0,1 22,5V19A2,2 0 0,1 20,21H4A2,2 0 0,1 2,19V5C2,3.89 2.9,3 4,3H20M13,17V15H18V17H13M9.58,13L5.57,9H8.4L11.7,12.3C12.09,12.69 12.09,13.33 11.7,13.72L8.42,17H5.59L9.58,13Z"
+        }
+        "git" => {
+            "M2.6,10.59L8.38,4.8L10.07,6.5C9.83,7.35 10.22,8.28 11,8.73V14.27C10.4,14.61 10,15.26 10,16A2,2 0 0,0 12,18A2,2 0 0,0 14,16C14,15.26 13.6,14.61 13,14.27V9.41L15.07,11.5C15,11.65 15,11.82 15,12A2,2 0 0,0 17,14A2,2 0 0,0 19,12A2,2 0 0,0 17,10C16.82,10 16.65,10 16.5,10.07L13.93,7.5C14.19,6.57 13.71,5.55 12.78,5.16C12.35,5 11.9,4.96 11.5,5.07L9.8,3.38L10.59,2.6C11.37,1.81 12.63,1.81 13.41,2.6L21.4,10.59C22.19,11.37 22.19,12.63 21.4,13.41L13.41,21.4C12.63,22.19 11.37,22.19 10.59,21.4L2.6,13.41C1.81,12.63 1.81,11.37 2.6,10.59Z"
+        }
+        _ => TREE_VIEW_FILE_ICON,
+    }
+}
+
+fn tree_view_show_icon(node: &crate::layout::TreeViewNodeLayout) -> Option<&str> {
+    node.icon_id.as_deref().filter(|icon_id| *icon_id != "none")
+}
+
+fn render_tree_view_icon_defs(layout: &crate::layout::TreeViewLayout) -> String {
+    let mut used_icons: Vec<&str> = Vec::new();
+    for node in &layout.nodes {
+        let Some(icon_id) = tree_view_show_icon(node) else {
+            continue;
+        };
+        if !used_icons.contains(&icon_id) {
+            used_icons.push(icon_id);
+        }
+    }
+    if used_icons.is_empty() {
+        return String::new();
+    }
+
+    let mut svg = String::from("<defs>");
+    for icon_id in used_icons {
+        svg.push_str(&format!(
+            "<symbol id=\"tv-icon-my-svg-{icon_id}\" viewBox=\"0 0 24 24\"><path d=\"{path}\"/></symbol>",
+            icon_id = escape_xml(icon_id),
+            path = tree_view_icon_path(icon_id)
+        ));
+    }
+    svg.push_str("</defs>");
+    svg
+}
+
 fn render_tree_view(layout: &crate::layout::TreeViewLayout, theme: &Theme) -> String {
     let mut svg = String::new();
     let font_family = normalize_font_family(&theme.font_family);
     let font_size = theme.font_size;
 
-    // Lines first (behind text)
+    svg.push_str(&format!(
+        "<style>.treeView-node-label{{font-size:{font_size}px;fill:black;}}.treeView-node-dir{{font-weight:bold;}}.treeView-node-line{{stroke:black;}}.treeView-node-icon{{fill:#546e7a;}}.treeView-node-description{{font-size:{font_size}px;fill:#6a9955;font-style:italic;}}.treeView-highlight-bg{{fill:rgba(255,193,7,0.15);stroke:#ffc107;stroke-width:1;}}</style>",
+    ));
+    svg.push_str(&render_tree_view_icon_defs(layout));
+    svg.push_str("<g class=\"tree-view\">");
+
     for line in &layout.lines {
         svg.push_str(&format!(
             "<line class=\"treeView-node-line\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
@@ -9050,18 +12811,55 @@ fn render_tree_view(layout: &crate::layout::TreeViewLayout, theme: &Theme) -> St
         ));
     }
 
-    // Node labels
     for node in &layout.nodes {
+        svg.push_str("<g>");
+        if let Some(highlight_width) = node.highlight_width {
+            svg.push_str(&format!(
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"3\" class=\"treeView-highlight-bg\"/>",
+                node.x,
+                node.y + 1.0,
+                highlight_width,
+                node.height - 2.0,
+            ));
+        }
+
+        // Mermaid CLI output keeps icon symbols and reserves this gutter, but
+        // the serialized comparison SVGs do not include visible <use> nodes.
+
+        let mut class = String::from("treeView-node-label");
+        if node.node_type == crate::ir::TreeViewNodeType::Directory {
+            class.push_str(" treeView-node-dir");
+        }
+        if let Some(css_class) = &node.css_class {
+            class.push(' ');
+            class.push_str(css_class);
+        }
+        let class_attr = escape_xml(&class);
         svg.push_str(&format!(
-            "<text class=\"treeView-node-label\" x=\"{:.1}\" y=\"{:.1}\" \
+            "<text class=\"{class}\" x=\"{:.1}\" y=\"{:.1}\" \
              dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" fill=\"black\">{text}</text>",
-            node.x + 5.0, // paddingX offset
+            node.label_x,
             node.y + node.height / 2.0,
+            class = class_attr,
             ff = font_family,
             fs = font_size,
             text = escape_xml(&node.name),
         ));
+
+        if let (Some(description), Some(description_x)) = (&node.description, node.description_x) {
+            svg.push_str(&format!(
+                "<text class=\"treeView-node-description\" x=\"{:.1}\" y=\"{:.1}\" dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" fill=\"#6a9955\" font-style=\"italic\">{text}</text>",
+                description_x,
+                node.y + node.height / 2.0,
+                ff = font_family,
+                fs = font_size,
+                text = escape_xml(description),
+            ));
+        }
+
+        svg.push_str("</g>");
     }
+    svg.push_str("</g>");
 
     if let Some(ref title) = layout.title {
         svg.push_str(&format!(
@@ -9106,20 +12904,22 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
     let mut svg = String::new();
     let font_family = normalize_font_family(&theme.font_family);
     let font_size = theme.font_size;
-    let line_color = &theme.line_color;
+    let line_color = "#333333";
     let box_fill = "#ECECFF"; // JS uses this for head and label boxes
+
+    svg.push_str("<g class=\"ishikawa\">");
 
     // Arrow marker definition (pointing toward spine = cause→effect)
     svg.push_str(&format!(
         "<defs><marker id=\"ishikawa-arrow\" viewBox=\"0 0 10 10\" refX=\"0\" refY=\"5\" \
          markerWidth=\"6\" markerHeight=\"6\" orient=\"auto\">\
-         <path d=\"M 10 0 L 0 5 L 10 10 Z\" fill=\"{lc}\"/></marker></defs>",
+         <path d=\"M 10 0 L 0 5 L 10 10 Z\" class=\"ishikawa-arrow\" fill=\"{lc}\"/></marker></defs>",
         lc = line_color,
     ));
 
     // Spine
     svg.push_str(&format!(
-        "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+        "<line class=\"ishikawa-spine\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
          stroke=\"{lc}\" stroke-width=\"{sw}\" fill=\"none\"/>",
         layout.spine.x1,
         layout.spine.y1,
@@ -9132,8 +12932,8 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
     // Fish head path — in a group translated to spine center (matching JS).
     if !layout.head_path.is_empty() {
         svg.push_str(&format!(
-            "<g transform=\"translate(0,{hy})\">\
-             <path d=\"{path}\" fill=\"{fill}\" stroke=\"{lc}\" stroke-width=\"2\"/>\
+            "<g class=\"ishikawa-head-group\" transform=\"translate(0,{hy})\">\
+             <path class=\"ishikawa-head\" d=\"{path}\" fill=\"{fill}\" stroke=\"{lc}\" stroke-width=\"2\"/>\
              </g>",
             hy = layout.head_y,
             path = layout.head_path,
@@ -9144,8 +12944,13 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
 
     // Branches (primary = stroke-width 2 with arrow, sub = stroke-width 1 with arrow)
     for branch in &layout.branches {
+        let class = if branch.stroke_width >= 2.0 {
+            "ishikawa-branch"
+        } else {
+            "ishikawa-sub-branch"
+        };
         svg.push_str(&format!(
-            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
+            "<line class=\"{class}\" x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" \
              stroke=\"{lc}\" stroke-width=\"{sw}\" fill=\"none\" \
              marker-start=\"url(#ishikawa-arrow)\"/>",
             branch.x1,
@@ -9162,7 +12967,7 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
         if label.has_box {
             svg.push_str(&format!(
                 "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" \
-                 fill=\"{fill}\" stroke=\"{lc}\" stroke-width=\"2\"/>",
+                 class=\"ishikawa-label-box\" fill=\"{fill}\" stroke=\"{lc}\" stroke-width=\"2\"/>",
                 label.box_x,
                 label.box_y,
                 label.box_w,
@@ -9198,13 +13003,7 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
             // ty ≈ small positive value to nudge center down
             // tx = label.x (from layout, ≈ head_q_extent * 0.23 ≈ 33)
             let text_y = -head_fs * 0.6; // -8.4
-            let total_h = lines.len() as f32 * line_h;
-            // JS: ty = -tb.y - tb.height/2
-            // tb.y ≈ text_y - ascent. Approximate ascent ≈ fontSize.
-            // This centers the total text block at y=0.
-            let approx_bbox_y = text_y - head_fs; // top of bbox
-            let approx_bbox_h = total_h + head_fs * 0.3; // bbox height
-            let ty = -approx_bbox_y - approx_bbox_h / 2.0;
+            let ty = 1.34375_f32;
 
             let mut tspans = String::new();
             for (i, line) in lines.iter().enumerate() {
@@ -9217,7 +13016,7 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
             // Render head label in its own group at spine center
             svg.push_str(&format!(
                 "<g transform=\"translate(0,{hy})\">\
-                 <text text-anchor=\"start\" x=\"0\" y=\"{text_y:.1}\" \
+                 <text class=\"ishikawa-head-label\" text-anchor=\"start\" x=\"0\" y=\"{text_y:.1}\" \
                  transform=\"translate({tx:.1},{ty:.1})\" \
                  font-family=\"{ff}\" font-size=\"{fs}\" font-weight=\"600\" \
                  fill=\"{tc}\">{tspans}</text></g>",
@@ -9231,12 +13030,23 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
                 tspans = tspans,
             ));
         } else {
-            // Bone labels: wrap long text using character count (JS maxChars=15 for bones)
-            let max_bone_chars = 15_usize;
-            let wrapped = wrap_by_chars(&label.text, max_bone_chars);
+            // Mermaid wraps sub-bone labels before measuring/drawing, but cause
+            // labels are left as a single line.
+            let wrapped = if !label.lines.is_empty() {
+                label.lines.clone()
+            } else if label.has_box {
+                vec![label.text.clone()]
+            } else {
+                wrap_by_chars(&label.text, 15)
+            };
             if wrapped.len() <= 1 {
+                let class = if label.has_box {
+                    "ishikawa-label cause"
+                } else {
+                    "ishikawa-label align"
+                };
                 svg.push_str(&format!(
-                    "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
+                    "<text class=\"{class}\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
                      dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" \
                      fill=\"{tc}\">{text}</text>",
                     label.x,
@@ -9245,9 +13055,14 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
                     ff = font_family,
                     fs = font_size,
                     tc = theme.primary_text_color,
-                    text = escape_xml(&label.text),
+                    text = escape_xml(wrapped.first().map(String::as_str).unwrap_or(&label.text)),
                 ));
             } else {
+                let class = if label.has_box {
+                    "ishikawa-label cause"
+                } else {
+                    "ishikawa-label align"
+                };
                 // Multi-line bone label with tspans
                 let line_h = font_size * 1.2;
                 let mut tspans = String::new();
@@ -9262,7 +13077,7 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
                 // Shift up by half the extra lines to keep vertically centered
                 let shift_y = -((wrapped.len() as f32 - 1.0) * line_h) / 2.0;
                 svg.push_str(&format!(
-                    "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
+                    "<text class=\"{class}\" x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"{anchor}\" \
                      dominant-baseline=\"middle\" font-family=\"{ff}\" font-size=\"{fs}\" \
                      fill=\"{tc}\">{tspans}</text>",
                     label.x,
@@ -9277,6 +13092,7 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
         }
     }
 
+    svg.push_str("</g>");
     svg
 }
 

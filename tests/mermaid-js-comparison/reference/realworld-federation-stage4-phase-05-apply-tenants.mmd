@@ -1,0 +1,15 @@
+flowchart TB
+    subgraph FED0["fed0"]
+        t0["tenant: fedten<br/>uuid: a759...4cf"]
+        t0 --> vca1[vc-a1<br/>fed0cluster1]
+        t0 --> vca2[vc-a2<br/>fed0cluster1]
+        t0 --> vca3[vc-a3<br/>fed0cluster2]
+        t0 --> vca4[vc-a4<br/>fed0cluster2]
+    end
+    subgraph FED1["fed1"]
+        t1["tenant: fedten<br/>uuid: 95bf...4c4"]
+        t1 --> vcb1[vc-b1<br/>fed1cluster1]
+        t1 --> vcb2[vc-b2<br/>fed1cluster1]
+        t1 --> vcb3[vc-b3<br/>fed1cluster2]
+        t1 --> vcb4[vc-b4<br/>fed1cluster2]
+    end

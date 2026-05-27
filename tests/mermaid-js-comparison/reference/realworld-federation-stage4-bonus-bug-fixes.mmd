@@ -1,0 +1,10 @@
+flowchart TB
+    subgraph bug1["fix 1: cluster ctlr clobbered MD state"]
+        a1[deploy ctlr writes vc.Deployments] --> a2[cluster ctlr blind-rewraps VC] --> a3[Deployments lost -> MD status FAILED]
+    end
+    subgraph bug2["fix 2: republish reset CRDT vclock"]
+        b1[republish builds fresh VCLocation<br/>vclock=&#123;&#125;] --> b2[peer's MergeReplicated:<br/>'older than what I have'] --> b3[rejected - foreign view stays stale]
+    end
+    subgraph bug3["fix 3: ack outbox CAS-failed on no-op"]
+        c1[re-ack same entry: value unchanged] --> c2[CAS If-Value-Changed fails txn] --> c3[4000+ spurious 'failed to ack' logs/run]
+    end

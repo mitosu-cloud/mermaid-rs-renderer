@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant CC0 as fed0 cluster ctlr
+    participant T0 as fed0 VCPointerTable
+    participant Gossip
+    participant T1 as fed1 VCPointerTable
+    participant CC1 as fed1 cluster ctlr
+    loop every ~30s
+        CC0->>CC0: reconcile vc-a1..a4<br/>(Creating -> PendingHooks)
+        CC0->>T0: republishVCLocationsIfChanged
+        T0->>Gossip: VCLocation delta (vclock++)
+        Gossip->>T1: applied via MergeReplicated
+    end
+    loop every ~30s
+        CC1->>CC1: reconcile vc-b1..b4
+        CC1->>T1: republishVCLocationsIfChanged
+        T1->>Gossip: VCLocation delta (vclock++)
+        Gossip->>T0: applied via MergeReplicated
+    end
+    Note over T0,T1: fed0 list-vcs now shows<br/>fed1's b-VCs as (foreign)<br/>+ vice versa

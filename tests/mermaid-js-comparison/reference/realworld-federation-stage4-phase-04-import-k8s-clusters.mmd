@@ -1,0 +1,13 @@
+flowchart LR
+    subgraph FED0["fed0 myriplane"]
+        c1[fed0cluster1]
+        c2[fed0cluster2]
+    end
+    subgraph FED1["fed1 myriplane"]
+        c3[fed1cluster1]
+        c4[fed1cluster2]
+    end
+    kc1["~/.kube/fed0cluster1-kmaster1"] -. import --overwrite .-> c1
+    kc2["~/.kube/fed0cluster2-kmaster1"] -. import --overwrite .-> c2
+    kc3["~/.kube/fed1cluster1-kmaster1"] -. import --overwrite .-> c3
+    kc4["~/.kube/fed1cluster2-kmaster1"] -. import --overwrite .-> c4

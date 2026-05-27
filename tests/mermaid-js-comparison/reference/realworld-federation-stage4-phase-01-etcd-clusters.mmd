@@ -1,0 +1,15 @@
+flowchart LR
+    subgraph fed0["fed0 etcd cluster"]
+        direction TB
+        e0a[etcd0-fed0<br/>:22479]
+        e0b[etcd1-fed0<br/>:22489]
+        e0c[etcd2-fed0<br/>:22499]
+        e0a <--> e0b <--> e0c <--> e0a
+    end
+    subgraph fed1["fed1 etcd cluster"]
+        direction TB
+        e1a[etcd0-fed1<br/>:22579]
+        e1b[etcd1-fed1<br/>:22589]
+        e1c[etcd2-fed1<br/>:22599]
+        e1a <--> e1b <--> e1c <--> e1a
+    end

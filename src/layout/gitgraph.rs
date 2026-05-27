@@ -20,9 +20,15 @@ pub(super) fn compute_gitgraph_layout(
     let mut branch_entries: Vec<(crate::ir::GitGraphBranch, f32)> = branches
         .into_iter()
         .map(|branch| {
-            let order = branch
-                .order
-                .unwrap_or_else(|| default_branch_order(branch.insertion_index));
+            let is_main_branch =
+                branch.name == graph.gitgraph.main_branch || branch.name == gg.main_branch_name;
+            let order = if is_main_branch {
+                gg.main_branch_order
+            } else {
+                branch
+                    .order
+                    .unwrap_or_else(|| default_branch_order(branch.insertion_index))
+            };
             (branch, order)
         })
         .collect();
@@ -37,7 +43,7 @@ pub(super) fn compute_gitgraph_layout(
         } else {
             theme.font_size
         };
-        let (label_width, label_height) = measure_gitgraph_text(
+        let (label_width, measured_label_height) = measure_gitgraph_text(
             &branch.name,
             measure_font_size,
             gg.branch_label_line_height,
@@ -45,13 +51,13 @@ pub(super) fn compute_gitgraph_layout(
             theme.font_family.as_str(),
             config.fast_text_metrics,
         );
+        let label_height = if is_vertical {
+            measured_label_height
+        } else {
+            gitgraph_svg_text_bbox_height(&branch.name, measure_font_size)
+        };
         let spacing_rotate_extra = if gg.rotate_commit_label {
             gg.branch_spacing_rotate_extra
-        } else {
-            0.0
-        };
-        let label_rotate_extra = if gg.rotate_commit_label {
-            gg.branch_label_rotate_extra
         } else {
             0.0
         };
@@ -67,12 +73,17 @@ pub(super) fn compute_gitgraph_layout(
             };
             (bg_x, base_y, text_x, base_y)
         } else {
-            let bg_x = -label_width - gg.branch_label_bg_offset_x - label_rotate_extra;
-            let bg_y = -label_height / 2.0 + gg.branch_label_bg_offset_y;
-            let bg_final_x = bg_x + gg.branch_label_translate_x;
-            let bg_final_y = bg_y + (pos - label_height / 2.0);
-            let text_x = -label_width - gg.branch_label_text_offset_x - label_rotate_extra;
-            let text_y = pos - label_height / 2.0 + gg.branch_label_text_offset_y;
+            // Mermaid's LR drawBranches first measures text in a temporary group,
+            // then pre-applies the background and label transforms:
+            //   bkg.x = -bbox.width - 4 - rotateExtra, transform.x = -19
+            //   label.x = -bbox.width - 14 - rotateExtra
+            //   spineY = branchPos - 2
+            let js_rotate_extra = if gg.rotate_commit_label { 30.0 } else { 0.0 };
+            let spine_y = pos - 2.0;
+            let bg_final_x = -label_width - 4.0 - js_rotate_extra - 19.0;
+            let bg_final_y = (-label_height / 2.0 + 10.0) + (spine_y - 12.0);
+            let text_x = -label_width - 14.0 - js_rotate_extra;
+            let text_y = spine_y - label_height / 2.0 - 2.0;
             (bg_final_x, bg_final_y, text_x, text_y)
         };
         let label = GitGraphBranchLabelLayout {
@@ -493,6 +504,7 @@ pub(super) fn compute_gitgraph_layout(
             img_h: None,
             sub_label: None,
             is_treemap_leaf: false,
+            treemap_base_text_color: None,
         },
     );
 
@@ -548,6 +560,11 @@ fn measure_gitgraph_text(
     let width = max_width * width_scale;
     let height = lines.len() as f32 * font_size * line_height;
     (width, height)
+}
+
+fn gitgraph_svg_text_bbox_height(text: &str, font_size: f32) -> f32 {
+    let line_count = split_lines(text).len().max(1) as f32;
+    font_size * 1.1875 + (line_count - 1.0) * font_size
 }
 
 fn commit_by_id<'a>(
@@ -759,7 +776,9 @@ fn gitgraph_commit_position(
     let (x, y) = if matches!(dir, Direction::TopDown | Direction::BottomTop) {
         (branch_axis_pos, pos_with_offset)
     } else {
-        (pos_with_offset, branch_axis_pos)
+        // Mermaid's LR renderer places branch spines and commit bullets 2px
+        // above the branch-position slot.
+        (pos_with_offset, branch_axis_pos - 2.0)
     };
     (x, y, pos_with_offset)
 }

@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant U as user (myrictl)
+    participant MD0 as fed0 MD store
+    participant Gossip
+    participant MD1 as fed1 MD store
+    U->>MD0: PatchMetaDeployment hello-fed<br/>targets vc-a1 (fed0) + vc-b1 (fed1)
+    MD0->>Gossip: CRDT publish (MetaDeploymentCRDTWrapper)
+    Gossip->>MD1: applied locally
+    Note over MD0,MD1: same MD UUID on both,<br/>HLC LWW resolves conflicts

@@ -17,6 +17,19 @@ pub fn measure_text_width(text: &str, font_size: f32, font_family: &str) -> Opti
     guard.measure(text, font_size, font_family)
 }
 
+pub fn measure_text_width_with_weight(
+    text: &str,
+    font_size: f32,
+    font_family: &str,
+    font_weight: u16,
+) -> Option<f32> {
+    if text.is_empty() || font_size <= 0.0 {
+        return Some(0.0);
+    }
+    let mut guard = TEXT_MEASURER.lock().ok()?;
+    guard.measure_with_weight(text, font_size, font_family, Weight(font_weight))
+}
+
 /// Compute the rendered width of a text string in pixels, mirroring the
 /// browser's `SVGTextContentElement.getComputedTextLength()` API.
 ///
@@ -68,7 +81,9 @@ pub fn wrap_text(text: &str, max_width: f32, font_size: f32, font_family: &str) 
 fn fallback_text_width(text: &str, font_size: f32) -> f32 {
     text.chars()
         .map(|c| {
-            if c.is_ascii_uppercase() {
+            if is_wide_symbol_fallback(c) {
+                1.0
+            } else if c.is_ascii_uppercase() {
                 0.75
             } else if c.is_ascii_lowercase() {
                 0.55
@@ -82,6 +97,21 @@ fn fallback_text_width(text: &str, font_size: f32) -> f32 {
         * font_size
 }
 
+fn missing_glyph_width(ch: char, font_size: f32) -> f32 {
+    if is_wide_symbol_fallback(ch) {
+        font_size
+    } else {
+        font_size * 0.56
+    }
+}
+
+fn is_wide_symbol_fallback(ch: char) -> bool {
+    matches!(
+        ch,
+        '←' | '↑' | '→' | '↓' | '↔' | '↕' | '⇐' | '⇑' | '⇒' | '⇓' | '⇔' | '⇕'
+    )
+}
+
 pub fn average_char_width(font_family: &str, font_size: f32) -> Option<f32> {
     if font_size <= 0.0 {
         return None;
@@ -90,6 +120,18 @@ pub fn average_char_width(font_family: &str, font_size: f32) -> Option<f32> {
     let width = measure_text_width(sample, font_size, font_family)?;
     let count = sample.chars().count().max(1) as f32;
     Some(width / count)
+}
+
+#[derive(Debug, Clone)]
+pub struct EmbeddedFontData {
+    pub bytes: Vec<u8>,
+    pub mime_type: &'static str,
+    pub format_hint: &'static str,
+}
+
+pub fn embedded_font_data(font_family: &str) -> Option<EmbeddedFontData> {
+    let mut guard = TEXT_MEASURER.lock().ok()?;
+    guard.embedded_font_data(font_family)
 }
 
 struct TextMeasurer {
@@ -109,13 +151,23 @@ impl TextMeasurer {
     }
 
     fn measure(&mut self, text: &str, font_size: f32, font_family: &str) -> Option<f32> {
-        let family_key = normalize_family_key(font_family);
+        self.measure_with_weight(text, font_size, font_family, Weight::NORMAL)
+    }
+
+    fn measure_with_weight(
+        &mut self,
+        text: &str,
+        font_size: f32,
+        font_family: &str,
+        weight: Weight,
+    ) -> Option<f32> {
+        let family_key = cache_key(font_family, weight);
         let face = if self.cache.contains_key(&family_key) {
             self.cache
                 .get_mut(&family_key)
                 .and_then(|face| face.as_mut())
         } else {
-            let face = self.load_face(font_family);
+            let face = self.load_face(font_family, weight);
             self.cache.insert(family_key.clone(), face);
             self.cache
                 .get_mut(&family_key)
@@ -125,8 +177,11 @@ impl TextMeasurer {
         face.measure_width(&normalized, font_size)
     }
 
-    fn load_face(&mut self, font_family: &str) -> Option<FontFace> {
-        let family_key = normalize_family_key(font_family);
+    fn load_face(&mut self, font_family: &str, weight: Weight) -> Option<FontFace> {
+        let family_key = cache_key(font_family, weight);
+        if let Some(face) = load_preferred_known_face(font_family, weight) {
+            return Some(face);
+        }
         if let Some(face) = load_cached_face(&family_key) {
             return Some(face);
         }
@@ -175,6 +230,8 @@ impl TextMeasurer {
 
         if !self.loaded_system_fonts {
             self.db.load_system_fonts();
+            self.db.load_fonts_dir("/System/Library/Fonts/Supplemental");
+            self.db.load_fonts_dir("/Library/Fonts");
             #[cfg(target_os = "ios")]
             {
                 self.db.load_fonts_dir("/System/Library/Fonts");
@@ -185,7 +242,7 @@ impl TextMeasurer {
 
         let query = Query {
             families: &families,
-            weight: Weight::NORMAL,
+            weight,
             stretch: Stretch::Normal,
             style: Style::Normal,
         };
@@ -209,10 +266,25 @@ impl TextMeasurer {
         });
         loaded
     }
+
+    fn embedded_font_data(&mut self, font_family: &str) -> Option<EmbeddedFontData> {
+        let family_key = cache_key(font_family, Weight::NORMAL);
+        if !self.cache.contains_key(&family_key) {
+            let face = self.load_face(font_family, Weight::NORMAL);
+            self.cache.insert(family_key.clone(), face);
+        }
+        let face = self.cache.get(&family_key)?.as_ref()?;
+        let (mime_type, format_hint) = font_data_format(&face.data);
+        Some(EmbeddedFontData {
+            bytes: face.data.clone(),
+            mime_type,
+            format_hint,
+        })
+    }
 }
 
 struct FontFace {
-    _data: Vec<u8>,
+    data: Vec<u8>,
     _index: u32,
     units_per_em: u16,
     face: Option<Face<'static>>,
@@ -237,7 +309,7 @@ impl FontFace {
             advances
         });
         Self {
-            _data: data,
+            data,
             _index: index,
             units_per_em,
             face,
@@ -249,7 +321,6 @@ impl FontFace {
 
     fn measure_width(&mut self, text: &str, font_size: f32) -> Option<f32> {
         let scale = font_size / self.units_per_em as f32;
-        let fallback = font_size * 0.56;
 
         if text.is_ascii()
             && let Some(advances) = &self.ascii_advances
@@ -261,7 +332,7 @@ impl FontFace {
                 }
                 let advance = advances[*byte as usize];
                 if advance == 0 {
-                    width += fallback;
+                    width += missing_glyph_width(*byte as char, font_size);
                 } else {
                     width += advance as f32 * scale;
                 }
@@ -286,7 +357,7 @@ impl FontFace {
             };
 
             let Some(glyph_id) = glyph else {
-                width += fallback;
+                width += missing_glyph_width(ch, font_size);
                 continue;
             };
 
@@ -304,6 +375,78 @@ impl FontFace {
     }
 }
 
+fn load_preferred_known_face(font_family: &str, weight: Weight) -> Option<FontFace> {
+    if preferred_named_family(font_family).as_deref() != Some("trebuchet ms") {
+        return None;
+    }
+
+    let paths: &[&str] = if weight.0 >= Weight::SEMIBOLD.0 {
+        &[
+            "/System/Library/Fonts/Supplemental/Trebuchet MS Bold.ttf",
+            "/Library/Fonts/Trebuchet MS Bold.ttf",
+            "C:\\Windows\\Fonts\\trebucbd.ttf",
+            "/System/Library/Fonts/Supplemental/Trebuchet MS.ttf",
+            "/Library/Fonts/Trebuchet MS.ttf",
+            "C:\\Windows\\Fonts\\trebuc.ttf",
+        ]
+    } else {
+        &[
+            "/System/Library/Fonts/Supplemental/Trebuchet MS.ttf",
+            "/Library/Fonts/Trebuchet MS.ttf",
+            "C:\\Windows\\Fonts\\trebuc.ttf",
+        ]
+    };
+
+    for path in paths {
+        let Ok(bytes) = fs::read(path) else {
+            continue;
+        };
+        let index = 0;
+        let Ok(face) = Face::parse(&bytes, index) else {
+            continue;
+        };
+        let units_per_em = face.units_per_em().max(1);
+        return Some(FontFace::new(bytes, index, units_per_em));
+    }
+    None
+}
+
+fn preferred_named_family(font_family: &str) -> Option<String> {
+    for part in font_family.split(',') {
+        let raw = part.trim().trim_matches('"').trim_matches('\'').trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let lower = raw.to_ascii_lowercase();
+        if matches!(
+            lower.as_str(),
+            "serif"
+                | "sans-serif"
+                | "monospace"
+                | "cursive"
+                | "fantasy"
+                | "system-ui"
+                | "-apple-system"
+                | "ui-sans-serif"
+                | "ui-monospace"
+        ) {
+            continue;
+        }
+        return Some(lower);
+    }
+    None
+}
+
+fn font_data_format(data: &[u8]) -> (&'static str, &'static str) {
+    match data.get(0..4) {
+        Some(b"wOF2") => ("font/woff2", "woff2"),
+        Some(b"wOFF") => ("font/woff", "woff"),
+        Some(b"OTTO") => ("font/otf", "opentype"),
+        Some(b"ttcf") => ("font/collection", "truetype-collection"),
+        _ => ("font/ttf", "truetype"),
+    }
+}
+
 fn normalize_family_key(font_family: &str) -> String {
     let trimmed = font_family.trim();
     if trimmed.is_empty() {
@@ -311,6 +454,10 @@ fn normalize_family_key(font_family: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn cache_key(font_family: &str, weight: Weight) -> String {
+    format!("{}|{}", normalize_family_key(font_family), weight.0)
 }
 
 fn cache_paths(family_key: &str) -> Option<(PathBuf, PathBuf)> {
@@ -336,4 +483,21 @@ fn load_cached_face(family_key: &str) -> Option<FontFace> {
     let face = Face::parse(&bytes, index).ok()?;
     let units_per_em = face.units_per_em().max(1);
     Some(FontFace::new(bytes, index, units_per_em))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::preferred_named_family;
+
+    #[test]
+    fn preferred_named_family_skips_generic_fallbacks() {
+        assert_eq!(
+            preferred_named_family("'trebuchet ms', verdana, arial, sans-serif").as_deref(),
+            Some("trebuchet ms")
+        );
+        assert_eq!(
+            preferred_named_family("sans-serif, Verdana").as_deref(),
+            Some("verdana")
+        );
+    }
 }

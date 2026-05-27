@@ -5,15 +5,16 @@ pub(super) fn compute_architecture_layout(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> Layout {
-    const MARGIN: f32 = 24.0;
-    const SERVICE_SIZE: f32 = 64.0;
-    const SERVICE_GAP: f32 = 72.0;
-    const GROUP_PAD_X: f32 = 40.0;
-    const GROUP_PAD_TOP: f32 = 44.0;
-    const GROUP_PAD_BOTTOM: f32 = 52.0;
-    const GROUP_GAP_Y: f32 = 48.0;
+    const MARGIN: f32 = 40.0;
+    const SERVICE_SIZE: f32 = 80.0;
+    const SERVICE_GAP_X: f32 = 121.82715;
+    const SERVICE_GAP_Y: f32 = 120.92264;
+    const GROUP_PAD_X: f32 = 42.5;
+    const GROUP_PAD_TOP: f32 = 42.5;
+    const GROUP_PAD_BOTTOM: f32 = 59.5;
     const GROUP_STROKE: &str = "hsl(240, 60%, 86.2745098039%)";
     const ICON_FILL: &str = "#087ebf";
+    const EDGE_STROKE: &str = "#333333";
 
     let mut nodes = BTreeMap::new();
 
@@ -34,11 +35,7 @@ pub(super) fn compute_architecture_layout(
             .get(&node.id)
             .map(|c| c.iter().any(|s| s == "__junction__"))
             .unwrap_or(false);
-        let (nw, nh) = if is_junction {
-            (1.0, 1.0)
-        } else {
-            (SERVICE_SIZE, SERVICE_SIZE)
-        };
+        let (nw, nh) = (SERVICE_SIZE, SERVICE_SIZE);
         let mut nl = build_node_layout(node, label, nw, nh, style, graph);
         nl.shape = crate::ir::NodeShape::Rectangle;
         nl.icon = node.icon.clone();
@@ -117,7 +114,8 @@ pub(super) fn compute_architecture_layout(
     // Convert grid coords to pixel positions.
     let min_gx = grid.values().map(|(x, _)| *x).min().unwrap_or(0);
     let min_gy = grid.values().map(|(_, y)| *y).min().unwrap_or(0);
-    let cell = SERVICE_SIZE + SERVICE_GAP;
+    let cell_x = SERVICE_SIZE + SERVICE_GAP_X;
+    let cell_y = SERVICE_SIZE + SERVICE_GAP_Y;
 
     let mut assigned: HashSet<String> = HashSet::new();
     let mut subgraphs = Vec::new();
@@ -146,8 +144,8 @@ pub(super) fn compute_architecture_layout(
         let mut max_y = f32::MIN;
         for node_id in &group_nodes {
             let (gx, gy) = grid.get(node_id).copied().unwrap_or((0, 0));
-            let px = MARGIN + GROUP_PAD_X + (gx - min_gx) as f32 * cell;
-            let py = MARGIN + GROUP_PAD_TOP + (gy - min_gy) as f32 * cell;
+            let px = MARGIN + GROUP_PAD_X + (gx - min_gx) as f32 * cell_x;
+            let py = MARGIN + GROUP_PAD_TOP + (gy - min_gy) as f32 * cell_y;
             if let Some(node) = nodes.get_mut(node_id) {
                 // Center small nodes (junctions) in the grid cell so
                 // their midpoint aligns with service midpoints.
@@ -203,8 +201,8 @@ pub(super) fn compute_architecture_layout(
     if !free_nodes.is_empty() {
         for node_id in &free_nodes {
             let (gx, gy) = grid.get(node_id).copied().unwrap_or((0, 0));
-            let px = MARGIN + GROUP_PAD_X + (gx - min_gx) as f32 * cell;
-            let py = MARGIN + GROUP_PAD_TOP + (gy - min_gy) as f32 * cell;
+            let px = MARGIN + (gx - min_gx) as f32 * cell_x;
+            let py = MARGIN + (gy - min_gy) as f32 * cell_y;
             if let Some(node) = nodes.get_mut(node_id) {
                 node.x = px + (SERVICE_SIZE - node.width) / 2.0;
                 node.y = py + (SERVICE_SIZE - node.height) / 2.0;
@@ -236,37 +234,44 @@ pub(super) fn compute_architecture_layout(
             Some(crate::ir::ArchPort::Bottom) => EdgeSide::Bottom,
             None => edge_sides(from, to, graph.direction).1,
         };
-        // For hidden nodes (junctions), use their center as the
-        // connection point.  For visible services, use the port anchor.
+        // Mermaid lays junctions out as invisible 80x80 boxes, computes the
+        // segmented edge midpoint from the side anchors, then shifts the
+        // visible endpoint inward to the junction center.
+        let raw_start = anchor_point_for_node(from, start_side, 0.0);
+        let raw_end = anchor_point_for_node(to, end_side, 0.0);
         let start = if from.hidden {
             (from.x + from.width / 2.0, from.y + from.height / 2.0)
         } else {
-            anchor_point_for_node(from, start_side, 0.0)
+            raw_start
         };
         let end = if to.hidden {
             (to.x + to.width / 2.0, to.y + to.height / 2.0)
         } else {
-            anchor_point_for_node(to, end_side, 0.0)
+            raw_end
         };
 
         // Build orthogonal path (horizontal + vertical segments only).
-        let points = if (start.0 - end.0).abs() < 1e-3 || (start.1 - end.1).abs() < 1e-3 {
-            // Already aligned — straight line.
-            vec![start, end]
-        } else {
-            // L-shaped orthogonal routing: decide bend direction from
-            // the port sides.
-            if side_is_vertical(start_side) {
-                // Start exits horizontally → go horizontal first, then vertical.
-                vec![start, (end.0, start.1), end]
+        let points =
+            if (raw_start.0 - raw_end.0).abs() < 1e-3 || (raw_start.1 - raw_end.1).abs() < 1e-3 {
+                let mid = (
+                    (raw_start.0 + raw_end.0) / 2.0,
+                    (raw_start.1 + raw_end.1) / 2.0,
+                );
+                vec![start, mid, end]
             } else {
-                // Start exits vertically → go vertical first, then horizontal.
-                vec![start, (start.0, end.1), end]
-            }
-        };
+                // L-shaped orthogonal routing: decide bend direction from
+                // the port sides.
+                if side_is_vertical(start_side) {
+                    // Start exits horizontally → go horizontal first, then vertical.
+                    vec![start, (raw_end.0, raw_start.1), end]
+                } else {
+                    // Start exits vertically → go vertical first, then horizontal.
+                    vec![start, (raw_start.0, raw_end.1), end]
+                }
+            };
         let mut override_style = resolve_edge_style(idx, graph);
         if override_style.stroke.is_none() {
-            override_style.stroke = Some(theme.line_color.clone());
+            override_style.stroke = Some(EDGE_STROKE.to_string());
         }
         override_style.stroke_width = Some(override_style.stroke_width.unwrap_or(3.0));
 
@@ -279,12 +284,12 @@ pub(super) fn compute_architecture_layout(
             label_anchor: None,
             start_label_anchor: None,
             end_label_anchor: None,
-            points: compress_path(&points),
-            directed: false,
-            arrow_start: false,
-            arrow_end: false,
-            arrow_start_kind: None,
-            arrow_end_kind: None,
+            points,
+            directed: edge.directed,
+            arrow_start: edge.arrow_start,
+            arrow_end: edge.arrow_end,
+            arrow_start_kind: edge.arrow_start_kind,
+            arrow_end_kind: edge.arrow_end_kind,
             start_decoration: None,
             end_decoration: None,
             sequence_arrow_end: None,
@@ -295,7 +300,11 @@ pub(super) fn compute_architecture_layout(
         });
     }
 
-    let (max_x, max_y) = bounds_with_edges(&nodes, &subgraphs, &edges);
+    let (mut max_x, mut max_y) = bounds_with_edges_capped(&nodes, &subgraphs, &edges, Some(0.0));
+    for node in nodes.values().filter(|node| !node.hidden) {
+        max_x = max_x.max(node.x + node.width / 2.0 + node.label.width.max(node.width) / 2.0);
+        max_y = max_y.max(node.y + node.height + node.label.height);
+    }
     let width = (max_x + MARGIN).max(200.0);
     let height = (max_y + MARGIN).max(200.0);
 

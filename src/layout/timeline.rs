@@ -220,6 +220,7 @@ pub(super) fn compute_timeline_layout(
             img_h: None,
             sub_label: None,
             is_treemap_leaf: false,
+            treemap_base_text_color: None,
         },
     );
 

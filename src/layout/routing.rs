@@ -664,7 +664,7 @@ pub(super) fn shape_polygon_points(node: &NodeLayout) -> Option<Vec<(f32, f32)>>
             Some(points)
         }
         crate::ir::NodeShape::Trapezoid | crate::ir::NodeShape::TrapezoidAlt => {
-            let offset = w * 0.18;
+            let offset = h / 2.0;
             let points = if node.shape == crate::ir::NodeShape::Trapezoid {
                 vec![
                     (x + offset, y),
@@ -682,15 +682,61 @@ pub(super) fn shape_polygon_points(node: &NodeLayout) -> Option<Vec<(f32, f32)>>
             };
             Some(points)
         }
+        crate::ir::NodeShape::LeanRight | crate::ir::NodeShape::LeanLeft => {
+            let offset = h / 2.0;
+            let points = if node.shape == crate::ir::NodeShape::LeanRight {
+                vec![
+                    (x + offset, y),
+                    (x + w, y),
+                    (x + w - offset, y + h),
+                    (x, y + h),
+                ]
+            } else {
+                vec![
+                    (x, y),
+                    (x + w - offset, y),
+                    (x + w, y + h),
+                    (x + offset, y + h),
+                ]
+            };
+            Some(points)
+        }
         crate::ir::NodeShape::Asymmetric => {
-            let slant = w * 0.22;
+            let notch = (h * 0.5).min(w * 0.35);
             Some(vec![
                 (x, y),
-                (x + w - slant, y),
-                (x + w, y + h / 2.0),
-                (x + w - slant, y + h),
+                (x + w, y),
+                (x + w, y + h),
                 (x, y + h),
+                (x + notch, y + h / 2.0),
             ])
+        }
+        crate::ir::NodeShape::OddShape => {
+            let notch = h / 4.0;
+            Some(vec![
+                (x, y),
+                (x + w, y),
+                (x + w, y + h),
+                (x, y + h),
+                (x + notch, y + h / 2.0),
+            ])
+        }
+        crate::ir::NodeShape::BlockArrowRight
+        | crate::ir::NodeShape::BlockArrowLeft
+        | crate::ir::NodeShape::BlockArrowUp
+        | crate::ir::NodeShape::BlockArrowDown
+        | crate::ir::NodeShape::BlockArrowX
+        | crate::ir::NodeShape::BlockArrowY
+        | crate::ir::NodeShape::BlockArrowXUp
+        | crate::ir::NodeShape::BlockArrowXDown
+        | crate::ir::NodeShape::BlockArrowYRight
+        | crate::ir::NodeShape::BlockArrowYLeft
+        | crate::ir::NodeShape::BlockArrowRightUp
+        | crate::ir::NodeShape::BlockArrowRightDown
+        | crate::ir::NodeShape::BlockArrowLeftUp
+        | crate::ir::NodeShape::BlockArrowLeftDown
+        | crate::ir::NodeShape::BlockArrowAll => {
+            Some(vec![(x, y), (x + w, y), (x + w, y + h), (x, y + h)])
         }
         _ => None,
     }

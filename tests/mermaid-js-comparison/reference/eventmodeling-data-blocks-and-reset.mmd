@@ -1,0 +1,20 @@
+eventmodeling
+
+tf 01 ui CartUI
+tf 02 cmd AddItem [[AddItem01]]
+tf 03 evt ItemAdded [[ItemAdded]]
+
+data AddItem01 {
+  productId: 7
+  quantity: 2
+}
+
+data ItemAdded {
+  productId: number
+  quantity: number
+}
+
+rf 04 evt External.InventoryChanged
+tf 05 pcr InventoryProcessor
+tf 06 cmd ChangeInventory
+tf 07 evt Cart.InventoryChanged

@@ -15,6 +15,9 @@ const SEQUENCE_CENTER_LABEL_TANGENT_LINEAR_WEIGHT: f32 = 0.22;
 const SEQUENCE_CENTER_LABEL_TANGENT_QUAD_WEIGHT: f32 = 0.95;
 const SEQUENCE_CENTER_LABEL_TANGENT_SOFT_LIMIT: f32 = 1.2;
 const SEQUENCE_CENTER_LABEL_TANGENT_FAR_WEIGHT: f32 = 3.2;
+const SEQUENCE_TEXT_LINE_HEIGHT: f32 = 1.1875;
+const SEQUENCE_LABEL_BOX_WIDTH: f32 = 50.0;
+const SEQUENCE_LABEL_BOX_HEIGHT: f32 = 20.0;
 
 #[derive(Clone, Copy)]
 enum SequenceLabelPlacementMode {
@@ -43,22 +46,40 @@ pub(super) fn compute_sequence_layout(
     let min_actor_width = (theme.font_size * 9.0).max(150.0);
     let mut participant_widths: HashMap<String, f32> = HashMap::new();
     let mut width_total = 0.0f32;
-    // Sequence actor labels honor explicit <br/> line breaks but should not
-    // be auto-wrapped by the global character cap; upstream mermaid sizes
-    // each actor box to fit the user-provided lines on their own.
-    let measure_actor_label =
-        |text: &str| -> TextBlock { super::text::measure_label_no_wrap(text, theme, config) };
+    let mut sequence_text_config = config.clone();
+    sequence_text_config.label_line_height = SEQUENCE_TEXT_LINE_HEIGHT;
+    // Sequence actor/note/message labels honor explicit <br/> line breaks but
+    // should not be auto-wrapped by the global character cap; upstream mermaid
+    // sizes them from the provided physical lines and draws text at ~19px
+    // leading for a 16px font.
+    let measure_sequence_label = |text: &str| -> TextBlock {
+        super::text::measure_label_no_wrap(text, theme, &sequence_text_config)
+    };
+    // Mermaid's layout pass calls `utils.calculateTextDimensions` with the
+    // configured sequence font family string including quotes. In Chromium that
+    // measurement path computes the second candidate as `Times`, while the
+    // final SVG text still renders with the Trebuchet stack. Use the same
+    // layout-only face for widths that feed actor margins, note boxes, and
+    // self-message loop envelopes; keep `measure_sequence_label` for rendered
+    // labels and vertical text height.
+    let measure_sequence_layout_label = |text: &str| -> TextBlock {
+        super::text::measure_label_with_font_size(
+            text,
+            theme.font_size.max(16.0),
+            &sequence_text_config,
+            false,
+            "Times",
+        )
+    };
     for id in &participants {
         let node = graph.nodes.get(id).expect("participant missing");
-        let label = measure_actor_label(&node.label);
+        let label = measure_sequence_label(&node.label);
         max_label_height = max_label_height.max(label.height);
-        // Same 0.855 scaling as messages — our char-table over-measures vs JS
-        // canvas measureText. Only matters for actor labels longer than ~14
-        // chars where the box would otherwise need to widen past the 150
-        // minimum (e.g. "BookingService" in break-statement). Round to
-        // integer to mirror JS `Math.round(bBox.width)` (mermaid utils.ts:731).
-        let scaled_label_w = (label.width * 0.855).round();
-        let width = (scaled_label_w + theme.font_size * 2.5).max(min_actor_width);
+        // JS actor sizing is `max(conf.width, measured + 2*wrapPadding)`.
+        // The visual text may be wider because it is rendered with Trebuchet
+        // after layout has already used the Times measurement path above.
+        let layout_label = measure_sequence_layout_label(&node.label);
+        let width = (layout_label.width.round() + 2.0 * WRAP_PADDING).max(min_actor_width);
         participant_widths.insert(id.clone(), width);
         width_total += width;
         label_blocks.insert(id.clone(), label);
@@ -132,7 +153,6 @@ pub(super) fn compute_sequence_layout(
             continue;
         }
         let mut max_label_w = 0.0f32;
-        let mut has_html_entity = false;
         for label in [
             edge.label.as_ref(),
             edge.start_label.as_ref(),
@@ -141,32 +161,15 @@ pub(super) fn compute_sequence_layout(
         .into_iter()
         .flatten()
         {
-            let measured = super::text::measure_label_no_wrap(label, theme, config);
+            let measured = measure_sequence_layout_label(label);
             max_label_w = max_label_w.max(measured.width);
-            // HTML entity refs like #9829; render in JS as wider than our
-            // table predicts (entities expand to symbols ♥/∞ but JS renders
-            // the literal `#NNNN;` text). Our raw width happens to match JS
-            // for these; scaling shrinks too aggressively. Skip scaling when
-            // an entity ref is present.
-            if label.contains('#') && label.contains(';') {
-                has_html_entity = true;
-            }
         }
         if max_label_w <= 0.0 {
             continue;
         }
-        // Our char-table width estimate for message labels runs ~15% wider
-        // than mermaid-cli's canvas measureText for the default trebuchet stack.
-        // Scale only for gap sizing (not for rendering) so our gaps match JS
-        // layout while labels continue to render at the measured visual width.
-        // Round to integer to mirror JS `Math.round(bBox.width)` in
+        // Round to mirror JS `Math.round(bBox.width)` in
         // mermaid utils.ts:731 (calculateTextDimensions).
-        const MESSAGE_GAP_MEASURE_SCALE: f32 = 0.855;
-        let scaled_label_w = if has_html_entity {
-            max_label_w.round()
-        } else {
-            (max_label_w * MESSAGE_GAP_MEASURE_SCALE).round()
-        };
+        let scaled_label_w = max_label_w.round();
         let message_w = scaled_label_w + 2.0 * WRAP_PADDING;
         let lo_w = actor_widths[lo];
         let hi_w = actor_widths[hi];
@@ -265,6 +268,7 @@ pub(super) fn compute_sequence_layout(
                 img_h: None,
                 sub_label: None,
                 is_treemap_leaf: false,
+                treemap_base_text_color: None,
             },
         );
         cursor_x += actor_width;
@@ -278,6 +282,7 @@ pub(super) fn compute_sequence_layout(
     // default 16px font. Computed empirically against the basic-sequence
     // diagram (line ys 109, 153, 197 = 44px apart).
     let base_spacing = (theme.font_size * 2.75).max(35.0);
+    let mut message_row_label_heights = Vec::with_capacity(graph.edges.len());
     let message_row_spacing: Vec<f32> = graph
         .edges
         .iter()
@@ -289,15 +294,19 @@ pub(super) fn compute_sequence_layout(
             // row height for long single-line labels and inflates the gap
             // between consecutive messages.
             if let Some(label) = &edge.label {
-                row_h = row_h.max(super::text::measure_label_no_wrap(label, theme, config).height);
+                row_h = row_h.max(measure_sequence_label(label).height);
             }
             if let Some(label) = &edge.start_label {
-                row_h = row_h.max(super::text::measure_label_no_wrap(label, theme, config).height);
+                row_h = row_h.max(measure_sequence_label(label).height);
             }
             if let Some(label) = &edge.end_label {
-                row_h = row_h.max(super::text::measure_label_no_wrap(label, theme, config).height);
+                row_h = row_h.max(measure_sequence_label(label).height);
             }
-            let base = base_spacing.max(row_h + 20.0);
+            message_row_label_heights.push(row_h);
+            // Mermaid's boundMessage uses multi-line text height to position
+            // that message's line, but the cursor advance to the following
+            // message remains the configured messageMargin/boxMargin cadence.
+            let base = base_spacing;
             // Self-messages need extra room for the loopback path. Mermaid.js
             // adds ~30px (sequenceRenderer.ts boundMessage: `totalOffset += 30`
             // when startx === stopx).
@@ -310,11 +319,10 @@ pub(super) fn compute_sequence_layout(
         .collect();
     let note_gap_y = (theme.font_size * 0.55).max(5.0);
     let note_gap_x = (theme.font_size * 0.65).max(7.0);
-    let note_padding_x = (theme.font_size * 0.75).max(7.0);
-    // JS notes use noteMargin=8 vertical padding. For default font_size=16,
-    // 0.46875 yields 7.5px padding (= 15 total) so a 1-line note renders at
-    // 39px height matching JS exactly.
-    let note_padding_y = (theme.font_size * 0.46875).max(4.0);
+    // JS notes use noteMargin=10 vertical padding. Combined with the sequence
+    // 19px text leading this gives 39px for one line, 58px for two, 77px for
+    // three, matching the generated SVG note boxes.
+    let note_padding_y = (theme.font_size * 0.625).max(4.0);
     let mut extra_before = vec![0.0; graph.edges.len()];
     let frame_end_pad = base_spacing * 0.25;
     // Padding to add AFTER the last message when an outermost frame extends
@@ -322,6 +330,7 @@ pub(super) fn compute_sequence_layout(
     // bottom region: the frame box continues past the last message before
     // the bottom actor row begins. ~box_margin (10) per outermost frame.
     let mut frame_tail_pad = 0.0f32;
+    let mut frame_close_before_note = vec![0.0; graph.edges.len().saturating_add(1)];
     for frame in &graph.sequence_frames {
         // Rect frames (background-highlighting `rect rgb(...)`) have no title
         // text, so JS's adjustLoopHeightForWrap uses (boxMargin, boxMargin)
@@ -390,6 +399,13 @@ pub(super) fn compute_sequence_layout(
                 frame_tail_pad += if is_nested { 13.0 } else { 11.0 };
             }
         }
+        if frame.end_idx <= graph.edges.len() {
+            // Notes at the same source index are drawn after the frame's
+            // `end` token in mermaid.js. The loop bottom is established first,
+            // then drawNote adds the standard boxMargin lead-in, so the note
+            // sits below the frame border instead of on top of it.
+            frame_close_before_note[frame.end_idx] += 10.0;
+        }
     }
     // Lifecycle events (`create X` / `destroy X`) attach to a message index;
     // mermaid.js bumps the cursor by `actor.height/2` AFTER processing that
@@ -447,9 +463,9 @@ pub(super) fn compute_sequence_layout(
                             // slightly tighter value closes autonumber's residual
                             // +1.80 height gap (the only self-msg fixture in our
                             // sequenceDiagram-* set).
-                            message_cursor += note_gap_y - 1.8;
+                            message_cursor += frame_close_before_note[idx] + note_gap_y - 1.8;
                         } else {
-                            let target = prev_y + box_margin;
+                            let target = prev_y + box_margin + frame_close_before_note[idx];
                             if target < message_cursor {
                                 message_cursor = target;
                             }
@@ -467,13 +483,18 @@ pub(super) fn compute_sequence_layout(
                         message_cursor += gap;
                     }
                 } else {
-                    message_cursor += note_gap_y;
+                    // The previous note already advanced the cursor by
+                    // note_gap_y after its bottom edge. Mermaid's drawNote
+                    // puts consecutive notes in the same bucket one
+                    // boxMargin apart, so add only the difference here.
+                    message_cursor += (box_margin - note_gap_y).max(0.0);
                 }
-                let label = measure_label(&note.label, theme, config);
+                let label = measure_sequence_label(&note.label);
+                let layout_label = measure_sequence_layout_label(&note.label);
                 // Mermaid.js notes use `conf.width` (default 150) as the
                 // minimum width; label only widens the note past that. See
                 // sequenceRenderer.ts: `rect.width = noteModel.width || conf.width`.
-                let mut width = (label.width + note_padding_x * 2.0).max(150.0);
+                let mut width = (layout_label.width.round() + 2.0 * WRAP_PADDING).max(150.0);
                 let height = label.height + note_padding_y * 2.0;
                 let mut lifeline_xs = note
                     .participants
@@ -550,7 +571,12 @@ pub(super) fn compute_sequence_layout(
                     false
                 }
             } else {
-                last_note_bottom_for_msg_gap = None;
+                if let Some(note_bot) = last_note_bottom_for_msg_gap.take() {
+                    let target = note_bot + base_spacing;
+                    if message_cursor < target {
+                        message_cursor = target;
+                    }
+                }
                 false
             };
             // Add base_spacing offset for the first message only if we
@@ -558,10 +584,11 @@ pub(super) fn compute_sequence_layout(
             if !applied_initial_message_offset {
                 applied_initial_message_offset = true;
                 // For multi-line message labels, mermaid.js bumps the cursor
-                // by lineHeight per line BEFORE drawing the line. Use the
-                // first message's row spacing as a floor for the initial
-                // offset so multi-line labels get extra vertical room.
-                let first_msg_offset = base_spacing.max(message_row_spacing[idx] - 12.0);
+                // down before drawing the line, but does not make all later
+                // rows taller. Add only the extra physical line height here.
+                let single_line_h = theme.font_size * SEQUENCE_TEXT_LINE_HEIGHT;
+                let first_label_h = message_row_label_heights.get(idx).copied().unwrap_or(0.0);
+                let first_msg_offset = base_spacing + (first_label_h - single_line_h).max(0.0);
                 let target_first_message_y = actor_top_y + actor_height + first_msg_offset;
                 if message_cursor < target_first_message_y {
                     message_cursor = target_first_message_y;
@@ -590,18 +617,9 @@ pub(super) fn compute_sequence_layout(
         // Sequence message labels honor only explicit <br/> breaks; never
         // auto-wrap. Actor spacing was sized to fit each label on a single
         // physical line.
-        let label = edge
-            .label
-            .as_ref()
-            .map(|l| super::text::measure_label_no_wrap(l, theme, config));
-        let start_label = edge
-            .start_label
-            .as_ref()
-            .map(|l| super::text::measure_label_no_wrap(l, theme, config));
-        let end_label = edge
-            .end_label
-            .as_ref()
-            .map(|l| super::text::measure_label_no_wrap(l, theme, config));
+        let label = edge.label.as_ref().map(|l| measure_sequence_label(l));
+        let start_label = edge.start_label.as_ref().map(|l| measure_sequence_label(l));
+        let end_label = edge.end_label.as_ref().map(|l| measure_sequence_label(l));
 
         let points = if edge.from == edge.to {
             let pad = config.node_spacing.max(20.0) * 0.6;
@@ -708,19 +726,28 @@ pub(super) fn compute_sequence_layout(
                     let cx = node.x + node.width / 2.0;
                     min_x = min_x.min(cx);
                     max_x = max_x.max(cx);
-                    // Self-messages reserve actor.width/2 on EACH side of the
-                    // lifeline in JS (calculateLoopBounds uses from.x ±
-                    // msgModel.width/2 with msgModel.width defaulting to
-                    // conf.width=150, so the loopback widens the frame by
-                    // ~node.width/2 on both sides). Without this, frames
-                    // containing self-messages render too narrow on the left.
-                    // JS's `activationBounds` uses `center+1` as the right
-                    // edge (and inserts span startx-dx to stopx+dx), so the
-                    // envelope is asymmetric: -74 left, +76 right of center
-                    // for default node.width=150.
+                    // Self-message loop frames are driven by the same
+                    // `boundMessage` insert that draws the hook: startx is the
+                    // right activation bound (`center + 1`) and dx is
+                    // max(rendered text width / 2, conf.width / 2). Notably,
+                    // this does NOT include wrapPadding, unlike message gap
+                    // calculations.
                     if edge.from == edge.to {
-                        min_x = min_x.min(cx - node.width / 2.0 + 1.0);
-                        max_x = max_x.max(cx + node.width / 2.0 + 1.0);
+                        let mut label_w = 0.0f32;
+                        for label in [
+                            edge.label.as_ref(),
+                            edge.start_label.as_ref(),
+                            edge.end_label.as_ref(),
+                        ]
+                        .into_iter()
+                        .flatten()
+                        {
+                            label_w = label_w.max(measure_sequence_layout_label(label).width);
+                        }
+                        let self_half = (node.width / 2.0).max(label_w.round() / 2.0);
+                        let hook_x = cx + 1.0;
+                        min_x = min_x.min(hook_x - self_half);
+                        max_x = max_x.max(hook_x + self_half);
                     }
                 }
                 if let Some(node) = nodes.get(&edge.to) {
@@ -770,19 +797,7 @@ pub(super) fn compute_sequence_layout(
             // the labelBox, so frame_width must accommodate
             //   labelBox_w + label_width + horizontal_pads
             // or the section label spills past the frame's right border.
-            let predicted_label_box_w = {
-                let label_text = match frame.kind {
-                    crate::ir::SequenceFrameKind::Alt => "alt",
-                    crate::ir::SequenceFrameKind::Opt => "opt",
-                    crate::ir::SequenceFrameKind::Loop => "loop",
-                    crate::ir::SequenceFrameKind::Par => "par",
-                    crate::ir::SequenceFrameKind::Rect => "rect",
-                    crate::ir::SequenceFrameKind::Critical => "critical",
-                    crate::ir::SequenceFrameKind::Break => "break",
-                };
-                let label_w = super::text::measure_label_no_wrap(label_text, theme, config).width;
-                (label_w + theme.font_size * 2.0).max(theme.font_size * 3.0)
-            };
+            let predicted_label_box_w = SEQUENCE_LABEL_BOX_WIDTH;
             const FRAME_TITLE_PAD: f32 = 16.0; // wrapPadding(10) + ~6 visual pad
             for (section_idx, section) in frame.sections.iter().enumerate() {
                 if let Some(label_text) = &section.label {
@@ -844,6 +859,8 @@ pub(super) fn compute_sequence_layout(
                 // `<` (not `<=`) to keep such notes from inflating the frame
                 // rect (e.g. autonumber: post-loop note was wrapped by loop).
                 if note.index >= frame.start_idx && note.index < frame.end_idx {
+                    min_x = min_x.min(note.x);
+                    max_x = max_x.max(note.x + note.width);
                     min_y = min_y.min(note.y);
                     max_y = max_y.max(note.y + note.height);
                 }
@@ -853,6 +870,15 @@ pub(super) fn compute_sequence_layout(
             // hug the message rows tightly. Other frame kinds (loop, alt,
             // critical, par, opt) reserve room above the first message for
             // the label box.
+            let first_frame_label_extra = {
+                let single_line_h = theme.font_size * SEQUENCE_TEXT_LINE_HEIGHT;
+                (message_row_label_heights
+                    .get(frame.start_idx)
+                    .copied()
+                    .unwrap_or(0.0)
+                    - single_line_h)
+                    .max(0.0)
+            };
             let top_offset = if matches!(frame.kind, crate::ir::SequenceFrameKind::Rect) {
                 // Rect frames hug content tightly. When the first enclosed
                 // element is a NOTE, min_y is already the note's top edge and
@@ -862,12 +888,12 @@ pub(super) fn compute_sequence_layout(
                 // highlight rect. JS observed: ~font*1.5 above msg line.
                 let first_is_message = (min_y - first_y).abs() < 0.5;
                 if first_is_message {
-                    theme.font_size * 1.5
+                    theme.font_size * 1.5 + first_frame_label_extra
                 } else {
                     header_offset
                 }
             } else {
-                (2.0 * base_spacing - header_offset).max(base_spacing)
+                (2.0 * base_spacing - header_offset).max(base_spacing) + first_frame_label_extra
             };
             // Nested frames: outer frame bottom needs extra clearance so its
             // bottom border doesn't coincide with the inner frame's bottom
@@ -886,9 +912,8 @@ pub(super) fn compute_sequence_layout(
                 crate::ir::SequenceFrameKind::Break => "break",
             };
             let label_block = measure_label(frame_label_text, theme, config);
-            let label_box_w =
-                (label_block.width + theme.font_size * 2.0).max(theme.font_size * 3.0);
-            let label_box_h = theme.font_size * 1.25;
+            let label_box_w = SEQUENCE_LABEL_BOX_WIDTH;
+            let label_box_h = SEQUENCE_LABEL_BOX_HEIGHT;
             let label_box_x = frame_x;
             let label_box_y = frame_y;
             let label = SequenceLabel {
@@ -1031,7 +1056,12 @@ pub(super) fn compute_sequence_layout(
     {
         last_message_y += lifecycle_extra_after[last_idx];
     }
-    last_message_y += frame_tail_pad;
+    let has_note_after_last_message = sequence_notes
+        .iter()
+        .any(|note| note.index >= graph.edges.len());
+    if !has_note_after_last_message {
+        last_message_y += frame_tail_pad;
+    }
     // Mermaid.js renders `control` actor type with a body symbol (circle + icon)
     // above text; the text label sits ~12px below where a regular actor-box's
     // text would sit. `database` (cylinder) similarly extends a few px beyond
@@ -1452,29 +1482,29 @@ pub(super) fn compute_sequence_layout(
         max_y = 1.0;
     }
 
-    // Mermaid.js sequence diagrams use 50px horizontal padding around content
-    // (viewBox attributes like `-50 -10 W H`). Our width formula is
-    // `(max_x_shifted - old_min_x) + 2*margin`, which expands to
-    // `extent + 3*margin - old_min_x`, so margin=36 gives effective 100px
-    // padding matching JS (since old_min_x=8). Messages are scaled in gap
-    // calculations to match JS text measurement, so content extent matches
-    // JS and margin=36 is appropriate for both minimum-content and
-    // message-widened diagrams.
+    // Mermaid.js sequence diagrams use a 50px horizontal viewBox gutter around
+    // the rendered content. The width calculation below still uses the legacy
+    // 36px internal margin because it already yields the JS total width for
+    // minimum-content diagrams; keep the visual shift and canvas extent
+    // separate so content lands in the same place as JS without inflating the
+    // right gutter.
     let _ = any_gap_widened;
-    let margin = 36.0;
+    let content_margin_x = 50.0;
+    let width_margin_x = 36.0;
     // JS vertical padding: 10px top, 11px bottom (21 total).
     // Our formula `extent + 3*margin_y - old_min_y` (old_min_y = 8) applies
     // the same 3x amplification as the x-axis due to the asymmetric min_y
     // shift. Solving `3*margin_y - 8 = 21` yields margin_y ≈ 9.667 for
     // exact JS parity on minimum-content diagrams.
     let margin_y = 29.0 / 3.0;
-    // Shift to position content's leftmost edge at `margin` from viewBox 0.
+    // Shift to position content's leftmost edge at JS's 50px gutter.
     // Cap min_x at the initial cursor margin (8.0) — this prevents over-shifting
     // when content extends LEFT of the typical cursor start (e.g. self-message
     // frame extension widens min_x leftward). Without the cap, the formula
     // `width = max_x - min_x + 2*margin` would inflate by |min_x - 8|, since
     // only max_x gets the shift while min_x stays in the original frame.
-    let shift_x = margin - min_x.max(8.0);
+    let width_shift_x = width_margin_x - min_x.max(8.0);
+    let shift_x = content_margin_x - min_x;
     let shift_y = margin_y - min_y;
     if shift_x.abs() > 1e-3 || shift_y.abs() > 1e-3 {
         for node in nodes.values_mut() {
@@ -1536,7 +1566,7 @@ pub(super) fn compute_sequence_layout(
             number.x += shift_x;
             number.y += shift_y;
         }
-        max_x += shift_x;
+        max_x += width_shift_x;
         max_y += shift_y;
     }
     // destroy_markers are computed pre-shift from raw node coords; apply
@@ -1546,7 +1576,7 @@ pub(super) fn compute_sequence_layout(
         .map(|(x, y)| (x + shift_x, y + shift_y))
         .collect();
 
-    let width = (max_x - min_x + margin * 2.0).max(1.0);
+    let width = (max_x - min_x + width_margin_x * 2.0).max(1.0);
     let height = (max_y - min_y + margin_y * 2.0).max(1.0);
 
     Layout {
@@ -1659,14 +1689,23 @@ fn place_sequence_label_anchors(
     let edge_paths: Vec<Vec<(f32, f32)>> = edges.iter().map(|edge| edge.points.clone()).collect();
     for idx in 0..edges.len() {
         if let Some(label) = edges[idx].label.clone() {
-            let anchor = choose_sequence_center_label_anchor(
-                &edge_paths[idx],
-                &label,
-                &occupied,
-                &edge_paths,
-                idx,
-                theme,
-            );
+            let anchor = if edges[idx].from == edges[idx].to {
+                // Mermaid.js drawMessage places self-message text at
+                // msgModel.startx. For inactive lifelines that is the right
+                // activation bound, i.e. one pixel to the right of the
+                // lifeline center, not at the middle of the hook path.
+                let start = edge_paths[idx].first().copied().unwrap_or((0.0, 0.0));
+                (start.0 + 1.0, start.1)
+            } else {
+                choose_sequence_center_label_anchor(
+                    &edge_paths[idx],
+                    &label,
+                    &occupied,
+                    &edge_paths,
+                    idx,
+                    theme,
+                )
+            };
             edges[idx].label_anchor = Some(anchor);
             occupied.push(label_rect(
                 anchor,

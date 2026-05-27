@@ -1,0 +1,10 @@
+eventmodeling
+
+rf 02 evt Cart.Created
+rf 03 evt Cart.ItemAdded
+rf 04 evt Cart.ItemRemoved
+rf 05 evt Cart.Cleared
+tf 01 rmo Cart.CartUI ->> 02 ->> 03 ->> 04 ->> 05
+tf 06 pcr Inventory.InventoryProcessor
+tf 07 cmd Inventory.ChangeInventory
+tf 08 evt Inventory.InventoryChanged

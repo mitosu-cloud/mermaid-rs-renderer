@@ -46,6 +46,8 @@ pub enum DiagramKind {
     TreeView,
     Ishikawa,
     Wardley,
+    EventModeling,
+    Cynefin,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,10 +123,31 @@ pub struct PieSlice {
 }
 
 #[derive(Debug, Clone)]
+pub struct QuadrantPointStyle {
+    pub radius: Option<f32>,
+    pub color: Option<String>,
+    pub stroke_color: Option<String>,
+    pub stroke_width: Option<String>,
+}
+
+impl Default for QuadrantPointStyle {
+    fn default() -> Self {
+        Self {
+            radius: None,
+            color: None,
+            stroke_color: None,
+            stroke_width: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct QuadrantPoint {
     pub label: String,
     pub x: f32,
     pub y: f32,
+    pub class_name: Option<String>,
+    pub style: QuadrantPointStyle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,6 +156,7 @@ pub enum GanttStatus {
     Active,
     Crit,
     Milestone,
+    Vert,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -144,6 +168,7 @@ pub struct QuadrantData {
     pub y_axis_top: Option<String>,
     pub quadrant_labels: [Option<String>; 4], // top-right, top-left, bottom-left, bottom-right
     pub points: Vec<QuadrantPoint>,
+    pub point_classes: BTreeMap<String, QuadrantPointStyle>,
 }
 
 #[derive(Debug, Clone)]
@@ -151,10 +176,19 @@ pub struct GanttTask {
     pub id: String,
     pub label: String,
     pub start: Option<String>,
+    pub end: Option<String>,
     pub duration: Option<String>,
     pub after: Option<String>,
+    pub after_ids: Vec<String>,
+    pub until_ids: Vec<String>,
     pub section: Option<String>,
     pub status: Option<GanttStatus>,
+    pub active: bool,
+    pub done: bool,
+    pub crit: bool,
+    pub milestone: bool,
+    pub vert: bool,
+    pub order: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -418,12 +452,14 @@ pub enum EdgeStyle {
     Solid,
     Dotted,
     Thick,
+    Invisible,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdgeDecoration {
     Circle,
     Cross,
+    Lollipop,
     Diamond,
     DiamondFilled,
     // Crow's foot notation for ER diagrams
@@ -507,9 +543,19 @@ pub struct Subgraph {
 }
 
 // ── TreeView ────────────────────────────────────────────────────────────
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TreeViewNodeType {
+    File,
+    Directory,
+}
+
 #[derive(Debug, Clone)]
 pub struct TreeViewNode {
     pub name: String,
+    pub node_type: TreeViewNodeType,
+    pub icon_id: Option<String>,
+    pub css_class: Option<String>,
+    pub description: Option<String>,
     pub children: Vec<TreeViewNode>,
 }
 
@@ -593,6 +639,95 @@ pub struct WardleyData {
     pub stage_boundaries: Vec<f32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventModelingEntityType {
+    Ui,
+    Processor,
+    ReadModel,
+    Command,
+    Event,
+}
+
+#[derive(Debug, Clone)]
+pub struct EventModelingFrame {
+    pub name: String,
+    pub entity_type: EventModelingEntityType,
+    pub entity_identifier: String,
+    pub source_frames: Vec<String>,
+    pub data_reference: Option<String>,
+    pub data_inline_value: Option<String>,
+    pub reset: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct EventModelingDataEntity {
+    pub name: String,
+    pub data_type: Option<String>,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EventModelingData {
+    pub frames: Vec<EventModelingFrame>,
+    pub data_entities: Vec<EventModelingDataEntity>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CynefinDomainName {
+    Complex,
+    Complicated,
+    Chaotic,
+    Clear,
+    Confusion,
+}
+
+impl CynefinDomainName {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Complex => "complex",
+            Self::Complicated => "complicated",
+            Self::Chaotic => "chaotic",
+            Self::Clear => "clear",
+            Self::Confusion => "confusion",
+        }
+    }
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::Complex => "Complex",
+            Self::Complicated => "Complicated",
+            Self::Chaotic => "Chaotic",
+            Self::Clear => "Clear",
+            Self::Confusion => "Confusion",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CynefinItem {
+    pub label: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CynefinDomain {
+    pub name: CynefinDomainName,
+    pub items: Vec<CynefinItem>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CynefinTransition {
+    pub from: CynefinDomainName,
+    pub to: CynefinDomainName,
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CynefinData {
+    pub domains: BTreeMap<CynefinDomainName, CynefinDomain>,
+    pub transitions: Vec<CynefinTransition>,
+    pub title: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Graph {
     pub kind: DiagramKind,
@@ -616,6 +751,17 @@ pub struct Graph {
     pub gantt_tasks: Vec<GanttTask>,
     pub gantt_title: Option<String>,
     pub gantt_sections: Vec<String>,
+    pub gantt_date_format: Option<String>,
+    pub gantt_axis_format: Option<String>,
+    pub gantt_tick_interval: Option<String>,
+    pub gantt_today_marker: Option<String>,
+    pub gantt_display_mode: Option<String>,
+    pub gantt_excludes: Vec<String>,
+    pub gantt_includes: Vec<String>,
+    pub gantt_weekday: Option<String>,
+    pub gantt_weekend: Option<String>,
+    pub gantt_inclusive_end_dates: bool,
+    pub gantt_top_axis: bool,
     pub journey_title: Option<String>,
     pub gitgraph: GitGraphData,
     pub class_defs: HashMap<String, NodeStyle>,
@@ -632,13 +778,17 @@ pub struct Graph {
     pub c4: C4Data,
     pub mindmap: MindmapData,
     pub xychart: XYChartData,
+    pub radar: RadarData,
     pub timeline: TimelineData,
     pub block: Option<BlockDiagram>,
     pub venn: VennData,
+    pub packet: PacketData,
     pub look: DiagramLook,
     pub tree_view: TreeViewData,
     pub ishikawa: IshikawaData,
     pub wardley: WardleyData,
+    pub eventmodeling: EventModelingData,
+    pub cynefin: CynefinData,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -662,6 +812,10 @@ pub enum NodeShape {
     MindmapDefault,
     Note,
     Text,
+    Icon,
+    IconCircle,
+    IconSquare,
+    IconRounded,
     // Sequence-diagram actor types
     StickFigure, // actor keyword — stick-figure person
     Boundary,    // boundary keyword — line-bracket shape
@@ -679,32 +833,49 @@ pub enum NodeShape {
     WindowPane,      // win-pane — grid/window layout
     Hourglass,       // hourglass — hourglass/timer shape
     LightningBolt,   // bolt — event trigger shape
-    BraceLeft,       // brace-l — left brace
+    BraceLeft,       // brace/comment/brace-l — left brace
     BraceRight,      // brace-r — right brace
-    Comment,         // comment — callout comment
-    Flag,            // flag — flag shape
+    BraceBoth,       // braces — braces on both sides
+    Comment,         // callout comment
+    Flag,            // legacy pennant shape (Mermaid `flag` maps to WavyRect)
     LeanRight,       // lean-r — lean right parallelogram
     LeanLeft,        // lean-l — lean left parallelogram
     OddShape,        // odd — irregular shape
     LinedCylinder,   // lin-cyl — cylinder with lines
     CurvedTrapezoid, // curv-trap — curved trapezoid
     // v11.3+ additional shapes
-    Cloud,              // cloud — overlapping elliptical arcs
-    Triangle,           // tri / extract — pointing up
-    FlippedTriangle,    // flip-tri / manual-file — pointing down
-    SmallCircle,        // sm-circ / start — smaller default radius
-    FilledCircle,       // f-circ / junction — solid fill, no label
-    HalfRoundedRect,    // delay — rectangle with rounded right side
-    SlopedRect,         // sl-rect / manual-input — rectangle with sloped top
-    NotchedPentagon,    // notch-pent / loop-limit — pentagon with notched bottom
-    StackedRect,        // st-rect / procs — rectangle with offset rects behind
-    BowTieRect,         // bow-rect / stored-data — rectangle with curved left side
-    FramedCircle,       // fr-circ / stop — circle inside circle
-    CrossedCircle,      // cross-circ / summary — circle with X
-    HorizontalCylinder, // h-cyl / das — cylinder rotated 90 degrees
-    DividedRect,        // div-rect / div-proc — rectangle with horizontal divider
-    LinedRect,          // lin-rect / lin-proc — rectangle with vertical lines
-    WavyRect,           // wave-rect / paper-tape — rectangle with wavy top and bottom
+    Cloud,               // cloud — overlapping elliptical arcs
+    Bang,                // bang — scalloped mindmap/flowchart shape
+    Triangle,            // tri / extract — pointing up
+    FlippedTriangle,     // flip-tri / manual-file — pointing down
+    SmallCircle,         // sm-circ / start — smaller default radius
+    FilledCircle,        // f-circ / junction — solid fill, no label
+    HalfRoundedRect,     // delay — rectangle with rounded right side
+    SlopedRect,          // sl-rect / manual-input — rectangle with sloped top
+    NotchedPentagon,     // notch-pent / loop-limit — trapezoidal pentagon
+    StackedRect,         // st-rect / procs — rectangle with offset rects behind
+    BowTieRect,          // bow-rect / stored-data — rectangle with curved left side
+    FramedCircle,        // fr-circ / stop — circle inside circle
+    CrossedCircle,       // cross-circ / summary — circle with X
+    HorizontalCylinder,  // h-cyl / das — cylinder rotated 90 degrees
+    DividedRect,         // div-rect / div-proc — rectangle with horizontal divider
+    LinedRect,           // lin-rect / lin-proc — rectangle with vertical lines
+    WavyRect,            // wave-rect / flag / paper-tape — wavy top and bottom
+    BlockArrowRight,     // block arrow — right
+    BlockArrowLeft,      // block arrow — left
+    BlockArrowUp,        // block arrow — up
+    BlockArrowDown,      // block arrow — down
+    BlockArrowX,         // block arrow — left + right
+    BlockArrowY,         // block arrow — up + down
+    BlockArrowXUp,       // block arrow — left + right + up
+    BlockArrowXDown,     // block arrow — left + right + down
+    BlockArrowYRight,    // block arrow — up + down + right
+    BlockArrowYLeft,     // block arrow — up + down + left
+    BlockArrowRightUp,   // block arrow — right + up
+    BlockArrowRightDown, // block arrow — right + down
+    BlockArrowLeftUp,    // block arrow — left + up
+    BlockArrowLeftDown,  // block arrow — left + down
+    BlockArrowAll,       // block arrow — all directions
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -761,6 +932,33 @@ pub struct XYChartData {
     pub series: Vec<XYSeries>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RadarGraticule {
+    Circle,
+    Polygon,
+}
+
+#[derive(Debug, Clone)]
+pub struct RadarData {
+    pub show_legend: bool,
+    pub ticks: usize,
+    pub max: Option<f32>,
+    pub min: f32,
+    pub graticule: RadarGraticule,
+}
+
+impl Default for RadarData {
+    fn default() -> Self {
+        Self {
+            show_legend: true,
+            ticks: 5,
+            max: None,
+            min: 0.0,
+            graticule: RadarGraticule::Circle,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TimelineEvent {
     pub time: String,
@@ -786,6 +984,15 @@ pub struct VennSet {
 #[derive(Debug, Clone)]
 pub struct VennUnion {
     pub set_ids: Vec<String>,
+    pub size: f32,
+    pub label: Option<String>,
+    pub style: Option<VennStyle>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VennTextNode {
+    pub set_ids: Vec<String>,
+    pub id: String,
     pub label: Option<String>,
     pub style: Option<VennStyle>,
 }
@@ -804,10 +1011,31 @@ pub struct VennData {
     pub title: Option<String>,
     pub sets: Vec<VennSet>,
     pub unions: Vec<VennUnion>,
+    pub text_nodes: Vec<VennTextNode>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PacketBlock {
+    pub start: u32,
+    pub end: u32,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PacketData {
+    pub title: Option<String>,
+    pub blocks: Vec<PacketBlock>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct BlockDiagram {
+    pub columns: Option<usize>,
+    pub nodes: Vec<BlockNode>,
+    pub groups: BTreeMap<String, BlockGroup>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BlockGroup {
     pub columns: Option<usize>,
     pub nodes: Vec<BlockNode>,
 }
@@ -843,6 +1071,17 @@ impl Graph {
             gantt_tasks: Vec::new(),
             gantt_title: None,
             gantt_sections: Vec::new(),
+            gantt_date_format: None,
+            gantt_axis_format: None,
+            gantt_tick_interval: None,
+            gantt_today_marker: None,
+            gantt_display_mode: None,
+            gantt_excludes: Vec::new(),
+            gantt_includes: Vec::new(),
+            gantt_weekday: None,
+            gantt_weekend: None,
+            gantt_inclusive_end_dates: false,
+            gantt_top_axis: false,
             journey_title: None,
             gitgraph: GitGraphData::default(),
             class_defs: HashMap::new(),
@@ -859,13 +1098,17 @@ impl Graph {
             c4: C4Data::default(),
             mindmap: MindmapData::default(),
             xychart: XYChartData::default(),
+            radar: RadarData::default(),
             timeline: TimelineData::default(),
             block: None,
             venn: VennData::default(),
+            packet: PacketData::default(),
             look: DiagramLook::default(),
             tree_view: TreeViewData::default(),
             ishikawa: IshikawaData::default(),
             wardley: WardleyData::default(),
+            eventmodeling: EventModelingData::default(),
+            cynefin: CynefinData::default(),
         }
     }
 

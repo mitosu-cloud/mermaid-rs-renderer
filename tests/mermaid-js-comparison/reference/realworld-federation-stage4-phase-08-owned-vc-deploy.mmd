@@ -1,0 +1,13 @@
+flowchart TB
+    md[("hello-fed MD<br/>(replicated on both members)")]
+    subgraph FED0["fed0 deploy controller"]
+        d0[reconcile vc-a1<br/>OWNED -> deploy]
+        d0x[reconcile vc-b1<br/>FOREIGN -> skip]
+    end
+    subgraph FED1["fed1 deploy controller"]
+        d1x[reconcile vc-a1<br/>FOREIGN -> skip]
+        d1[reconcile vc-b1<br/>OWNED -> deploy]
+    end
+    md --> d0 & d0x & d1 & d1x
+    d0 ==>|kubectl apply| pa["pod: hello-world<br/>default-fedten-vc-a1-default<br/>fed0cluster1"]
+    d1 ==>|kubectl apply| pb["pod: hello-world<br/>default-fedten-vc-b1-default<br/>fed1cluster1"]

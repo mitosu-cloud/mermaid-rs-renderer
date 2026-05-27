@@ -74,10 +74,10 @@ impl Default for RequirementConfig {
             label_color: "#131300".to_string(),
             divider_color: "#9370DB".to_string(),
             divider_width: 1.3,
-            header_band_height: 52.0,
-            header_line_gap: 16.0,
-            label_padding_x: 8.0,
-            label_padding_y: 6.0,
+            header_band_height: 68.0,
+            header_line_gap: 24.0,
+            label_padding_x: 10.0,
+            label_padding_y: 10.0,
             edge_stroke: "#333333".to_string(),
             edge_dasharray: "10,7".to_string(),
             edge_stroke_width: 1.0,
@@ -86,7 +86,7 @@ impl Default for RequirementConfig {
             edge_label_padding_x: 3.0,
             edge_label_padding_y: 2.0,
             edge_label_brackets: true,
-            render_padding_x: 4.0,
+            render_padding_x: 0.0,
             render_padding_y: 0.0,
         }
     }
@@ -243,7 +243,7 @@ pub struct GitGraphConfig {
 impl Default for GitGraphConfig {
     fn default() -> Self {
         Self {
-            diagram_padding: 6.0,
+            diagram_padding: 8.0,
             title_top_margin: 22.0,
             use_max_width: true,
             main_branch_name: "main".to_string(),
@@ -252,21 +252,21 @@ impl Default for GitGraphConfig {
             show_branches: true,
             rotate_commit_label: true,
             parallel_commits: false,
-            commit_step: 34.0,
-            layout_offset: 8.0,
-            default_pos: 24.0,
-            branch_spacing: 40.0,
-            branch_spacing_rotate_extra: 32.0,
+            commit_step: 40.0,
+            layout_offset: 10.0,
+            default_pos: 30.0,
+            branch_spacing: 50.0,
+            branch_spacing_rotate_extra: 40.0,
             branch_label_rotate_extra: 24.0,
             branch_label_translate_x: -16.0,
             branch_label_bg_offset_x: 3.0,
             branch_label_bg_offset_y: 6.0,
-            branch_label_bg_pad_x: 14.0,
-            branch_label_bg_pad_y: 3.0,
+            branch_label_bg_pad_x: 18.0,
+            branch_label_bg_pad_y: 4.0,
             branch_label_text_offset_x: 10.0,
             branch_label_text_offset_y: -1.0,
-            branch_label_tb_bg_offset_x: 8.0,
-            branch_label_tb_text_offset_x: 4.0,
+            branch_label_tb_bg_offset_x: 10.0,
+            branch_label_tb_text_offset_x: 5.0,
             branch_label_tb_offset_y: 0.0,
             branch_label_bt_offset_y: 0.0,
             branch_label_corner_radius: 4.0,
@@ -285,10 +285,10 @@ impl Default for GitGraphConfig {
             commit_label_rotate_translate_x_width_offset: 8.0,
             commit_label_rotate_translate_y_base: 8.0,
             commit_label_rotate_translate_y_scale: 7.5 / 25.0,
-            commit_label_tb_text_extra: 12.0,
-            commit_label_tb_bg_extra: 16.0,
-            commit_label_tb_text_offset_y: -10.0,
-            commit_label_tb_bg_offset_y: -10.0,
+            commit_label_tb_text_extra: 16.0,
+            commit_label_tb_bg_extra: 21.0,
+            commit_label_tb_text_offset_y: -12.0,
+            commit_label_tb_bg_offset_y: -12.0,
             tag_label_font_size: 10.0,
             tag_label_line_height: 1.2,
             tag_text_offset_y: 13.0,
@@ -302,15 +302,15 @@ impl Default for GitGraphConfig {
             tag_rotate_angle: 45.0,
             tag_text_offset_x_tb: 4.0,
             tag_text_offset_y_tb: 2.0,
-            arrow_reroute_radius: 8.0,
-            arrow_radius: 16.0,
+            arrow_reroute_radius: 10.0,
+            arrow_radius: 20.0,
             lane_spacing: 8.0,
             lane_max_depth: 5,
-            commit_radius: 8.0,
-            merge_radius_outer: 7.5,
-            merge_radius_inner: 5.0,
-            highlight_outer_size: 16.0,
-            highlight_inner_size: 10.0,
+            commit_radius: 10.0,
+            merge_radius_outer: 10.0,
+            merge_radius_inner: 6.0,
+            highlight_outer_size: 20.0,
+            highlight_inner_size: 12.0,
             reverse_cross_size: 4.0,
             reverse_stroke_width: 2.5,
             cherry_pick_dot_radius: 2.2,
@@ -320,8 +320,8 @@ impl Default for GitGraphConfig {
             cherry_pick_stem_end_offset_y: -4.0,
             cherry_pick_stem_stroke_width: 0.8,
             cherry_pick_accent_color: "#fff".to_string(),
-            arrow_stroke_width: 6.0,
-            branch_stroke_width: 0.8,
+            arrow_stroke_width: 8.0,
+            branch_stroke_width: 1.0,
             branch_dasharray: "2".to_string(),
         }
     }
@@ -468,18 +468,18 @@ impl Default for C4Config {
     fn default() -> Self {
         Self {
             use_max_width: true,
-            diagram_margin_x: 32.0,
-            diagram_margin_y: 8.0,
-            c4_shape_margin: 32.0,
-            c4_shape_padding: 16.0,
-            width: 200.0,
-            height: 56.0,
-            box_margin: 8.0,
+            diagram_margin_x: 50.0,
+            diagram_margin_y: 10.0,
+            c4_shape_margin: 50.0,
+            c4_shape_padding: 20.0,
+            width: 216.0,
+            height: 60.0,
+            box_margin: 10.0,
             c4_shape_in_row: 4,
             next_line_padding_x: 0.0,
             c4_boundary_in_row: 2,
-            wrap: true,
-            wrap_padding: 8.0,
+            wrap: false,
+            wrap_padding: 10.0,
             text_line_height: 1.0,
             text_line_height_small_add: 1.0,
             text_line_height_small_threshold: 14.0,
@@ -684,8 +684,11 @@ pub struct TreemapConfig {
     pub render_mode: TreemapRenderMode,
     pub width: f32,
     pub height: f32,
+    pub diagram_padding: f32,
     pub padding: f32,
     pub gap: f32,
+    pub show_values: bool,
+    pub value_format: String,
     pub label_padding_x: f32,
     pub label_padding_y: f32,
     pub min_label_area: f32,
@@ -710,10 +713,13 @@ impl Default for TreemapConfig {
     fn default() -> Self {
         Self {
             render_mode: TreemapRenderMode::Flowchart,
-            width: 720.0,
-            height: 480.0,
-            padding: 8.0,
-            gap: 3.0,
+            width: 1000.0,
+            height: 400.0,
+            diagram_padding: 8.0,
+            padding: 10.0,
+            gap: 10.0,
+            show_values: true,
+            value_format: ",".to_string(),
             label_padding_x: 6.0,
             label_padding_y: 4.0,
             min_label_area: 200.0,
@@ -736,6 +742,199 @@ impl Default for TreemapConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SankeyNodeAlignment {
+    Left,
+    Right,
+    Center,
+    Justify,
+}
+
+impl Default for SankeyNodeAlignment {
+    fn default() -> Self {
+        Self::Justify
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SankeyConfig {
+    pub width: f32,
+    pub height: f32,
+    pub link_color: String,
+    pub node_alignment: SankeyNodeAlignment,
+    pub use_max_width: bool,
+    pub show_values: bool,
+    pub prefix: String,
+    pub suffix: String,
+    pub node_width: f32,
+    pub node_padding: f32,
+}
+
+impl Default for SankeyConfig {
+    fn default() -> Self {
+        Self {
+            width: 600.0,
+            height: 400.0,
+            link_color: "gradient".to_string(),
+            node_alignment: SankeyNodeAlignment::Justify,
+            use_max_width: true,
+            show_values: true,
+            prefix: String::new(),
+            suffix: String::new(),
+            node_width: 10.0,
+            node_padding: 12.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CynefinConfig {
+    pub use_max_width: bool,
+    pub width: f32,
+    pub height: f32,
+    pub padding: f32,
+    pub show_domain_descriptions: bool,
+    pub boundary_amplitude: f32,
+}
+
+impl Default for CynefinConfig {
+    fn default() -> Self {
+        Self {
+            use_max_width: true,
+            width: 800.0,
+            height: 600.0,
+            padding: 40.0,
+            show_domain_descriptions: true,
+            boundary_amplitude: 8.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct XYChartAxisConfig {
+    pub show_label: bool,
+    pub label_font_size: f32,
+    pub label_padding: f32,
+    pub show_title: bool,
+    pub title_font_size: f32,
+    pub title_padding: f32,
+    pub show_tick: bool,
+    pub tick_length: f32,
+    pub tick_width: f32,
+    pub show_axis_line: bool,
+    pub axis_line_width: f32,
+}
+
+impl Default for XYChartAxisConfig {
+    fn default() -> Self {
+        Self {
+            show_label: true,
+            label_font_size: 14.0,
+            label_padding: 5.0,
+            show_title: true,
+            title_font_size: 16.0,
+            title_padding: 5.0,
+            show_tick: true,
+            tick_length: 5.0,
+            tick_width: 2.0,
+            show_axis_line: true,
+            axis_line_width: 2.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct XYChartConfig {
+    pub width: f32,
+    pub height: f32,
+    pub title_font_size: f32,
+    pub title_padding: f32,
+    pub show_title: bool,
+    pub show_data_label: bool,
+    pub show_data_label_outside_bar: bool,
+    pub plot_reserved_space_percent: f32,
+    pub x_axis: XYChartAxisConfig,
+    pub y_axis: XYChartAxisConfig,
+}
+
+impl Default for XYChartConfig {
+    fn default() -> Self {
+        Self {
+            width: 700.0,
+            height: 500.0,
+            title_font_size: 20.0,
+            title_padding: 10.0,
+            show_title: true,
+            show_data_label: false,
+            show_data_label_outside_bar: false,
+            plot_reserved_space_percent: 50.0,
+            x_axis: XYChartAxisConfig::default(),
+            y_axis: XYChartAxisConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuadrantConfig {
+    pub use_max_width: bool,
+    pub chart_width: f32,
+    pub chart_height: f32,
+    pub show_x_axis: bool,
+    pub show_y_axis: bool,
+    pub show_title: bool,
+    pub title_padding: f32,
+    pub title_font_size: f32,
+    pub quadrant_padding: f32,
+    pub x_axis_label_padding: f32,
+    pub y_axis_label_padding: f32,
+    pub x_axis_label_font_size: f32,
+    pub y_axis_label_font_size: f32,
+    pub quadrant_label_font_size: f32,
+    pub quadrant_text_top_padding: f32,
+    pub point_text_padding: f32,
+    pub point_label_font_size: f32,
+    pub point_radius: f32,
+    pub x_axis_position: String,
+    pub y_axis_position: String,
+    pub quadrant_internal_border_stroke_width: f32,
+    pub quadrant_external_border_stroke_width: f32,
+}
+
+impl Default for QuadrantConfig {
+    fn default() -> Self {
+        Self {
+            use_max_width: true,
+            chart_width: 500.0,
+            chart_height: 500.0,
+            show_x_axis: true,
+            show_y_axis: true,
+            show_title: true,
+            title_padding: 10.0,
+            title_font_size: 20.0,
+            quadrant_padding: 5.0,
+            x_axis_label_padding: 5.0,
+            y_axis_label_padding: 5.0,
+            x_axis_label_font_size: 16.0,
+            y_axis_label_font_size: 16.0,
+            quadrant_label_font_size: 16.0,
+            quadrant_text_top_padding: 5.0,
+            point_text_padding: 5.0,
+            point_label_font_size: 12.0,
+            point_radius: 5.0,
+            x_axis_position: "top".to_string(),
+            y_axis_position: "left".to_string(),
+            quadrant_internal_border_stroke_width: 1.0,
+            quadrant_external_border_stroke_width: 2.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
     pub node_spacing: f32,
@@ -752,6 +951,11 @@ pub struct LayoutConfig {
     pub c4: C4Config,
     pub pie: PieConfig,
     pub treemap: TreemapConfig,
+    pub sankey: SankeyConfig,
+    #[serde(default)]
+    pub cynefin: CynefinConfig,
+    pub xychart: XYChartConfig,
+    pub quadrant: QuadrantConfig,
     pub flowchart: FlowchartLayoutConfig,
     pub look: crate::ir::DiagramLook,
 }
@@ -766,13 +970,17 @@ impl Default for LayoutConfig {
             label_line_height: 1.5,
             max_label_width_chars: 22,
             preferred_aspect_ratio: None,
-            fast_text_metrics: true,
+            fast_text_metrics: false,
             requirement: RequirementConfig::default(),
             mindmap: MindmapConfig::default(),
             gitgraph: GitGraphConfig::default(),
             c4: C4Config::default(),
             pie: PieConfig::default(),
             treemap: TreemapConfig::default(),
+            sankey: SankeyConfig::default(),
+            cynefin: CynefinConfig::default(),
+            xychart: XYChartConfig::default(),
+            quadrant: QuadrantConfig::default(),
             flowchart: FlowchartLayoutConfig::default(),
             look: crate::ir::DiagramLook::default(),
         }
@@ -782,6 +990,10 @@ impl Default for LayoutConfig {
 impl LayoutConfig {
     pub fn class_label_line_height(&self) -> f32 {
         self.label_line_height * 0.85
+    }
+
+    pub fn class_diagram_label_line_height(&self) -> f32 {
+        self.label_line_height
     }
 }
 
@@ -1034,6 +1246,61 @@ struct ThemeVariables {
     pie_outer_stroke_width: Option<NumberOrString>,
     pie_outer_stroke_color: Option<String>,
     pie_opacity: Option<NumberOrString>,
+    quadrant1_fill: Option<String>,
+    quadrant2_fill: Option<String>,
+    quadrant3_fill: Option<String>,
+    quadrant4_fill: Option<String>,
+    quadrant1_text_fill: Option<String>,
+    quadrant2_text_fill: Option<String>,
+    quadrant3_text_fill: Option<String>,
+    quadrant4_text_fill: Option<String>,
+    quadrant_point_fill: Option<String>,
+    quadrant_point_text_fill: Option<String>,
+    quadrant_x_axis_text_fill: Option<String>,
+    quadrant_y_axis_text_fill: Option<String>,
+    quadrant_internal_border_stroke_fill: Option<String>,
+    quadrant_external_border_stroke_fill: Option<String>,
+    quadrant_title_fill: Option<String>,
+    cynefin: Option<CynefinThemeVariables>,
+    #[serde(rename = "xyChart")]
+    xy_chart: Option<XYChartThemeVariables>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CynefinThemeVariables {
+    domain_font_size: Option<NumberOrString>,
+    item_font_size: Option<NumberOrString>,
+    boundary_color: Option<String>,
+    boundary_width: Option<NumberOrString>,
+    cliff_color: Option<String>,
+    cliff_width: Option<NumberOrString>,
+    arrow_color: Option<String>,
+    arrow_width: Option<NumberOrString>,
+    complex_bg: Option<String>,
+    complicated_bg: Option<String>,
+    chaotic_bg: Option<String>,
+    clear_bg: Option<String>,
+    confusion_bg: Option<String>,
+    text_color: Option<String>,
+    label_color: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct XYChartThemeVariables {
+    background_color: Option<String>,
+    title_color: Option<String>,
+    data_label_color: Option<String>,
+    x_axis_title_color: Option<String>,
+    x_axis_label_color: Option<String>,
+    x_axis_tick_color: Option<String>,
+    x_axis_line_color: Option<String>,
+    y_axis_title_color: Option<String>,
+    y_axis_label_color: Option<String>,
+    y_axis_tick_color: Option<String>,
+    y_axis_line_color: Option<String>,
+    plot_color_palette: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1109,6 +1376,64 @@ struct FlowchartObjectiveConfigFile {
     edge_label_weight: Option<f32>,
     endpoint_label_weight: Option<f32>,
     backedge_cross_weight: Option<f32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct XYChartAxisConfigFile {
+    show_label: Option<bool>,
+    label_font_size: Option<NumberOrString>,
+    label_padding: Option<NumberOrString>,
+    show_title: Option<bool>,
+    title_font_size: Option<NumberOrString>,
+    title_padding: Option<NumberOrString>,
+    show_tick: Option<bool>,
+    tick_length: Option<NumberOrString>,
+    tick_width: Option<NumberOrString>,
+    show_axis_line: Option<bool>,
+    axis_line_width: Option<NumberOrString>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct XYChartConfigFile {
+    width: Option<NumberOrString>,
+    height: Option<NumberOrString>,
+    title_font_size: Option<NumberOrString>,
+    title_padding: Option<NumberOrString>,
+    show_title: Option<bool>,
+    show_data_label: Option<bool>,
+    show_data_label_outside_bar: Option<bool>,
+    plot_reserved_space_percent: Option<NumberOrString>,
+    x_axis: Option<XYChartAxisConfigFile>,
+    y_axis: Option<XYChartAxisConfigFile>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct QuadrantConfigFile {
+    use_max_width: Option<bool>,
+    chart_width: Option<NumberOrString>,
+    chart_height: Option<NumberOrString>,
+    show_x_axis: Option<bool>,
+    show_y_axis: Option<bool>,
+    show_title: Option<bool>,
+    title_padding: Option<NumberOrString>,
+    title_font_size: Option<NumberOrString>,
+    quadrant_padding: Option<NumberOrString>,
+    x_axis_label_padding: Option<NumberOrString>,
+    y_axis_label_padding: Option<NumberOrString>,
+    x_axis_label_font_size: Option<NumberOrString>,
+    y_axis_label_font_size: Option<NumberOrString>,
+    quadrant_label_font_size: Option<NumberOrString>,
+    quadrant_text_top_padding: Option<NumberOrString>,
+    point_text_padding: Option<NumberOrString>,
+    point_label_font_size: Option<NumberOrString>,
+    point_radius: Option<NumberOrString>,
+    x_axis_position: Option<String>,
+    y_axis_position: Option<String>,
+    quadrant_internal_border_stroke_width: Option<NumberOrString>,
+    quadrant_external_border_stroke_width: Option<NumberOrString>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -1424,8 +1749,13 @@ struct TreemapConfigFile {
     render_mode: Option<TreemapRenderMode>,
     width: Option<f32>,
     height: Option<f32>,
+    node_width: Option<f32>,
+    node_height: Option<f32>,
+    diagram_padding: Option<f32>,
     padding: Option<f32>,
     gap: Option<f32>,
+    show_values: Option<bool>,
+    value_format: Option<String>,
     label_padding_x: Option<f32>,
     label_padding_y: Option<f32>,
     min_label_area: Option<f32>,
@@ -1446,6 +1776,32 @@ struct TreemapConfigFile {
     icon_ty: Option<f32>,
 }
 
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct SankeyConfigFile {
+    width: Option<f32>,
+    height: Option<f32>,
+    link_color: Option<String>,
+    node_alignment: Option<SankeyNodeAlignment>,
+    use_max_width: Option<bool>,
+    show_values: Option<bool>,
+    prefix: Option<String>,
+    suffix: Option<String>,
+    node_width: Option<f32>,
+    node_padding: Option<f32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CynefinConfigFile {
+    use_max_width: Option<bool>,
+    width: Option<f32>,
+    height: Option<f32>,
+    padding: Option<f32>,
+    show_domain_descriptions: Option<bool>,
+    boundary_amplitude: Option<f32>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ConfigFile {
@@ -1456,10 +1812,259 @@ struct ConfigFile {
     pie: Option<PieConfigFile>,
     requirement: Option<RequirementConfigFile>,
     mindmap: Option<MindmapConfigFile>,
+    #[serde(rename = "xyChart")]
+    xychart: Option<XYChartConfigFile>,
+    #[serde(rename = "quadrantChart")]
+    quadrant: Option<QuadrantConfigFile>,
     #[serde(rename = "gitGraph")]
     gitgraph: Option<GitGraphConfigFile>,
     c4: Option<C4ConfigFile>,
     treemap: Option<TreemapConfigFile>,
+    sankey: Option<SankeyConfigFile>,
+    cynefin: Option<CynefinConfigFile>,
+}
+
+fn xy_chart_palette(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|color| !color.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn apply_xy_chart_theme_variables(theme: &mut Theme, vars: XYChartThemeVariables) {
+    if let Some(v) = vars.background_color {
+        theme.xy_chart.background_color = v;
+    }
+    if let Some(v) = vars.title_color {
+        theme.xy_chart.title_color = v;
+    }
+    if let Some(v) = vars.data_label_color {
+        theme.xy_chart.data_label_color = v;
+    }
+    if let Some(v) = vars.x_axis_title_color {
+        theme.xy_chart.x_axis_title_color = v;
+    }
+    if let Some(v) = vars.x_axis_label_color {
+        theme.xy_chart.x_axis_label_color = v;
+    }
+    if let Some(v) = vars.x_axis_tick_color {
+        theme.xy_chart.x_axis_tick_color = v;
+    }
+    if let Some(v) = vars.x_axis_line_color {
+        theme.xy_chart.x_axis_line_color = v;
+    }
+    if let Some(v) = vars.y_axis_title_color {
+        theme.xy_chart.y_axis_title_color = v;
+    }
+    if let Some(v) = vars.y_axis_label_color {
+        theme.xy_chart.y_axis_label_color = v;
+    }
+    if let Some(v) = vars.y_axis_tick_color {
+        theme.xy_chart.y_axis_tick_color = v;
+    }
+    if let Some(v) = vars.y_axis_line_color {
+        theme.xy_chart.y_axis_line_color = v;
+    }
+    if let Some(v) = vars.plot_color_palette {
+        let palette = xy_chart_palette(&v);
+        if !palette.is_empty() {
+            theme.xy_chart.plot_colors = palette;
+        }
+    }
+}
+
+fn apply_cynefin_theme_variables(theme: &mut Theme, vars: CynefinThemeVariables) {
+    if let Some(v) = vars.domain_font_size.and_then(|v| v.as_f32()) {
+        theme.cynefin.domain_font_size = v;
+    }
+    if let Some(v) = vars.item_font_size.and_then(|v| v.as_f32()) {
+        theme.cynefin.item_font_size = v;
+    }
+    if let Some(v) = vars.boundary_color {
+        theme.cynefin.boundary_color = v;
+    }
+    if let Some(v) = vars.boundary_width.and_then(|v| v.as_f32()) {
+        theme.cynefin.boundary_width = v;
+    }
+    if let Some(v) = vars.cliff_color {
+        theme.cynefin.cliff_color = v;
+    }
+    if let Some(v) = vars.cliff_width.and_then(|v| v.as_f32()) {
+        theme.cynefin.cliff_width = v;
+    }
+    if let Some(v) = vars.arrow_color {
+        theme.cynefin.arrow_color = v;
+    }
+    if let Some(v) = vars.arrow_width.and_then(|v| v.as_f32()) {
+        theme.cynefin.arrow_width = v;
+    }
+    if let Some(v) = vars.complex_bg {
+        theme.cynefin.complex_bg = v;
+    }
+    if let Some(v) = vars.complicated_bg {
+        theme.cynefin.complicated_bg = v;
+    }
+    if let Some(v) = vars.chaotic_bg {
+        theme.cynefin.chaotic_bg = v;
+    }
+    if let Some(v) = vars.clear_bg {
+        theme.cynefin.clear_bg = v;
+    }
+    if let Some(v) = vars.confusion_bg {
+        theme.cynefin.confusion_bg = v;
+    }
+    if let Some(v) = vars.text_color {
+        theme.cynefin.text_color = v;
+    }
+    if let Some(v) = vars.label_color {
+        theme.cynefin.label_color = v;
+    }
+}
+
+fn apply_xy_chart_axis_config(axis: &mut XYChartAxisConfig, parsed: XYChartAxisConfigFile) {
+    if let Some(v) = parsed.show_label {
+        axis.show_label = v;
+    }
+    if let Some(v) = parsed.label_font_size.and_then(|v| v.as_f32()) {
+        axis.label_font_size = v;
+    }
+    if let Some(v) = parsed.label_padding.and_then(|v| v.as_f32()) {
+        axis.label_padding = v;
+    }
+    if let Some(v) = parsed.show_title {
+        axis.show_title = v;
+    }
+    if let Some(v) = parsed.title_font_size.and_then(|v| v.as_f32()) {
+        axis.title_font_size = v;
+    }
+    if let Some(v) = parsed.title_padding.and_then(|v| v.as_f32()) {
+        axis.title_padding = v;
+    }
+    if let Some(v) = parsed.show_tick {
+        axis.show_tick = v;
+    }
+    if let Some(v) = parsed.tick_length.and_then(|v| v.as_f32()) {
+        axis.tick_length = v;
+    }
+    if let Some(v) = parsed.tick_width.and_then(|v| v.as_f32()) {
+        axis.tick_width = v;
+    }
+    if let Some(v) = parsed.show_axis_line {
+        axis.show_axis_line = v;
+    }
+    if let Some(v) = parsed.axis_line_width.and_then(|v| v.as_f32()) {
+        axis.axis_line_width = v;
+    }
+}
+
+fn apply_xy_chart_config(config: &mut XYChartConfig, parsed: XYChartConfigFile) {
+    if let Some(v) = parsed.width.and_then(|v| v.as_f32()) {
+        config.width = v;
+    }
+    if let Some(v) = parsed.height.and_then(|v| v.as_f32()) {
+        config.height = v;
+    }
+    if let Some(v) = parsed.title_font_size.and_then(|v| v.as_f32()) {
+        config.title_font_size = v;
+    }
+    if let Some(v) = parsed.title_padding.and_then(|v| v.as_f32()) {
+        config.title_padding = v;
+    }
+    if let Some(v) = parsed.show_title {
+        config.show_title = v;
+    }
+    if let Some(v) = parsed.show_data_label {
+        config.show_data_label = v;
+    }
+    if let Some(v) = parsed.show_data_label_outside_bar {
+        config.show_data_label_outside_bar = v;
+    }
+    if let Some(v) = parsed.plot_reserved_space_percent.and_then(|v| v.as_f32()) {
+        config.plot_reserved_space_percent = v;
+    }
+    if let Some(v) = parsed.x_axis {
+        apply_xy_chart_axis_config(&mut config.x_axis, v);
+    }
+    if let Some(v) = parsed.y_axis {
+        apply_xy_chart_axis_config(&mut config.y_axis, v);
+    }
+}
+
+fn apply_quadrant_config(config: &mut QuadrantConfig, parsed: QuadrantConfigFile) {
+    if let Some(v) = parsed.use_max_width {
+        config.use_max_width = v;
+    }
+    if let Some(v) = parsed.chart_width.and_then(|v| v.as_f32()) {
+        config.chart_width = v;
+    }
+    if let Some(v) = parsed.chart_height.and_then(|v| v.as_f32()) {
+        config.chart_height = v;
+    }
+    if let Some(v) = parsed.show_x_axis {
+        config.show_x_axis = v;
+    }
+    if let Some(v) = parsed.show_y_axis {
+        config.show_y_axis = v;
+    }
+    if let Some(v) = parsed.show_title {
+        config.show_title = v;
+    }
+    if let Some(v) = parsed.title_padding.and_then(|v| v.as_f32()) {
+        config.title_padding = v;
+    }
+    if let Some(v) = parsed.title_font_size.and_then(|v| v.as_f32()) {
+        config.title_font_size = v;
+    }
+    if let Some(v) = parsed.quadrant_padding.and_then(|v| v.as_f32()) {
+        config.quadrant_padding = v;
+    }
+    if let Some(v) = parsed.x_axis_label_padding.and_then(|v| v.as_f32()) {
+        config.x_axis_label_padding = v;
+    }
+    if let Some(v) = parsed.y_axis_label_padding.and_then(|v| v.as_f32()) {
+        config.y_axis_label_padding = v;
+    }
+    if let Some(v) = parsed.x_axis_label_font_size.and_then(|v| v.as_f32()) {
+        config.x_axis_label_font_size = v;
+    }
+    if let Some(v) = parsed.y_axis_label_font_size.and_then(|v| v.as_f32()) {
+        config.y_axis_label_font_size = v;
+    }
+    if let Some(v) = parsed.quadrant_label_font_size.and_then(|v| v.as_f32()) {
+        config.quadrant_label_font_size = v;
+    }
+    if let Some(v) = parsed.quadrant_text_top_padding.and_then(|v| v.as_f32()) {
+        config.quadrant_text_top_padding = v;
+    }
+    if let Some(v) = parsed.point_text_padding.and_then(|v| v.as_f32()) {
+        config.point_text_padding = v;
+    }
+    if let Some(v) = parsed.point_label_font_size.and_then(|v| v.as_f32()) {
+        config.point_label_font_size = v;
+    }
+    if let Some(v) = parsed.point_radius.and_then(|v| v.as_f32()) {
+        config.point_radius = v;
+    }
+    if let Some(v) = parsed.x_axis_position {
+        config.x_axis_position = v;
+    }
+    if let Some(v) = parsed.y_axis_position {
+        config.y_axis_position = v;
+    }
+    if let Some(v) = parsed
+        .quadrant_internal_border_stroke_width
+        .and_then(|v| v.as_f32())
+    {
+        config.quadrant_internal_border_stroke_width = v;
+    }
+    if let Some(v) = parsed
+        .quadrant_external_border_stroke_width
+        .and_then(|v| v.as_f32())
+    {
+        config.quadrant_external_border_stroke_width = v;
+    }
 }
 
 pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
@@ -1718,6 +2323,57 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
         {
             config.theme.pie_opacity = opacity;
         }
+        if let Some(v) = vars.quadrant1_fill {
+            config.theme.quadrant.fills[0] = v;
+        }
+        if let Some(v) = vars.quadrant2_fill {
+            config.theme.quadrant.fills[1] = v;
+        }
+        if let Some(v) = vars.quadrant3_fill {
+            config.theme.quadrant.fills[2] = v;
+        }
+        if let Some(v) = vars.quadrant4_fill {
+            config.theme.quadrant.fills[3] = v;
+        }
+        if let Some(v) = vars.quadrant1_text_fill {
+            config.theme.quadrant.text_fills[0] = v;
+        }
+        if let Some(v) = vars.quadrant2_text_fill {
+            config.theme.quadrant.text_fills[1] = v;
+        }
+        if let Some(v) = vars.quadrant3_text_fill {
+            config.theme.quadrant.text_fills[2] = v;
+        }
+        if let Some(v) = vars.quadrant4_text_fill {
+            config.theme.quadrant.text_fills[3] = v;
+        }
+        if let Some(v) = vars.quadrant_point_fill {
+            config.theme.quadrant.point_fill = v;
+        }
+        if let Some(v) = vars.quadrant_point_text_fill {
+            config.theme.quadrant.point_text_fill = v;
+        }
+        if let Some(v) = vars.quadrant_x_axis_text_fill {
+            config.theme.quadrant.x_axis_text_fill = v;
+        }
+        if let Some(v) = vars.quadrant_y_axis_text_fill {
+            config.theme.quadrant.y_axis_text_fill = v;
+        }
+        if let Some(v) = vars.quadrant_internal_border_stroke_fill {
+            config.theme.quadrant.internal_border_stroke_fill = v;
+        }
+        if let Some(v) = vars.quadrant_external_border_stroke_fill {
+            config.theme.quadrant.external_border_stroke_fill = v;
+        }
+        if let Some(v) = vars.quadrant_title_fill {
+            config.theme.quadrant.title_fill = v;
+        }
+        if let Some(v) = vars.cynefin {
+            apply_cynefin_theme_variables(&mut config.theme, v);
+        }
+        if let Some(v) = vars.xy_chart {
+            apply_xy_chart_theme_variables(&mut config.theme, v);
+        }
     }
 
     if let Some(ratio) = parsed
@@ -1825,6 +2481,14 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
                 config.layout.flowchart.objective.backedge_cross_weight = v;
             }
         }
+    }
+
+    if let Some(xychart) = parsed.xychart {
+        apply_xy_chart_config(&mut config.layout.xychart, xychart);
+    }
+
+    if let Some(quadrant) = parsed.quadrant {
+        apply_quadrant_config(&mut config.layout.quadrant, quadrant);
     }
 
     if let Some(pie) = parsed.pie {
@@ -2712,11 +3376,27 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
         if let Some(v) = treemap.height {
             config.layout.treemap.height = v;
         }
+        if let Some(v) = treemap.node_width {
+            config.layout.treemap.width = v * 10.0;
+        }
+        if let Some(v) = treemap.node_height {
+            config.layout.treemap.height = v * 10.0;
+        }
+        if let Some(v) = treemap.diagram_padding {
+            config.layout.treemap.diagram_padding = v;
+        }
         if let Some(v) = treemap.padding {
             config.layout.treemap.padding = v;
+            config.layout.treemap.gap = v;
         }
         if let Some(v) = treemap.gap {
             config.layout.treemap.gap = v;
+        }
+        if let Some(v) = treemap.show_values {
+            config.layout.treemap.show_values = v;
+        }
+        if let Some(v) = treemap.value_format {
+            config.layout.treemap.value_format = v;
         }
         if let Some(v) = treemap.label_padding_x {
             config.layout.treemap.label_padding_x = v;
@@ -2771,6 +3451,60 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
         }
         if let Some(v) = treemap.icon_ty {
             config.layout.treemap.icon_ty = v;
+        }
+    }
+
+    if let Some(sankey) = parsed.sankey {
+        if let Some(v) = sankey.width {
+            config.layout.sankey.width = v;
+        }
+        if let Some(v) = sankey.height {
+            config.layout.sankey.height = v;
+        }
+        if let Some(v) = sankey.link_color {
+            config.layout.sankey.link_color = v;
+        }
+        if let Some(v) = sankey.node_alignment {
+            config.layout.sankey.node_alignment = v;
+        }
+        if let Some(v) = sankey.use_max_width {
+            config.layout.sankey.use_max_width = v;
+        }
+        if let Some(v) = sankey.show_values {
+            config.layout.sankey.show_values = v;
+        }
+        if let Some(v) = sankey.prefix {
+            config.layout.sankey.prefix = v;
+        }
+        if let Some(v) = sankey.suffix {
+            config.layout.sankey.suffix = v;
+        }
+        if let Some(v) = sankey.node_width {
+            config.layout.sankey.node_width = v;
+        }
+        if let Some(v) = sankey.node_padding {
+            config.layout.sankey.node_padding = v;
+        }
+    }
+
+    if let Some(cynefin) = parsed.cynefin {
+        if let Some(v) = cynefin.use_max_width {
+            config.layout.cynefin.use_max_width = v;
+        }
+        if let Some(v) = cynefin.width {
+            config.layout.cynefin.width = v;
+        }
+        if let Some(v) = cynefin.height {
+            config.layout.cynefin.height = v;
+        }
+        if let Some(v) = cynefin.padding {
+            config.layout.cynefin.padding = v;
+        }
+        if let Some(v) = cynefin.show_domain_descriptions {
+            config.layout.cynefin.show_domain_descriptions = v;
+        }
+        if let Some(v) = cynefin.boundary_amplitude {
+            config.layout.cynefin.boundary_amplitude = v;
         }
     }
 

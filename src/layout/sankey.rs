@@ -1,24 +1,55 @@
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::config::LayoutConfig;
+use crate::config::{LayoutConfig, SankeyNodeAlignment};
 use crate::ir::Graph;
 use crate::theme::Theme;
 
 use super::text::measure_label;
 use super::{
     DiagramData, EdgeLayout, Layout, NodeLayout, SankeyLayout, SankeyLinkLayout, SankeyNodeLayout,
-    resolve_node_style,
 };
 
+const SANKEY_ITERATIONS: usize = 6;
+const SANKEY_PALETTE: [&str; 10] = [
+    "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7",
+    "#9c755f", "#bab0ab",
+];
+
+#[derive(Debug, Clone)]
+struct SankeyNodeData {
+    id: String,
+    label: String,
+    value: f64,
+    depth: usize,
+    height: usize,
+    layer: usize,
+    source_links: Vec<usize>,
+    target_links: Vec<usize>,
+    x0: f64,
+    x1: f64,
+    y0: f64,
+    y1: f64,
+    color: String,
+}
+
+#[derive(Debug, Clone)]
+struct SankeyLinkData {
+    source: usize,
+    target: usize,
+    value: f64,
+    width: f64,
+    y0: f64,
+    y1: f64,
+    index: usize,
+}
+
 pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &LayoutConfig) -> Layout {
-    const SANKEY_MIN_WIDTH: f32 = 560.0;
-    const SANKEY_MAX_WIDTH: f32 = 640.0;
-    const SANKEY_HEIGHT: f32 = 360.0;
-    const SANKEY_NODE_WIDTH: f32 = 10.0;
-    const SANKEY_PALETTE: [&str; 10] = [
-        "#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7",
-        "#9c755f", "#bab0ab",
-    ];
+    let sankey_config = &config.sankey;
+    let node_width = f64::from(sankey_config.node_width.max(0.0));
+    let width = f64::from(sankey_config.width).max(node_width);
+    let height = f64::from(sankey_config.height.max(1.0));
+    let node_padding = f64::from(sankey_config.node_padding.max(0.0))
+        + if sankey_config.show_values { 15.0 } else { 0.0 };
 
     let mut node_ids: Vec<String> = graph.nodes.keys().cloned().collect();
     node_ids.sort_by(|a, b| {
@@ -27,237 +58,98 @@ pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &Layou
         order_a.cmp(&order_b).then_with(|| a.cmp(b))
     });
 
-    let node_count = node_ids.len();
     let mut id_to_idx: HashMap<String, usize> = HashMap::new();
     for (idx, id) in node_ids.iter().enumerate() {
         id_to_idx.insert(id.clone(), idx);
     }
 
-    let node_order_idx: Vec<usize> = node_ids
+    let mut nodes: Vec<SankeyNodeData> = node_ids
         .iter()
-        .map(|id| graph.node_order.get(id).copied().unwrap_or(usize::MAX))
+        .enumerate()
+        .map(|(idx, id)| {
+            let label = graph
+                .nodes
+                .get(id)
+                .map(|node| node.label.clone())
+                .unwrap_or_else(|| id.clone());
+            SankeyNodeData {
+                id: id.clone(),
+                label,
+                value: 0.0,
+                depth: 0,
+                height: 0,
+                layer: 0,
+                source_links: Vec::new(),
+                target_links: Vec::new(),
+                x0: 0.0,
+                x1: node_width,
+                y0: 0.0,
+                y1: 0.0,
+                color: SANKEY_PALETTE[idx % SANKEY_PALETTE.len()].to_string(),
+            }
+        })
         .collect();
 
-    #[derive(Debug, Clone)]
-    struct SankeyEdgeData {
-        from_idx: usize,
-        to_idx: usize,
-        value: f32,
-    }
-
-    let mut edges_data: Vec<SankeyEdgeData> = Vec::new();
-    let mut incoming: Vec<Vec<usize>> = vec![Vec::new(); node_count];
-    let mut outgoing: Vec<Vec<usize>> = vec![Vec::new(); node_count];
-    let mut indegree: Vec<usize> = vec![0; node_count];
-    let mut in_total: Vec<f32> = vec![0.0; node_count];
-    let mut out_total: Vec<f32> = vec![0.0; node_count];
-
+    let mut links = Vec::new();
     for edge in &graph.edges {
-        let Some(&from_idx) = id_to_idx.get(&edge.from) else {
+        let Some(&source) = id_to_idx.get(&edge.from) else {
             continue;
         };
-        let Some(&to_idx) = id_to_idx.get(&edge.to) else {
+        let Some(&target) = id_to_idx.get(&edge.to) else {
             continue;
         };
         let raw_value = edge
             .label
             .as_deref()
-            .and_then(|text| text.parse::<f32>().ok())
+            .and_then(|text| text.parse::<f64>().ok())
             .unwrap_or(1.0);
         let value = raw_value.max(0.0);
-        let edge_idx = edges_data.len();
-        edges_data.push(SankeyEdgeData {
-            from_idx,
-            to_idx,
+        let index = links.len();
+        links.push(SankeyLinkData {
+            source,
+            target,
             value,
+            width: 0.0,
+            y0: 0.0,
+            y1: 0.0,
+            index,
         });
-        outgoing[from_idx].push(edge_idx);
-        incoming[to_idx].push(edge_idx);
-        indegree[to_idx] += 1;
-        out_total[from_idx] += value;
-        in_total[to_idx] += value;
+        nodes[source].source_links.push(index);
+        nodes[target].target_links.push(index);
     }
 
-    let mut ranks = vec![0usize; node_count];
-    let mut indegree_work = indegree.clone();
-    let mut queue: VecDeque<usize> = indegree_work
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, deg)| (*deg == 0).then_some(idx))
-        .collect();
-    let mut topo = Vec::with_capacity(node_count);
-    while let Some(node_idx) = queue.pop_front() {
-        topo.push(node_idx);
-        for &edge_idx in &outgoing[node_idx] {
-            let to_idx = edges_data[edge_idx].to_idx;
-            if indegree_work[to_idx] > 0 {
-                indegree_work[to_idx] -= 1;
-                if indegree_work[to_idx] == 0 {
-                    queue.push_back(to_idx);
-                }
-            }
-        }
-    }
-    if topo.len() == node_count {
-        for &node_idx in &topo {
-            for &edge_idx in &outgoing[node_idx] {
-                let to_idx = edges_data[edge_idx].to_idx;
-                ranks[to_idx] = ranks[to_idx].max(ranks[node_idx] + 1);
-            }
-        }
-    }
-
-    let max_rank = ranks.iter().copied().max().unwrap_or(0);
-    let num_ranks = max_rank + 1;
-    let sankey_width = (SANKEY_MIN_WIDTH + num_ranks.saturating_sub(2) as f32 * 25.0)
-        .clamp(SANKEY_MIN_WIDTH, SANKEY_MAX_WIDTH);
-    let gap_x = if num_ranks > 1 {
-        ((sankey_width - SANKEY_NODE_WIDTH * num_ranks as f32) / (num_ranks - 1) as f32).max(0.0)
-    } else {
-        0.0
-    };
-
-    let mut totals = vec![0.0f32; node_count];
-    for idx in 0..node_count {
-        let total = in_total[idx].max(out_total[idx]);
-        totals[idx] = if total > 0.0 { total } else { 1.0 };
-    }
-    let max_total = totals.iter().copied().fold(0.0, f32::max).max(1.0);
-    let scale = SANKEY_HEIGHT / max_total;
-
-    let mut node_x = vec![0.0f32; node_count];
-    let mut node_y = vec![0.0f32; node_count];
-    let mut node_h = vec![0.0f32; node_count];
-    for idx in 0..node_count {
-        let rank = ranks[idx];
-        node_x[idx] = rank as f32 * (SANKEY_NODE_WIDTH + gap_x);
-        node_h[idx] = totals[idx] * scale;
-    }
-
-    let mut rank_nodes: Vec<Vec<usize>> = vec![Vec::new(); num_ranks];
-    for idx in 0..node_count {
-        rank_nodes[ranks[idx]].push(idx);
-    }
-    for nodes_in_rank in &mut rank_nodes {
-        nodes_in_rank.sort_by(|a, b| {
-            node_order_idx[*a]
-                .cmp(&node_order_idx[*b])
-                .then_with(|| node_ids[*a].cmp(&node_ids[*b]))
-        });
-    }
-
-    let mut outbound_order = outgoing.clone();
-    for edges in &mut outbound_order {
-        edges.sort_by(|a, b| {
-            let target_a = edges_data[*a].to_idx;
-            let target_b = edges_data[*b].to_idx;
-            ranks[target_b]
-                .cmp(&ranks[target_a])
-                .then_with(|| node_order_idx[target_a].cmp(&node_order_idx[target_b]))
-                .then_with(|| node_ids[target_a].cmp(&node_ids[target_b]))
-        });
-    }
-
-    let edge_thickness: Vec<f32> = edges_data.iter().map(|edge| edge.value * scale).collect();
-    let mut link_top = vec![0.0f32; edges_data.len()];
-    let mut outbound_offset = vec![0.0f32; edges_data.len()];
-    let mut acc = vec![0.0f32; node_count];
-
-    fn compute_link_tops(
-        node_positions: &[f32],
-        outbound_order: &[Vec<usize>],
-        edge_thickness: &[f32],
-        link_top: &mut [f32],
-        outbound_offset: &mut [f32],
-        acc: &mut [f32],
-    ) {
-        link_top.fill(0.0);
-        outbound_offset.fill(0.0);
-        acc.fill(0.0);
-        for source_idx in 0..outbound_order.len() {
-            for &edge_idx in &outbound_order[source_idx] {
-                let offset = acc[source_idx];
-                outbound_offset[edge_idx] = offset;
-                link_top[edge_idx] = node_positions[source_idx] + offset;
-                acc[source_idx] += edge_thickness[edge_idx];
-            }
-        }
-    }
-
-    for rank in 1..=max_rank {
-        compute_link_tops(
-            &node_y,
-            &outbound_order,
-            &edge_thickness,
-            &mut link_top,
-            &mut outbound_offset,
-            &mut acc,
-        );
-        for &node_idx in &rank_nodes[rank] {
-            let mut min_top = f32::INFINITY;
-            for &edge_idx in &incoming[node_idx] {
-                let from_idx = edges_data[edge_idx].from_idx;
-                if ranks[from_idx] >= rank {
-                    continue;
-                }
-                min_top = min_top.min(link_top[edge_idx]);
-            }
-            if !min_top.is_finite() {
-                continue;
-            }
-            let max_y = (SANKEY_HEIGHT - node_h[node_idx]).max(0.0);
-            node_y[node_idx] = min_top.clamp(0.0, max_y);
-        }
-    }
-    compute_link_tops(
-        &node_y,
-        &outbound_order,
-        &edge_thickness,
-        &mut link_top,
-        &mut outbound_offset,
-        &mut acc,
+    compute_node_values(&mut nodes, &links);
+    compute_node_depths(&mut nodes, &links);
+    compute_node_heights(&mut nodes, &links);
+    let mut columns = compute_node_layers(
+        &mut nodes,
+        &links,
+        width,
+        node_width,
+        &sankey_config.node_alignment,
     );
+    compute_node_breadths(&mut nodes, &mut links, &mut columns, height, node_padding);
+    compute_link_breadths(&nodes, &mut links);
 
-    let mut node_colors = Vec::with_capacity(node_count);
-    for idx in 0..node_count {
-        let default_color = SANKEY_PALETTE[idx % SANKEY_PALETTE.len()].to_string();
-        let mut style = resolve_node_style(node_ids[idx].as_str(), graph);
-        let color = style.fill.clone().unwrap_or(default_color);
-        if style.fill.is_none() {
-            style.fill = Some(color.clone());
-        }
-        if style.stroke.is_none() {
-            style.stroke = Some("none".to_string());
-        }
-        if style.stroke_width.is_none() {
-            style.stroke_width = Some(0.0);
-        }
-        node_colors.push((color, style));
-    }
-
-    let mut nodes = BTreeMap::new();
-    let mut sankey_nodes = Vec::with_capacity(node_count);
-    for idx in 0..node_count {
-        let id = node_ids[idx].clone();
-        let label = graph
-            .nodes
-            .get(&id)
-            .map(|node| node.label.clone())
-            .unwrap_or_else(|| id.clone());
-        let (color, style) = &node_colors[idx];
-        let label_block = measure_label(&label, theme, config);
-        nodes.insert(
-            id.clone(),
+    let mut layout_nodes = BTreeMap::new();
+    let mut sankey_nodes = Vec::with_capacity(nodes.len());
+    for node in &nodes {
+        let mut style = crate::ir::NodeStyle::default();
+        style.fill = Some(node.color.clone());
+        style.stroke = Some("none".to_string());
+        style.stroke_width = Some(0.0);
+        layout_nodes.insert(
+            node.id.clone(),
             NodeLayout {
-                id: id.clone(),
-                x: node_x[idx],
-                y: node_y[idx],
-                width: SANKEY_NODE_WIDTH,
-                height: node_h[idx],
-                label: label_block,
+                id: node.id.clone(),
+                x: node.x0 as f32,
+                y: node.y0 as f32,
+                width: (node.x1 - node.x0) as f32,
+                height: (node.y1 - node.y0) as f32,
+                label: measure_label(&node.label, theme, config),
                 shape: crate::ir::NodeShape::Rectangle,
-                style: style.clone(),
-                link: graph.node_links.get(&id).cloned(),
+                style,
+                link: graph.node_links.get(&node.id).cloned(),
                 anchor_subgraph: None,
                 hidden: false,
                 icon: None,
@@ -266,49 +158,42 @@ pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &Layou
                 img_h: None,
                 sub_label: None,
                 is_treemap_leaf: false,
+                treemap_base_text_color: None,
             },
         );
         sankey_nodes.push(SankeyNodeLayout {
-            id: id.clone(),
-            label,
-            total: totals[idx],
-            rank: ranks[idx],
-            x: node_x[idx],
-            y: node_y[idx],
-            width: SANKEY_NODE_WIDTH,
-            height: node_h[idx],
-            color: color.clone(),
+            id: node.id.clone(),
+            label: node.label.clone(),
+            total: node.value as f32,
+            rank: node.layer,
+            x: node.x0 as f32,
+            y: node.y0 as f32,
+            width: (node.x1 - node.x0) as f32,
+            height: (node.y1 - node.y0) as f32,
+            color: node.color.clone(),
         });
     }
 
-    let mut edges = Vec::with_capacity(edges_data.len());
-    let mut sankey_links = Vec::with_capacity(edges_data.len());
-    for (edge_idx, edge) in edges_data.iter().enumerate() {
-        let from_id = node_ids[edge.from_idx].clone();
-        let to_id = node_ids[edge.to_idx].clone();
-        let thickness = edge_thickness[edge_idx];
-        if thickness <= 0.0 {
-            continue;
-        }
-        let start_x = node_x[edge.from_idx] + SANKEY_NODE_WIDTH;
-        let end_x = node_x[edge.to_idx];
-        let start_y = node_y[edge.from_idx] + outbound_offset[edge_idx] + thickness / 2.0;
-        let inbound_offset = (link_top[edge_idx] - node_y[edge.to_idx]).max(0.0);
-        let end_y = node_y[edge.to_idx] + inbound_offset + thickness / 2.0;
-        let (color_start, _) = &node_colors[edge.from_idx];
-        let (color_end, _) = &node_colors[edge.to_idx];
-        let gradient_id = format!("sankey-grad-{edge_idx}");
+    let mut layout_edges = Vec::with_capacity(links.len());
+    let mut sankey_links = Vec::with_capacity(links.len());
+    for link in &links {
+        let source = &nodes[link.source];
+        let target = &nodes[link.target];
+        let start = (source.x1 as f32, link.y0 as f32);
+        let end = (target.x0 as f32, link.y1 as f32);
+        let thickness = link.width as f32;
+        let gradient_id = format!("linearGradient-{}", nodes.len() + link.index + 1);
 
-        edges.push(EdgeLayout {
-            from: from_id.clone(),
-            to: to_id.clone(),
+        layout_edges.push(EdgeLayout {
+            from: source.id.clone(),
+            to: target.id.clone(),
             label: None,
             start_label: None,
             end_label: None,
             label_anchor: None,
             start_label_anchor: None,
             end_label_anchor: None,
-            points: vec![(start_x, start_y), (end_x, end_y)],
+            points: vec![start, end],
             directed: false,
             arrow_start: false,
             arrow_end: false,
@@ -320,41 +205,482 @@ pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &Layou
             sequence_arrow_start: None,
             style: crate::ir::EdgeStyle::Solid,
             override_style: crate::ir::EdgeStyleOverride {
-                stroke: Some(color_start.clone()),
-                stroke_width: Some(thickness),
+                stroke: Some(source.color.clone()),
+                stroke_width: Some(thickness.max(1.0)),
                 dasharray: None,
                 label_color: None,
             },
             curve: None,
         });
         sankey_links.push(SankeyLinkLayout {
-            source: from_id,
-            target: to_id,
-            value: edge.value,
+            source: source.id.clone(),
+            target: target.id.clone(),
+            value: link.value as f32,
             thickness,
-            start: (start_x, start_y),
-            end: (end_x, end_y),
-            color_start: color_start.clone(),
-            color_end: color_end.clone(),
+            start,
+            end,
+            color_start: source.color.clone(),
+            color_end: target.color.clone(),
             gradient_id,
         });
     }
 
     Layout {
         kind: graph.kind,
-        nodes,
-        edges,
+        nodes: layout_nodes,
+        edges: layout_edges,
         subgraphs: Vec::new(),
-        width: sankey_width,
-        height: SANKEY_HEIGHT,
+        width: width as f32,
+        height: height as f32,
         acc_title: None,
         acc_descr: None,
         diagram: DiagramData::Sankey(SankeyLayout {
-            width: sankey_width,
-            height: SANKEY_HEIGHT,
-            node_width: SANKEY_NODE_WIDTH,
+            width: width as f32,
+            height: height as f32,
+            node_width: node_width as f32,
+            show_values: sankey_config.show_values,
+            prefix: sankey_config.prefix.clone(),
+            suffix: sankey_config.suffix.clone(),
+            link_color: sankey_config.link_color.clone(),
+            use_max_width: sankey_config.use_max_width,
             nodes: sankey_nodes,
             links: sankey_links,
         }),
     }
+}
+
+fn compute_node_values(nodes: &mut [SankeyNodeData], links: &[SankeyLinkData]) {
+    for idx in 0..nodes.len() {
+        let source_total = nodes[idx]
+            .source_links
+            .iter()
+            .map(|link_idx| links[*link_idx].value)
+            .sum::<f64>();
+        let target_total = nodes[idx]
+            .target_links
+            .iter()
+            .map(|link_idx| links[*link_idx].value)
+            .sum::<f64>();
+        nodes[idx].value = source_total.max(target_total);
+    }
+}
+
+fn compute_node_depths(nodes: &mut [SankeyNodeData], links: &[SankeyLinkData]) {
+    let n = nodes.len();
+    let mut current: Vec<usize> = (0..n).collect();
+    let mut depth = 0usize;
+    while !current.is_empty() {
+        let mut next = Vec::new();
+        let mut seen = HashSet::new();
+        for &node_idx in &current {
+            nodes[node_idx].depth = depth;
+            for &link_idx in &nodes[node_idx].source_links {
+                let target = links[link_idx].target;
+                if seen.insert(target) {
+                    next.push(target);
+                }
+            }
+        }
+        depth += 1;
+        if depth > n {
+            break;
+        }
+        current = next;
+    }
+}
+
+fn compute_node_heights(nodes: &mut [SankeyNodeData], links: &[SankeyLinkData]) {
+    let n = nodes.len();
+    let mut current: Vec<usize> = (0..n).collect();
+    let mut height = 0usize;
+    while !current.is_empty() {
+        let mut next = Vec::new();
+        let mut seen = HashSet::new();
+        for &node_idx in &current {
+            nodes[node_idx].height = height;
+            for &link_idx in &nodes[node_idx].target_links {
+                let source = links[link_idx].source;
+                if seen.insert(source) {
+                    next.push(source);
+                }
+            }
+        }
+        height += 1;
+        if height > n {
+            break;
+        }
+        current = next;
+    }
+}
+
+fn compute_node_layers(
+    nodes: &mut [SankeyNodeData],
+    links: &[SankeyLinkData],
+    width: f64,
+    node_width: f64,
+    alignment: &SankeyNodeAlignment,
+) -> Vec<Vec<usize>> {
+    let column_count = nodes.iter().map(|node| node.depth).max().unwrap_or(0) + 1;
+    let kx = if column_count > 1 {
+        (width - node_width) / (column_count - 1) as f64
+    } else {
+        0.0
+    };
+    let mut columns = vec![Vec::new(); column_count];
+
+    for node_idx in 0..nodes.len() {
+        let aligned = match alignment {
+            SankeyNodeAlignment::Left => nodes[node_idx].depth as isize,
+            SankeyNodeAlignment::Right => {
+                column_count as isize - 1 - nodes[node_idx].height as isize
+            }
+            SankeyNodeAlignment::Center => {
+                if !nodes[node_idx].target_links.is_empty() {
+                    nodes[node_idx].depth as isize
+                } else if !nodes[node_idx].source_links.is_empty() {
+                    nodes[node_idx]
+                        .source_links
+                        .iter()
+                        .map(|link_idx| nodes[links[*link_idx].target].depth)
+                        .min()
+                        .unwrap_or(1)
+                        .saturating_sub(1) as isize
+                } else {
+                    0
+                }
+            }
+            SankeyNodeAlignment::Justify => {
+                if nodes[node_idx].source_links.is_empty() {
+                    column_count as isize - 1
+                } else {
+                    nodes[node_idx].depth as isize
+                }
+            }
+        };
+        let layer = aligned.clamp(0, column_count.saturating_sub(1) as isize) as usize;
+        nodes[node_idx].layer = layer;
+        nodes[node_idx].x0 = layer as f64 * kx;
+        nodes[node_idx].x1 = nodes[node_idx].x0 + node_width;
+        columns[layer].push(node_idx);
+    }
+
+    columns
+}
+
+fn compute_node_breadths(
+    nodes: &mut [SankeyNodeData],
+    links: &mut [SankeyLinkData],
+    columns: &mut [Vec<usize>],
+    height: f64,
+    node_padding: f64,
+) -> f64 {
+    let max_column_len = columns.iter().map(|column| column.len()).max().unwrap_or(0);
+    let py = if max_column_len > 1 {
+        node_padding.min(height / (max_column_len - 1) as f64)
+    } else {
+        node_padding
+    };
+    initialize_node_breadths(nodes, links, columns, height, py);
+    for i in 0..SANKEY_ITERATIONS {
+        let alpha = 0.99_f64.powi(i as i32);
+        let beta = (1.0 - alpha).max((i + 1) as f64 / SANKEY_ITERATIONS as f64);
+        relax_right_to_left(nodes, links, columns, height, py, alpha, beta);
+        relax_left_to_right(nodes, links, columns, height, py, alpha, beta);
+    }
+    py
+}
+
+fn initialize_node_breadths(
+    nodes: &mut [SankeyNodeData],
+    links: &mut [SankeyLinkData],
+    columns: &mut [Vec<usize>],
+    height: f64,
+    py: f64,
+) {
+    let mut ky = f64::INFINITY;
+    for column in columns.iter() {
+        let column_total = column.iter().map(|idx| nodes[*idx].value).sum::<f64>();
+        if column_total <= 0.0 {
+            continue;
+        }
+        let available = height - column.len().saturating_sub(1) as f64 * py;
+        ky = ky.min(available / column_total);
+    }
+    if !ky.is_finite() {
+        ky = 1.0;
+    }
+
+    for column in columns.iter() {
+        let mut y = 0.0;
+        for &node_idx in column {
+            nodes[node_idx].y0 = y;
+            nodes[node_idx].y1 = y + nodes[node_idx].value * ky;
+            y = nodes[node_idx].y1 + py;
+            for &link_idx in &nodes[node_idx].source_links {
+                links[link_idx].width = links[link_idx].value * ky;
+            }
+        }
+        y = (height - y + py) / (column.len() + 1) as f64;
+        for (idx, &node_idx) in column.iter().enumerate() {
+            let dy = y * (idx + 1) as f64;
+            nodes[node_idx].y0 += dy;
+            nodes[node_idx].y1 += dy;
+        }
+        reorder_links(column, nodes, links);
+    }
+}
+
+fn relax_left_to_right(
+    nodes: &mut [SankeyNodeData],
+    links: &[SankeyLinkData],
+    columns: &mut [Vec<usize>],
+    height: f64,
+    py: f64,
+    alpha: f64,
+    beta: f64,
+) {
+    for column_idx in 1..columns.len() {
+        let column_nodes = columns[column_idx].clone();
+        for target in column_nodes {
+            let mut y = 0.0;
+            let mut w = 0.0;
+            for &link_idx in &nodes[target].target_links {
+                let source = links[link_idx].source;
+                let v = links[link_idx].value
+                    * (nodes[target].layer as f64 - nodes[source].layer as f64);
+                y += target_top(source, target, nodes, links, py) * v;
+                w += v;
+            }
+            if w <= 0.0 {
+                continue;
+            }
+            let dy = (y / w - nodes[target].y0) * alpha;
+            nodes[target].y0 += dy;
+            nodes[target].y1 += dy;
+            reorder_node_links(target, nodes, links);
+        }
+        columns[column_idx].sort_by(|a, b| compare_node_breadth(nodes, *a, *b));
+        resolve_collisions(&columns[column_idx], nodes, height, py, beta);
+    }
+}
+
+fn relax_right_to_left(
+    nodes: &mut [SankeyNodeData],
+    links: &[SankeyLinkData],
+    columns: &mut [Vec<usize>],
+    height: f64,
+    py: f64,
+    alpha: f64,
+    beta: f64,
+) {
+    if columns.len() < 2 {
+        return;
+    }
+    for column_idx in (0..columns.len() - 1).rev() {
+        let column_nodes = columns[column_idx].clone();
+        for source in column_nodes {
+            let mut y = 0.0;
+            let mut w = 0.0;
+            for &link_idx in &nodes[source].source_links {
+                let target = links[link_idx].target;
+                let v = links[link_idx].value
+                    * (nodes[target].layer as f64 - nodes[source].layer as f64);
+                y += source_top(source, target, nodes, links, py) * v;
+                w += v;
+            }
+            if w <= 0.0 {
+                continue;
+            }
+            let dy = (y / w - nodes[source].y0) * alpha;
+            nodes[source].y0 += dy;
+            nodes[source].y1 += dy;
+            reorder_node_links(source, nodes, links);
+        }
+        columns[column_idx].sort_by(|a, b| compare_node_breadth(nodes, *a, *b));
+        resolve_collisions(&columns[column_idx], nodes, height, py, beta);
+    }
+}
+
+fn resolve_collisions(
+    column: &[usize],
+    nodes: &mut [SankeyNodeData],
+    height: f64,
+    py: f64,
+    alpha: f64,
+) {
+    if column.is_empty() {
+        return;
+    }
+    let middle = column.len() >> 1;
+    let subject = column[middle];
+    let subject_top = nodes[subject].y0;
+    let subject_bottom = nodes[subject].y1;
+    resolve_collisions_bottom_to_top(
+        column,
+        subject_top - py,
+        middle as isize - 1,
+        nodes,
+        py,
+        alpha,
+    );
+    resolve_collisions_top_to_bottom(column, subject_bottom + py, middle + 1, nodes, py, alpha);
+    resolve_collisions_bottom_to_top(column, height, column.len() as isize - 1, nodes, py, alpha);
+    resolve_collisions_top_to_bottom(column, 0.0, 0, nodes, py, alpha);
+}
+
+fn resolve_collisions_top_to_bottom(
+    column: &[usize],
+    mut y: f64,
+    mut idx: usize,
+    nodes: &mut [SankeyNodeData],
+    py: f64,
+    alpha: f64,
+) {
+    while idx < column.len() {
+        let node_idx = column[idx];
+        let dy = (y - nodes[node_idx].y0) * alpha;
+        if dy > 1e-6 {
+            nodes[node_idx].y0 += dy;
+            nodes[node_idx].y1 += dy;
+        }
+        y = nodes[node_idx].y1 + py;
+        idx += 1;
+    }
+}
+
+fn resolve_collisions_bottom_to_top(
+    column: &[usize],
+    mut y: f64,
+    mut idx: isize,
+    nodes: &mut [SankeyNodeData],
+    py: f64,
+    alpha: f64,
+) {
+    while idx >= 0 {
+        let node_idx = column[idx as usize];
+        let dy = (nodes[node_idx].y1 - y) * alpha;
+        if dy > 1e-6 {
+            nodes[node_idx].y0 -= dy;
+            nodes[node_idx].y1 -= dy;
+        }
+        y = nodes[node_idx].y0 - py;
+        idx -= 1;
+    }
+}
+
+fn reorder_node_links(node_idx: usize, nodes: &mut [SankeyNodeData], links: &[SankeyLinkData]) {
+    let source_nodes: Vec<usize> = nodes[node_idx]
+        .target_links
+        .iter()
+        .map(|link_idx| links[*link_idx].source)
+        .collect();
+    for source_idx in source_nodes {
+        sort_source_links(source_idx, nodes, links);
+    }
+
+    let target_nodes: Vec<usize> = nodes[node_idx]
+        .source_links
+        .iter()
+        .map(|link_idx| links[*link_idx].target)
+        .collect();
+    for target_idx in target_nodes {
+        sort_target_links(target_idx, nodes, links);
+    }
+}
+
+fn reorder_links(column: &[usize], nodes: &mut [SankeyNodeData], links: &[SankeyLinkData]) {
+    for &node_idx in column {
+        sort_source_links(node_idx, nodes, links);
+        sort_target_links(node_idx, nodes, links);
+    }
+}
+
+fn sort_source_links(node_idx: usize, nodes: &mut [SankeyNodeData], links: &[SankeyLinkData]) {
+    let mut ordered = nodes[node_idx].source_links.clone();
+    ordered.sort_by(|a, b| {
+        compare_float(nodes[links[*a].target].y0, nodes[links[*b].target].y0)
+            .then_with(|| links[*a].index.cmp(&links[*b].index))
+    });
+    nodes[node_idx].source_links = ordered;
+}
+
+fn sort_target_links(node_idx: usize, nodes: &mut [SankeyNodeData], links: &[SankeyLinkData]) {
+    let mut ordered = nodes[node_idx].target_links.clone();
+    ordered.sort_by(|a, b| {
+        compare_float(nodes[links[*a].source].y0, nodes[links[*b].source].y0)
+            .then_with(|| links[*a].index.cmp(&links[*b].index))
+    });
+    nodes[node_idx].target_links = ordered;
+}
+
+fn target_top(
+    source: usize,
+    target: usize,
+    nodes: &[SankeyNodeData],
+    links: &[SankeyLinkData],
+    py: f64,
+) -> f64 {
+    let mut y =
+        nodes[source].y0 - nodes[source].source_links.len().saturating_sub(1) as f64 * py / 2.0;
+    for &link_idx in &nodes[source].source_links {
+        if links[link_idx].target == target {
+            break;
+        }
+        y += links[link_idx].width + py;
+    }
+    for &link_idx in &nodes[target].target_links {
+        if links[link_idx].source == source {
+            break;
+        }
+        y -= links[link_idx].width;
+    }
+    y
+}
+
+fn source_top(
+    source: usize,
+    target: usize,
+    nodes: &[SankeyNodeData],
+    links: &[SankeyLinkData],
+    py: f64,
+) -> f64 {
+    let mut y =
+        nodes[target].y0 - nodes[target].target_links.len().saturating_sub(1) as f64 * py / 2.0;
+    for &link_idx in &nodes[target].target_links {
+        if links[link_idx].source == source {
+            break;
+        }
+        y += links[link_idx].width + py;
+    }
+    for &link_idx in &nodes[source].source_links {
+        if links[link_idx].target == target {
+            break;
+        }
+        y -= links[link_idx].width;
+    }
+    y
+}
+
+fn compute_link_breadths(nodes: &[SankeyNodeData], links: &mut [SankeyLinkData]) {
+    for node in nodes {
+        let mut y0 = node.y0;
+        for &link_idx in &node.source_links {
+            links[link_idx].y0 = y0 + links[link_idx].width / 2.0;
+            y0 += links[link_idx].width;
+        }
+
+        let mut y1 = node.y0;
+        for &link_idx in &node.target_links {
+            links[link_idx].y1 = y1 + links[link_idx].width / 2.0;
+            y1 += links[link_idx].width;
+        }
+    }
+}
+
+fn compare_node_breadth(nodes: &[SankeyNodeData], a: usize, b: usize) -> std::cmp::Ordering {
+    compare_float(nodes[a].y0, nodes[b].y0)
+}
+
+fn compare_float(a: f64, b: f64) -> std::cmp::Ordering {
+    a.partial_cmp(&b).unwrap_or(std::cmp::Ordering::Equal)
 }

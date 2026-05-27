@@ -78,6 +78,8 @@ pub struct NodeLayout {
     pub sub_label: Option<TextBlock>,
     /// Whether this treemap node is a leaf (no children) — affects label centering.
     pub is_treemap_leaf: bool,
+    /// Mermaid's default treemap text fill before class/style overrides.
+    pub treemap_base_text_color: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -257,6 +259,11 @@ pub struct SankeyLayout {
     pub width: f32,
     pub height: f32,
     pub node_width: f32,
+    pub show_values: bool,
+    pub prefix: String,
+    pub suffix: String,
+    pub link_color: String,
+    pub use_max_width: bool,
     pub nodes: Vec<SankeyNodeLayout>,
     pub links: Vec<SankeyLinkLayout>,
 }
@@ -539,10 +546,13 @@ pub struct VennCircleLayout {
     pub cx: f32,
     pub cy: f32,
     pub radius: f32,
+    pub label_x: f32,
+    pub label_y: f32,
     pub color: String,
     pub fill_opacity: f32,
     pub stroke: String,
     pub stroke_width: f32,
+    pub stroke_opacity: f32,
     pub text_color: String,
 }
 
@@ -552,16 +562,126 @@ pub struct VennIntersectionLayout {
     pub label: Option<String>,
     pub cx: f32,
     pub cy: f32,
+    pub path: Option<String>,
+    pub fill: String,
+    pub fill_opacity: f32,
     pub text_color: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct VennTextNodeLayout {
+    pub id: String,
+    pub label: String,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VennLayout {
     pub width: f32,
     pub height: f32,
+    pub title_height: f32,
     pub title: Option<String>,
     pub circles: Vec<VennCircleLayout>,
     pub intersections: Vec<VennIntersectionLayout>,
+    pub text_nodes: Vec<VennTextNodeLayout>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PacketBlockLayout {
+    pub start: u32,
+    pub end: u32,
+    pub label: String,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct PacketLayout {
+    pub width: f32,
+    pub height: f32,
+    pub title: Option<String>,
+    pub title_x: f32,
+    pub title_y: f32,
+    pub show_bits: bool,
+    pub blocks: Vec<PacketBlockLayout>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RadarLayout {
+    pub title: Option<String>,
+    pub show_legend: bool,
+    pub ticks: usize,
+    pub max: Option<f32>,
+    pub min: f32,
+    pub graticule: crate::ir::RadarGraticule,
+}
+
+#[derive(Debug, Clone)]
+pub struct EventModelingSwimlaneLayout {
+    pub index: i32,
+    pub label: String,
+    pub namespace: Option<String>,
+    pub y: f32,
+    pub height: f32,
+    pub r: f32,
+    pub max_height: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct EventModelingBoxLayout {
+    pub frame_name: String,
+    pub frame_index: usize,
+    pub swimlane_index: i32,
+    pub x: f32,
+    pub y: f32,
+    pub r: f32,
+    pub width: f32,
+    pub height: f32,
+    pub fill: String,
+    pub stroke: String,
+    pub html: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct EventModelingRelationLayout {
+    pub source_box: usize,
+    pub target_box: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct EventModelingLayout {
+    pub width: f32,
+    pub height: f32,
+    pub viewbox_x: f32,
+    pub viewbox_y: f32,
+    pub viewbox_width: f32,
+    pub viewbox_height: f32,
+    pub max_r: f32,
+    pub swimlanes: Vec<EventModelingSwimlaneLayout>,
+    pub boxes: Vec<EventModelingBoxLayout>,
+    pub relations: Vec<EventModelingRelationLayout>,
+    pub use_max_width: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CynefinLayout {
+    pub width: f32,
+    pub height: f32,
+    pub diagram_width: f32,
+    pub diagram_height: f32,
+    pub padding: f32,
+    pub show_domain_descriptions: bool,
+    pub boundary_amplitude: f32,
+    pub use_max_width: bool,
+    pub title: Option<String>,
+    pub domains: BTreeMap<crate::ir::CynefinDomainName, Vec<String>>,
+    pub transitions: Vec<crate::ir::CynefinTransition>,
 }
 
 #[derive(Debug, Clone)]
@@ -581,9 +701,13 @@ pub enum DiagramData {
     Timeline(TimelineLayout),
     Journey(JourneyLayout),
     Venn(VennLayout),
+    Packet(PacketLayout),
+    Radar(RadarLayout),
     TreeView(TreeViewLayout),
     Ishikawa(IshikawaLayout),
     Wardley(WardleyLayout),
+    EventModeling(EventModelingLayout),
+    Cynefin(CynefinLayout),
     Error(ErrorLayout),
 }
 
@@ -602,6 +726,7 @@ pub struct Layout {
 
 #[derive(Debug, Clone)]
 pub struct C4Layout {
+    pub title: Option<String>,
     pub shapes: Vec<C4ShapeLayout>,
     pub boundaries: Vec<C4BoundaryLayout>,
     pub rels: Vec<C4RelLayout>,
@@ -673,7 +798,9 @@ pub struct C4RelLayout {
 #[derive(Debug, Clone)]
 pub struct QuadrantLayout {
     pub title: Option<TextBlock>,
-    pub title_y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub use_max_width: bool,
     pub x_axis_left: Option<TextBlock>,
     pub x_axis_right: Option<TextBlock>,
     pub y_axis_bottom: Option<TextBlock>,
@@ -692,6 +819,9 @@ pub struct QuadrantPointLayout {
     pub x: f32,
     pub y: f32,
     pub color: String,
+    pub stroke_color: String,
+    pub stroke_width: String,
+    pub radius: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -699,6 +829,7 @@ pub struct GanttLayout {
     pub title: Option<TextBlock>,
     pub sections: Vec<GanttSectionLayout>,
     pub tasks: Vec<GanttTaskLayout>,
+    pub exclude_ranges: Vec<GanttExcludeRange>,
     pub time_start: f32,
     pub time_end: f32,
     pub chart_x: f32,
@@ -725,10 +856,12 @@ pub struct GanttSectionLayout {
     pub height: f32,
     pub color: String,
     pub band_color: String,
+    pub index: usize,
 }
 
 #[derive(Debug, Clone)]
 pub struct GanttTaskLayout {
+    pub id: String,
     pub label: TextBlock,
     pub x: f32,
     pub y: f32,
@@ -738,6 +871,19 @@ pub struct GanttTaskLayout {
     pub start: f32,
     pub duration: f32,
     pub status: Option<crate::ir::GanttStatus>,
+    pub order: usize,
+    pub section_index: usize,
+    pub label_x: f32,
+    pub label_y: f32,
+    pub label_anchor: String,
+    pub label_inside: bool,
+    pub active: bool,
+    pub done: bool,
+    pub crit: bool,
+    pub milestone: bool,
+    pub vert: bool,
+    pub transform_origin_x: f32,
+    pub transform_origin_y: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -746,13 +892,29 @@ pub struct GanttTick {
     pub label: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct GanttExcludeRange {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
 // ── TreeView layout ─────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct TreeViewNodeLayout {
     pub name: String,
+    pub node_type: crate::ir::TreeViewNodeType,
+    pub icon_id: Option<String>,
+    pub css_class: Option<String>,
+    pub description: Option<String>,
     pub x: f32,
     pub y: f32,
+    pub label_x: f32,
+    pub label_right_edge: f32,
+    pub description_x: Option<f32>,
+    pub highlight_width: Option<f32>,
     pub width: f32,
     pub height: f32,
 }
@@ -788,7 +950,7 @@ pub struct IshikawaLineLayout {
 #[derive(Debug, Clone)]
 pub struct IshikawaLabelLayout {
     pub text: String,
-    pub lines: Vec<String>, // pre-wrapped lines (only used for head label)
+    pub lines: Vec<String>, // pre-wrapped lines for head and sub-bone labels
     pub x: f32,
     pub y: f32,
     pub anchor: String, // "middle", "end", "start"

@@ -1,7 +1,8 @@
 use super::types::{SpanStyle, TextSpan};
 
 /// Parse inline markdown formatting from a string.
-/// Only supports `**bold**`, `*italic*`, and `***bold+italic***`.
+/// Only supports `**bold**`, `__bold__`, `*italic*`, `_italic_`,
+/// and `***bold+italic***`.
 /// Unmatched delimiters are treated as literal `*` characters.
 pub fn parse_markdown_spans(input: &str) -> Vec<TextSpan> {
     let mut spans: Vec<TextSpan> = Vec::new();
@@ -12,6 +13,31 @@ pub fn parse_markdown_spans(input: &str) -> Vec<TextSpan> {
     let mut i = 0;
 
     while i < len {
+        if chars[i] == '_' && is_double_underscore_open(&chars, i) {
+            if let Some(close_pos) = find_closing_double_underscore(&chars, i + 2) {
+                if !current.is_empty() {
+                    spans.push(TextSpan {
+                        text: current.clone(),
+                        style: current_style,
+                    });
+                    current.clear();
+                }
+
+                let inner: String = chars[i + 2..close_pos].iter().collect();
+                if !inner.is_empty() {
+                    spans.push(TextSpan {
+                        text: inner,
+                        style: SpanStyle {
+                            bold: true,
+                            italic: false,
+                        },
+                    });
+                }
+                i = close_pos + 2;
+                continue;
+            }
+        }
+
         if chars[i] == '_' && is_underscore_open(&chars, i) {
             if let Some(close_pos) = find_closing_underscore(&chars, i + 1) {
                 if !current.is_empty() {
@@ -121,6 +147,52 @@ pub fn parse_markdown_spans(input: &str) -> Vec<TextSpan> {
     spans
 }
 
+fn is_double_underscore_open(chars: &[char], pos: usize) -> bool {
+    if chars.get(pos) != Some(&'_') || chars.get(pos + 1) != Some(&'_') {
+        return false;
+    }
+    let Some(&next) = chars.get(pos + 2) else {
+        return false;
+    };
+    if next == '_' || next.is_whitespace() {
+        return false;
+    }
+    if pos > 0 {
+        let prev = chars[pos - 1];
+        if prev == '_' || prev.is_alphanumeric() {
+            return false;
+        }
+    }
+    true
+}
+
+fn is_double_underscore_close(chars: &[char], pos: usize) -> bool {
+    if chars.get(pos) != Some(&'_') || chars.get(pos + 1) != Some(&'_') || pos == 0 {
+        return false;
+    }
+    let prev = chars[pos - 1];
+    if prev == '_' || prev.is_whitespace() {
+        return false;
+    }
+    if let Some(&next) = chars.get(pos + 2)
+        && (next == '_' || next.is_alphanumeric())
+    {
+        return false;
+    }
+    true
+}
+
+fn find_closing_double_underscore(chars: &[char], start: usize) -> Option<usize> {
+    let mut i = start;
+    while i + 1 < chars.len() {
+        if is_double_underscore_close(chars, i) {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
 fn is_underscore_open(chars: &[char], pos: usize) -> bool {
     let Some(&next) = chars.get(pos + 1) else {
         return false;
@@ -204,6 +276,15 @@ mod tests {
     #[test]
     fn bold_text() {
         let spans = parse_markdown_spans("**bold**");
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].text, "bold");
+        assert!(spans[0].style.bold);
+        assert!(!spans[0].style.italic);
+    }
+
+    #[test]
+    fn underscore_bold_text() {
+        let spans = parse_markdown_spans("__bold__");
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].text, "bold");
         assert!(spans[0].style.bold);

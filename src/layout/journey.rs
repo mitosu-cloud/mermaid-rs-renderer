@@ -1,5 +1,28 @@
 use super::*;
 
+const JOURNEY_DIAGRAM_MARGIN_X: f32 = 50.0;
+const JOURNEY_DIAGRAM_MARGIN_Y: f32 = 10.0;
+const JOURNEY_LEFT_MARGIN: f32 = 150.0;
+const JOURNEY_TASK_WIDTH: f32 = 150.0;
+const JOURNEY_TASK_HEIGHT: f32 = 50.0;
+const JOURNEY_TASK_MARGIN: f32 = 50.0;
+const JOURNEY_SECTION_Y: f32 = 50.0;
+const JOURNEY_TASK_Y: f32 = 110.0;
+const JOURNEY_ACTIVITY_Y: f32 = 200.0;
+const JOURNEY_SCORE_BASE_Y: f32 = 300.0;
+const JOURNEY_SCORE_STEP_Y: f32 = 30.0;
+const JOURNEY_TASK_LINE_BOTTOM_Y: f32 = 450.0;
+const JOURNEY_TITLE_Y: f32 = 25.0;
+const JOURNEY_TITLE_EXTRA_HEIGHT: f32 = 70.0;
+const JOURNEY_ACTOR_RADIUS: f32 = 7.0;
+const JOURNEY_FACE_RADIUS: f32 = 15.0;
+const JOURNEY_ACTOR_COLORS: [&str; 6] = [
+    "#8FBC8F", "#7CFC00", "#00FFFF", "#20B2AA", "#B0E0E6", "#FFFFE0",
+];
+const JOURNEY_SECTION_FILLS: [&str; 7] = [
+    "#191970", "#8B008B", "#4B0082", "#2F4F4F", "#800000", "#8B4513", "#00008B",
+];
+
 fn parse_journey_task_label(label: &str) -> (String, Vec<String>) {
     let mut lines = split_lines(label);
     if lines.is_empty() {
@@ -16,17 +39,6 @@ fn parse_journey_task_label(label: &str) -> (String, Vec<String>) {
         }
     }
     (title, actors)
-}
-
-fn journey_score_color(score: f32) -> String {
-    let clamped = score.clamp(1.0, 5.0);
-    let t = (clamped - 1.0) / 4.0;
-    let start = (248.0, 113.0, 113.0);
-    let end = (74.0, 222.0, 128.0);
-    let r = (start.0 + (end.0 - start.0) * t).round() as i32;
-    let g = (start.1 + (end.1 - start.1) * t).round() as i32;
-    let b = (start.2 + (end.2 - start.2) * t).round() as i32;
-    format!("#{:02X}{:02X}{:02X}", r, g, b)
 }
 
 pub(super) fn compute_journey_layout(
@@ -110,175 +122,117 @@ pub(super) fn compute_journey_layout(
             }
         }
     }
+    actor_order.sort();
 
-    let mut max_label_w = theme.font_size * 4.0;
-    let mut max_label_h = theme.font_size * config.label_line_height;
-    for task in &tasks_data {
-        max_label_w = max_label_w.max(task.label.width);
-        max_label_h = max_label_h.max(task.label.height);
+    let mut max_actor_label_width = 0.0_f32;
+    for actor in &actor_order {
+        let label = measure_label(actor, theme, config);
+        if label.width > max_actor_label_width && label.width > JOURNEY_LEFT_MARGIN - label.width {
+            max_actor_label_width = label.width;
+        }
     }
-
-    let margin_x = theme.font_size * 2.0;
-    let margin_y = theme.font_size * 2.0;
-    let task_gap_x = theme.font_size * 1.6;
-    let section_gap_y = theme.font_size * 1.8;
-    let header_height = theme.font_size * 1.6;
-    let card_gap_y = theme.font_size * 0.6;
-    let score_radius = (theme.font_size * 0.55).max(6.0);
-    let actor_radius = (theme.font_size * 0.35).max(4.0);
-    let actor_gap = theme.font_size * 0.5;
-    let task_pad_x = theme.font_size * 0.9;
-    let task_pad_y = theme.font_size * 0.6;
-
-    let task_width = (max_label_w + task_pad_x * 2.0).max(theme.font_size * 6.0);
-    let task_height = (max_label_h + task_pad_y * 2.0).max(theme.font_size * 2.4);
+    let left_margin = JOURNEY_LEFT_MARGIN + max_actor_label_width;
 
     let title_block = graph
         .journey_title
         .as_ref()
         .map(|title| measure_label(title, theme, config));
-    let mut cursor_y = margin_y;
-    let title_y = if let Some(ref title) = title_block {
-        let y = cursor_y + title.height / 2.0;
-        cursor_y += title.height + theme.font_size * 0.6;
-        y
-    } else {
-        0.0
-    };
 
-    let mut actors = Vec::new();
-    let mut actor_label_y = 0.0;
-    if !actor_order.is_empty() {
-        let mut x = margin_x;
-        let legend_y = cursor_y + actor_radius;
-        actor_label_y = legend_y + theme.font_size * 0.35;
-        for (idx, actor) in actor_order.iter().enumerate() {
-            let label = measure_label(actor, theme, config);
-            let color = theme.git_colors[idx % theme.git_colors.len()].clone();
-            actors.push(JourneyActorLayout {
-                name: actor.clone(),
-                color: color.clone(),
-                x: x + actor_radius,
-                y: legend_y,
-                radius: actor_radius,
-            });
-            x += actor_radius * 2.0 + actor_gap + label.width + theme.font_size * 0.8;
-        }
-        cursor_y += actor_radius * 2.0 + theme.font_size * 0.8;
-    }
+    let actors = actor_order
+        .iter()
+        .enumerate()
+        .map(|(idx, actor)| JourneyActorLayout {
+            name: actor.clone(),
+            color: JOURNEY_ACTOR_COLORS[idx % JOURNEY_ACTOR_COLORS.len()].to_string(),
+            x: 20.0,
+            y: 60.0 + idx as f32 * 20.0,
+            radius: JOURNEY_ACTOR_RADIUS,
+        })
+        .collect::<Vec<_>>();
 
-    let content_y = cursor_y;
-    let has_actor_rows = tasks_data.iter().any(|task| !task.actors.is_empty());
-    let actor_row_height = if has_actor_rows {
-        actor_radius * 2.0
-    } else {
-        0.0
-    };
-    let actor_row_gap = if has_actor_rows {
-        theme.font_size * 0.4
-    } else {
-        0.0
-    };
-    let row_height = header_height
-        + score_radius * 2.0
-        + card_gap_y
-        + task_height
-        + actor_row_gap
-        + actor_row_height
-        + theme.font_size * 0.6;
-
-    let content_x = margin_x;
     let total_tasks = tasks_data.len();
-    let task_area_width = if total_tasks > 0 {
-        total_tasks as f32 * task_width + (total_tasks.saturating_sub(1)) as f32 * task_gap_x
-    } else {
-        0.0
-    };
 
     let mut tasks = Vec::new();
     for task in &tasks_data {
-        let row_top = content_y + task.section_idx as f32 * (row_height + section_gap_y);
-        let card_y = row_top + header_height + score_radius * 2.0 + card_gap_y;
-        let score_y = row_top + header_height + score_radius;
-        let actor_y = if has_actor_rows {
-            Some(card_y + task_height + actor_row_gap + actor_radius)
-        } else {
-            None
-        };
-        let x = content_x + task.order_idx as f32 * (task_width + task_gap_x);
-        let score_color = task
-            .score
-            .map(journey_score_color)
-            .unwrap_or_else(|| theme.secondary_color.clone());
+        let x = left_margin + task.order_idx as f32 * (JOURNEY_TASK_WIDTH + JOURNEY_TASK_MARGIN);
+        let score = task.score.unwrap_or(0.0);
+        let score_y = JOURNEY_SCORE_BASE_Y + (5.0 - score) * JOURNEY_SCORE_STEP_Y;
+        let section_color =
+            JOURNEY_SECTION_FILLS[task.section_idx % JOURNEY_SECTION_FILLS.len()].to_string();
         tasks.push(JourneyTaskLayout {
             id: task.id.clone(),
             label: task.label.clone(),
             x,
-            y: card_y,
-            width: task_width,
-            height: task_height,
+            y: JOURNEY_TASK_Y,
+            width: JOURNEY_TASK_WIDTH,
+            height: JOURNEY_TASK_HEIGHT,
             score: task.score,
-            score_color,
+            score_color: section_color,
             score_y,
             actors: task.actors.clone(),
-            actor_y,
+            actor_y: Some(JOURNEY_TASK_Y),
             section_idx: task.section_idx,
         });
     }
 
     let mut sections = Vec::new();
-    let section_pad_x = theme.font_size * 0.6;
     for (section_idx, (label, _nodes)) in section_defs.iter().enumerate() {
         let (start_idx, end_idx) = section_ranges.get(section_idx).copied().unwrap_or((0, 0));
         if start_idx > end_idx || total_tasks == 0 {
             continue;
         }
-        let row_top = content_y + section_idx as f32 * (row_height + section_gap_y);
-        let x = content_x + start_idx as f32 * (task_width + task_gap_x) - section_pad_x;
+        let x = left_margin + start_idx as f32 * (JOURNEY_TASK_WIDTH + JOURNEY_TASK_MARGIN);
         let span = end_idx.saturating_sub(start_idx) + 1;
-        let width = span as f32 * task_width
-            + (span.saturating_sub(1)) as f32 * task_gap_x
-            + section_pad_x * 2.0;
+        let width = span as f32 * JOURNEY_TASK_WIDTH
+            + (span.saturating_sub(1)) as f32 * JOURNEY_DIAGRAM_MARGIN_X;
         let label_block = measure_label(label, theme, config);
-        let color = theme.git_colors[section_idx % theme.git_colors.len()].clone();
+        let color = JOURNEY_SECTION_FILLS[section_idx % JOURNEY_SECTION_FILLS.len()].to_string();
         sections.push(JourneySectionLayout {
             label: label_block,
             x,
-            y: row_top,
+            y: JOURNEY_SECTION_Y,
             width,
-            height: header_height,
+            height: JOURNEY_TASK_HEIGHT,
             color,
         });
     }
 
     let baseline = if total_tasks > 0 {
-        let rows = section_defs.len();
-        let total_rows_height = if rows > 0 {
-            rows as f32 * row_height + (rows.saturating_sub(1)) as f32 * section_gap_y
-        } else {
-            0.0
-        };
-        let y = content_y + total_rows_height + theme.font_size * 0.5;
-        Some((content_x, y, content_x + task_area_width))
+        let stop_x = left_margin
+            + (total_tasks.saturating_sub(1)) as f32 * (JOURNEY_TASK_WIDTH + JOURNEY_TASK_MARGIN)
+            + JOURNEY_DIAGRAM_MARGIN_X
+            + JOURNEY_TASK_MARGIN;
+        let width = left_margin + stop_x + 2.0 * JOURNEY_DIAGRAM_MARGIN_X;
+        Some((left_margin, JOURNEY_ACTIVITY_Y, width - left_margin - 4.0))
     } else {
         None
     };
 
-    let width = (content_x + task_area_width + margin_x).max(1.0);
-    let height = baseline
-        .map(|(_, y, _)| y + theme.font_size * 1.6)
-        .unwrap_or(content_y + theme.font_size * 4.0)
-        .max(1.0);
+    let stop_x = if total_tasks > 0 {
+        left_margin
+            + (total_tasks.saturating_sub(1)) as f32 * (JOURNEY_TASK_WIDTH + JOURNEY_TASK_MARGIN)
+            + JOURNEY_DIAGRAM_MARGIN_X
+            + JOURNEY_TASK_MARGIN
+    } else {
+        left_margin
+    };
+    let width = (left_margin + stop_x + 2.0 * JOURNEY_DIAGRAM_MARGIN_X).max(1.0);
+    let content_stop_y = JOURNEY_TASK_LINE_BOTTOM_Y.max(actor_order.len() as f32 * 50.0);
+    let mut height = content_stop_y + 2.0 * JOURNEY_DIAGRAM_MARGIN_Y;
+    if title_block.is_some() {
+        height += JOURNEY_TITLE_EXTRA_HEIGHT;
+    }
+    height = height.max(1.0);
 
     let mut nodes = BTreeMap::new();
     nodes.insert(
         "__journey_metrics_content".to_string(),
         NodeLayout {
             id: "__journey_metrics_content".to_string(),
-            x: margin_x,
-            y: margin_y,
-            width: (width - margin_x * 2.0).max(1.0),
-            height: (height - margin_y * 2.0).max(1.0),
+            x: 0.0,
+            y: -25.0,
+            width,
+            height,
             label: TextBlock {
                 lines: vec![TextLine::plain(String::new())],
                 width: 0.0,
@@ -295,6 +249,7 @@ pub(super) fn compute_journey_layout(
             img_h: None,
             sub_label: None,
             is_treemap_leaf: false,
+            treemap_base_text_color: None,
         },
     );
 
@@ -307,16 +262,16 @@ pub(super) fn compute_journey_layout(
         acc_descr: None,
         diagram: DiagramData::Journey(JourneyLayout {
             title: title_block,
-            title_y,
+            title_y: JOURNEY_TITLE_Y,
             actors,
-            actor_label_y,
+            actor_label_y: 0.0,
             tasks,
             sections,
             baseline,
-            score_radius,
-            actor_radius,
-            actor_gap,
-            card_gap_y,
+            score_radius: JOURNEY_FACE_RADIUS,
+            actor_radius: JOURNEY_ACTOR_RADIUS,
+            actor_gap: 13.0,
+            card_gap_y: 0.0,
             width,
             height,
         }),

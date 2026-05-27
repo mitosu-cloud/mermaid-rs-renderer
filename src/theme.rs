@@ -31,7 +31,250 @@ const MERMAID_GIT_COMMIT_LABEL_BG: &str = "#ffffde";
 const MERMAID_GIT_TAG_LABEL_COLOR: &str = "#131300";
 const MERMAID_GIT_TAG_LABEL_BG: &str = "#ECECFF";
 const MERMAID_GIT_TAG_LABEL_BORDER: &str = "hsl(240, 60%, 86.2745098039%)";
+const MERMAID_BASE_GIT_COLORS: [&str; 8] = [
+    "hsl(40.5882352941, 100%, 68.3333333333%)",
+    "hsl(-79.4117647059, 100%, 68.3333333333%)",
+    "hsl(220.5882352941, 100%, 73.3333333333%)",
+    "hsl(10.5882352941, 100%, 68.3333333333%)",
+    "hsl(-19.4117647059, 100%, 68.3333333333%)",
+    "hsl(-49.4117647059, 100%, 68.3333333333%)",
+    "hsl(100.5882352941, 100%, 68.3333333333%)",
+    "hsl(160.5882352941, 100%, 68.3333333333%)",
+];
+const MERMAID_BASE_GIT_INV_COLORS: [&str; 8] = [
+    "rgb(0, 52.2500000001, 161.5000000002)",
+    "rgb(52.2500000001, 161.5000000002, 0)",
+    "rgb(136.0000000002, 92.0000000001, 0)",
+    "rgb(0, 133.0000000002, 161.5000000002)",
+    "rgb(0, 161.5000000002, 109.2500000001)",
+    "rgb(0, 161.5000000002, 28.5)",
+    "rgb(109.2500000001, 0, 161.5000000002)",
+    "rgb(161.5000000002, 0, 52.2500000001)",
+];
+const MERMAID_BASE_GIT_BRANCH_LABEL_COLORS: [&str; 8] = [
+    "#333", "#333", "#333", "#333", "#333", "#333", "#333", "#333",
+];
+const MERMAID_BASE_GIT_COMMIT_LABEL_COLOR: &str = "rgb(11.0000000001, 34.0000000002, 0)";
+const MERMAID_BASE_GIT_COMMIT_LABEL_BG: &str = "hsl(-79.4117647059, 100%, 93.3333333333%)";
 const MERMAID_TEXT_COLOR: &str = "#333";
+const MERMAID_XY_CHART_COLORS: [&str; 10] = [
+    "#ECECFF", "#8493A6", "#FFC3A0", "#DCDDE1", "#B8E994", "#D1A36F", "#C3CDE6", "#FFB6C1",
+    "#496078", "#F8F3E3",
+];
+pub(crate) const MERMAID_RADAR_COLORS: [&str; 12] = [
+    "hsl(240, 100%, 76.2745098039%)",
+    "hsl(60, 100%, 73.5294117647%)",
+    "hsl(80, 100%, 76.2745098039%)",
+    "hsl(270, 100%, 76.2745098039%)",
+    "hsl(300, 100%, 76.2745098039%)",
+    "hsl(330, 100%, 76.2745098039%)",
+    "hsl(0, 100%, 76.2745098039%)",
+    "hsl(30, 100%, 76.2745098039%)",
+    "hsl(90, 100%, 76.2745098039%)",
+    "hsl(150, 100%, 76.2745098039%)",
+    "hsl(180, 100%, 76.2745098039%)",
+    "hsl(210, 100%, 76.2745098039%)",
+];
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XYChartTheme {
+    pub background_color: String,
+    pub title_color: String,
+    pub data_label_color: String,
+    pub x_axis_title_color: String,
+    pub x_axis_label_color: String,
+    pub x_axis_tick_color: String,
+    pub x_axis_line_color: String,
+    pub y_axis_title_color: String,
+    pub y_axis_label_color: String,
+    pub y_axis_tick_color: String,
+    pub y_axis_line_color: String,
+    pub plot_colors: Vec<String>,
+}
+
+impl XYChartTheme {
+    pub fn mermaid_default() -> Self {
+        Self {
+            background_color: "white".to_string(),
+            title_color: "#131300".to_string(),
+            data_label_color: "black".to_string(),
+            x_axis_title_color: "#131300".to_string(),
+            x_axis_label_color: "#131300".to_string(),
+            x_axis_tick_color: "#131300".to_string(),
+            x_axis_line_color: "#131300".to_string(),
+            y_axis_title_color: "#131300".to_string(),
+            y_axis_label_color: "#131300".to_string(),
+            y_axis_tick_color: "#131300".to_string(),
+            y_axis_line_color: "#131300".to_string(),
+            plot_colors: MERMAID_XY_CHART_COLORS
+                .map(|value| value.to_string())
+                .to_vec(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuadrantTheme {
+    pub fills: [String; 4],
+    pub text_fills: [String; 4],
+    pub point_fill: String,
+    pub point_text_fill: String,
+    pub x_axis_text_fill: String,
+    pub y_axis_text_fill: String,
+    pub internal_border_stroke_fill: String,
+    pub external_border_stroke_fill: String,
+    pub title_fill: String,
+}
+
+impl QuadrantTheme {
+    pub fn mermaid_default() -> Self {
+        Self {
+            fills: [
+                "#ECECFF".to_string(),
+                "#f1f1ff".to_string(),
+                "#f6f6ff".to_string(),
+                "#fbfbff".to_string(),
+            ],
+            text_fills: [
+                "#131300".to_string(),
+                "#0e0e00".to_string(),
+                "#090900".to_string(),
+                "#040400".to_string(),
+            ],
+            // Mermaid JS currently serializes the default quadrant point fill this way;
+            // browsers treat it as black, so keep it for SVG/image parity.
+            point_fill: "hsl(240, 100%, NaN%)".to_string(),
+            point_text_fill: "#131300".to_string(),
+            x_axis_text_fill: "#131300".to_string(),
+            y_axis_text_fill: "#131300".to_string(),
+            internal_border_stroke_fill: "#c7c7f1".to_string(),
+            external_border_stroke_fill: "#c7c7f1".to_string(),
+            title_fill: "#131300".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CynefinTheme {
+    pub domain_font_size: f32,
+    pub item_font_size: f32,
+    pub boundary_color: String,
+    pub boundary_width: f32,
+    pub cliff_color: String,
+    pub cliff_width: f32,
+    pub arrow_color: String,
+    pub arrow_width: f32,
+    pub complex_bg: String,
+    pub complicated_bg: String,
+    pub chaotic_bg: String,
+    pub clear_bg: String,
+    pub confusion_bg: String,
+    pub text_color: String,
+    pub label_color: String,
+}
+
+impl CynefinTheme {
+    pub fn mermaid_default() -> Self {
+        Self::light("#333333", MERMAID_TEXT_COLOR, "#333333")
+    }
+
+    fn light(line_color: &str, text_color: &str, label_color: &str) -> Self {
+        Self {
+            domain_font_size: 16.0,
+            item_font_size: 12.0,
+            boundary_color: line_color.to_string(),
+            boundary_width: 2.0,
+            cliff_color: "#8B0000".to_string(),
+            cliff_width: 4.0,
+            arrow_color: line_color.to_string(),
+            arrow_width: 2.0,
+            complex_bg: "#E8F5E9".to_string(),
+            complicated_bg: "#E3F2FD".to_string(),
+            chaotic_bg: "#FBE9E7".to_string(),
+            clear_bg: "#FFF8E1".to_string(),
+            confusion_bg: "#F3E5F5".to_string(),
+            text_color: text_color.to_string(),
+            label_color: label_color.to_string(),
+        }
+    }
+
+    fn dark(line_color: &str, text_color: &str, label_color: &str) -> Self {
+        Self {
+            domain_font_size: 16.0,
+            item_font_size: 12.0,
+            boundary_color: line_color.to_string(),
+            boundary_width: 2.0,
+            cliff_color: "#FF6B6B".to_string(),
+            cliff_width: 4.0,
+            arrow_color: line_color.to_string(),
+            arrow_width: 2.0,
+            complex_bg: "#1B5E20".to_string(),
+            complicated_bg: "#0D47A1".to_string(),
+            chaotic_bg: "#BF360C".to_string(),
+            clear_bg: "#F57F17".to_string(),
+            confusion_bg: "#4A148C".to_string(),
+            text_color: text_color.to_string(),
+            label_color: label_color.to_string(),
+        }
+    }
+
+    fn forest(line_color: &str, text_color: &str, label_color: &str) -> Self {
+        Self {
+            domain_font_size: 16.0,
+            item_font_size: 12.0,
+            boundary_color: line_color.to_string(),
+            boundary_width: 2.0,
+            cliff_color: "#8B4513".to_string(),
+            cliff_width: 4.0,
+            arrow_color: line_color.to_string(),
+            arrow_width: 2.0,
+            complex_bg: "#C8E6C9".to_string(),
+            complicated_bg: "#DCEDC8".to_string(),
+            chaotic_bg: "#FFE0B2".to_string(),
+            clear_bg: "#FFF9C4".to_string(),
+            confusion_bg: "#D7CCC8".to_string(),
+            text_color: text_color.to_string(),
+            label_color: label_color.to_string(),
+        }
+    }
+}
+
+impl Default for CynefinTheme {
+    fn default() -> Self {
+        Self::mermaid_default()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RadarTheme {
+    pub title_color: String,
+    pub axis_color: String,
+    pub axis_stroke_width: f32,
+    pub axis_label_font_size: f32,
+    pub curve_opacity: f32,
+    pub curve_stroke_width: f32,
+    pub graticule_color: String,
+    pub graticule_opacity: f32,
+    pub graticule_stroke_width: f32,
+    pub legend_font_size: f32,
+}
+
+impl Default for RadarTheme {
+    fn default() -> Self {
+        Self {
+            title_color: "#333".to_string(),
+            axis_color: "#333333".to_string(),
+            axis_stroke_width: 2.0,
+            axis_label_font_size: 12.0,
+            curve_opacity: 0.5,
+            curve_stroke_width: 2.0,
+            graticule_color: "#DEDEDE".to_string(),
+            graticule_opacity: 0.3,
+            graticule_stroke_width: 1.0,
+            legend_font_size: 12.0,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
@@ -79,6 +322,12 @@ pub struct Theme {
     /// Used by timeline diagrams. Empty means use the default HSL palette.
     #[serde(default)]
     pub cscale_colors: Vec<String>,
+    pub xy_chart: XYChartTheme,
+    pub quadrant: QuadrantTheme,
+    #[serde(default)]
+    pub cynefin: CynefinTheme,
+    #[serde(default)]
+    pub radar: RadarTheme,
 }
 
 impl Theme {
@@ -114,16 +363,12 @@ impl Theme {
             cluster_border: "#AAAA33".to_string(),
             background: "#FFFFFF".to_string(),
             sequence_actor_fill: "#ECECFF".to_string(),
-            // Light lavender, matching mermaid.js's CSS-resolved
-            // `hsl(259.6, 59.78%, 87.9%)` for `.actor` / `.actor-line`.
-            // Previously #9370DB which is the title color, much darker
-            // than the browser-rendered actor border.
-            sequence_actor_border: "#D2C7E4".to_string(),
-            sequence_actor_line: "#999999".to_string(),
+            sequence_actor_border: "#9370DB".to_string(),
+            sequence_actor_line: "#9370DB".to_string(),
             sequence_note_fill: "#FFF5AD".to_string(),
             sequence_note_border: "#AAAA33".to_string(),
-            sequence_activation_fill: "#EDF2AE".to_string(),
-            sequence_activation_border: "#666666".to_string(),
+            sequence_activation_fill: "#f4f4f4".to_string(),
+            sequence_activation_border: "#666".to_string(),
             text_color: MERMAID_TEXT_COLOR.to_string(),
             git_colors: MERMAID_GIT_COLORS.map(|value| value.to_string()),
             git_inv_colors: MERMAID_GIT_INV_COLORS.map(|value| value.to_string()),
@@ -146,6 +391,10 @@ impl Theme {
             pie_outer_stroke_color: "#000000".to_string(),
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
+            xy_chart: XYChartTheme::mermaid_default(),
+            quadrant: QuadrantTheme::mermaid_default(),
+            cynefin: CynefinTheme::light("#2F3B4D", MERMAID_TEXT_COLOR, "#333333"),
+            radar: RadarTheme::default(),
         }
     }
 
@@ -197,6 +446,10 @@ impl Theme {
             pie_outer_stroke_color: "#CBD5E1".to_string(),
             pie_opacity: 0.85,
             cscale_colors: Vec::new(),
+            xy_chart: XYChartTheme::mermaid_default(),
+            quadrant: QuadrantTheme::mermaid_default(),
+            cynefin: CynefinTheme::light("#64748B", "#0F172A", "#0F172A"),
+            radar: RadarTheme::default(),
         }
     }
     /// Official Mermaid "dark" theme — dark background with bright accents.
@@ -247,6 +500,10 @@ impl Theme {
             pie_outer_stroke_color: "#3E4452".to_string(),
             pie_opacity: 0.85,
             cscale_colors: Vec::new(),
+            xy_chart: XYChartTheme::mermaid_default(),
+            quadrant: QuadrantTheme::mermaid_default(),
+            cynefin: CynefinTheme::dark("#A0AEC0", "#CCCCCC", "#E0E0E0"),
+            radar: RadarTheme::default(),
         }
     }
 
@@ -309,6 +566,10 @@ impl Theme {
             pie_outer_stroke_color: "#999999".to_string(),
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
+            xy_chart: XYChartTheme::mermaid_default(),
+            quadrant: QuadrantTheme::mermaid_default(),
+            cynefin: CynefinTheme::light("#666666", "#333333", "#333333"),
+            radar: RadarTheme::default(),
         }
     }
 
@@ -371,6 +632,10 @@ impl Theme {
             pie_outer_stroke_color: "#6EAA49".to_string(),
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
+            xy_chart: XYChartTheme::mermaid_default(),
+            quadrant: QuadrantTheme::mermaid_default(),
+            cynefin: CynefinTheme::forest("#2C5F2D", "#333333", "#333333"),
+            radar: RadarTheme::default(),
         }
     }
 
@@ -403,11 +668,12 @@ impl Theme {
             sequence_activation_fill: "#f4f4f4".to_string(),
             sequence_activation_border: "#666666".to_string(),
             text_color: "#333".to_string(),
-            git_colors: MERMAID_GIT_COLORS.map(|value| value.to_string()),
-            git_inv_colors: MERMAID_GIT_INV_COLORS.map(|value| value.to_string()),
-            git_branch_label_colors: MERMAID_GIT_BRANCH_LABEL_COLORS.map(|value| value.to_string()),
-            git_commit_label_color: MERMAID_GIT_COMMIT_LABEL_COLOR.to_string(),
-            git_commit_label_background: MERMAID_GIT_COMMIT_LABEL_BG.to_string(),
+            git_colors: MERMAID_BASE_GIT_COLORS.map(|value| value.to_string()),
+            git_inv_colors: MERMAID_BASE_GIT_INV_COLORS.map(|value| value.to_string()),
+            git_branch_label_colors: MERMAID_BASE_GIT_BRANCH_LABEL_COLORS
+                .map(|value| value.to_string()),
+            git_commit_label_color: MERMAID_BASE_GIT_COMMIT_LABEL_COLOR.to_string(),
+            git_commit_label_background: MERMAID_BASE_GIT_COMMIT_LABEL_BG.to_string(),
             git_tag_label_color: MERMAID_GIT_TAG_LABEL_COLOR.to_string(),
             git_tag_label_background: MERMAID_GIT_TAG_LABEL_BG.to_string(),
             git_tag_label_border: MERMAID_GIT_TAG_LABEL_BORDER.to_string(),
@@ -424,6 +690,10 @@ impl Theme {
             pie_outer_stroke_color: "black".to_string(),
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
+            xy_chart: XYChartTheme::mermaid_default(),
+            quadrant: QuadrantTheme::mermaid_default(),
+            cynefin: CynefinTheme::light("#333333", "#333", "#333333"),
+            radar: RadarTheme::default(),
         }
     }
 }

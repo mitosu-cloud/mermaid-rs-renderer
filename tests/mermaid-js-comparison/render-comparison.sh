@@ -13,6 +13,7 @@ REF_DIR="$SCRIPT_DIR/reference"
 OUT_DIR="$SCRIPT_DIR/comparison-output"
 MMDR="$REPO_DIR/target/release/mmdr"
 MMDC="$SCRIPT_DIR/node_modules/.bin/mmdc"
+PUPPETEER_CONFIG="$SCRIPT_DIR/puppeteer-config.json"
 
 mkdir -p "$OUT_DIR"
 
@@ -53,7 +54,7 @@ for mmd in "${files[@]}"; do
     fi
 
     # Render with mermaid-js
-    if "$MMDC" -i "$mmd" -o "$OUT_DIR/${name}-js.svg" --quiet 2>/dev/null; then
+    if "$MMDC" -i "$mmd" -o "$OUT_DIR/${name}-js.svg" -p "$PUPPETEER_CONFIG" --quiet 2>/dev/null; then
         js_ok=$((js_ok + 1))
     else
         js_fail=$((js_fail + 1))

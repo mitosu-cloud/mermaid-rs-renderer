@@ -5,11 +5,11 @@ use crate::ir::Graph;
 use crate::theme::Theme;
 
 use super::text::measure_label;
-use super::{DiagramData, Layout, build_node_layout, resolve_node_style};
+use super::{DiagramData, Layout, RadarLayout, build_node_layout, resolve_node_style};
 
 pub(super) fn compute_radar_layout(graph: &Graph, theme: &Theme, config: &LayoutConfig) -> Layout {
-    const WIDTH: f32 = 680.0;
-    const HEIGHT: f32 = 680.0;
+    const WIDTH: f32 = 700.0;
+    const HEIGHT: f32 = 700.0;
     const CENTER_X: f32 = WIDTH / 2.0;
     const CENTER_Y: f32 = HEIGHT / 2.0;
     const MAX_RADIUS: f32 = 290.0;
@@ -58,9 +58,13 @@ pub(super) fn compute_radar_layout(graph: &Graph, theme: &Theme, config: &Layout
         height: HEIGHT,
         acc_title: None,
         acc_descr: None,
-        diagram: DiagramData::Graph {
-            state_notes: Vec::new(),
-            title: None,
-        },
+        diagram: DiagramData::Radar(RadarLayout {
+            title: graph.diagram_title.clone(),
+            show_legend: graph.radar.show_legend,
+            ticks: graph.radar.ticks.max(1),
+            max: graph.radar.max,
+            min: graph.radar.min,
+            graticule: graph.radar.graticule,
+        }),
     }
 }

@@ -12,6 +12,10 @@ pub(super) fn rank_edges_for_manual_layout(
         return layout_edges.to_vec();
     }
 
+    if !graph.subgraphs.is_empty() && has_dotted_edge_inside_subgraph(graph, layout_edges) {
+        return layout_edges.to_vec();
+    }
+
     let primary: Vec<crate::ir::Edge> = layout_edges
         .iter()
         .filter(|edge| edge.style != crate::ir::EdgeStyle::Dotted)
@@ -34,11 +38,45 @@ pub(super) fn rank_edges_for_manual_layout(
     layout_edges.to_vec()
 }
 
+fn has_dotted_edge_inside_subgraph(graph: &Graph, layout_edges: &[crate::ir::Edge]) -> bool {
+    let subgraph_sets: Vec<HashSet<&str>> = graph
+        .subgraphs
+        .iter()
+        .map(|sub| sub.nodes.iter().map(String::as_str).collect())
+        .collect();
+
+    layout_edges.iter().any(|edge| {
+        edge.style == crate::ir::EdgeStyle::Dotted
+            && subgraph_sets
+                .iter()
+                .any(|set| set.contains(edge.from.as_str()) && set.contains(edge.to.as_str()))
+    })
+}
+
 pub(super) fn order_rank_nodes(
     rank_nodes: &mut [Vec<String>],
     edges: &[crate::ir::Edge],
     node_order: &HashMap<String, usize>,
     passes: usize,
+) {
+    order_rank_nodes_with_sweep_start(rank_nodes, edges, node_order, passes, false);
+}
+
+pub(super) fn order_rank_nodes_bottom_up_first(
+    rank_nodes: &mut [Vec<String>],
+    edges: &[crate::ir::Edge],
+    node_order: &HashMap<String, usize>,
+    passes: usize,
+) {
+    order_rank_nodes_with_sweep_start(rank_nodes, edges, node_order, passes, true);
+}
+
+fn order_rank_nodes_with_sweep_start(
+    rank_nodes: &mut [Vec<String>],
+    edges: &[crate::ir::Edge],
+    node_order: &HashMap<String, usize>,
+    passes: usize,
+    bottom_up_first: bool,
 ) {
     if rank_nodes.len() <= 1 {
         return;
@@ -73,6 +111,10 @@ pub(super) fn order_rank_nodes(
     let sort_bucket = |bucket: &mut Vec<String>,
                        neighbors: &HashMap<String, Vec<String>>,
                        positions: &HashMap<String, usize>| {
+        if bottom_up_first {
+            sort_bucket_dagre_style(bucket, neighbors, positions);
+            return;
+        }
         let current_positions: HashMap<String, usize> = bucket
             .iter()
             .enumerate()
@@ -101,23 +143,100 @@ pub(super) fn order_rank_nodes(
 
     let passes = passes.max(1);
     for _ in 0..passes {
-        for rank in 1..rank_nodes.len() {
-            if rank_nodes[rank].len() <= 1 {
-                continue;
+        if bottom_up_first {
+            for rank in (0..rank_nodes.len().saturating_sub(1)).rev() {
+                if rank_nodes[rank].len() <= 1 {
+                    continue;
+                }
+                sort_bucket(&mut rank_nodes[rank], &outgoing, &positions);
+                update_positions(rank_nodes, &mut positions);
             }
-            sort_bucket(&mut rank_nodes[rank], &incoming, &positions);
-            transpose_bucket(&mut rank_nodes[rank], &incoming, &positions, node_order);
-            update_positions(rank_nodes, &mut positions);
-        }
-        for rank in (0..rank_nodes.len().saturating_sub(1)).rev() {
-            if rank_nodes[rank].len() <= 1 {
-                continue;
+            for rank in 1..rank_nodes.len() {
+                if rank_nodes[rank].len() <= 1 {
+                    continue;
+                }
+                sort_bucket(&mut rank_nodes[rank], &incoming, &positions);
+                update_positions(rank_nodes, &mut positions);
             }
-            sort_bucket(&mut rank_nodes[rank], &outgoing, &positions);
-            transpose_bucket(&mut rank_nodes[rank], &outgoing, &positions, node_order);
-            update_positions(rank_nodes, &mut positions);
+        } else {
+            for rank in 1..rank_nodes.len() {
+                if rank_nodes[rank].len() <= 1 {
+                    continue;
+                }
+                sort_bucket(&mut rank_nodes[rank], &incoming, &positions);
+                transpose_bucket(&mut rank_nodes[rank], &incoming, &positions, node_order);
+                update_positions(rank_nodes, &mut positions);
+            }
+            for rank in (0..rank_nodes.len().saturating_sub(1)).rev() {
+                if rank_nodes[rank].len() <= 1 {
+                    continue;
+                }
+                sort_bucket(&mut rank_nodes[rank], &outgoing, &positions);
+                transpose_bucket(&mut rank_nodes[rank], &outgoing, &positions, node_order);
+                update_positions(rank_nodes, &mut positions);
+            }
         }
     }
+}
+
+fn sort_bucket_dagre_style(
+    bucket: &mut Vec<String>,
+    neighbors: &HashMap<String, Vec<String>>,
+    positions: &HashMap<String, usize>,
+) {
+    let mut sortable: Vec<(String, usize, f32)> = Vec::new();
+    let mut unsortable: Vec<(usize, String)> = Vec::new();
+
+    for (idx, id) in bucket.iter().enumerate() {
+        let values: Vec<usize> = neighbors
+            .get(id)
+            .into_iter()
+            .flatten()
+            .filter_map(|neighbor| positions.get(neighbor).copied())
+            .collect();
+        if values.is_empty() {
+            unsortable.push((idx, id.clone()));
+        } else {
+            let barycenter = values.iter().copied().sum::<usize>() as f32 / values.len() as f32;
+            sortable.push((id.clone(), idx, barycenter));
+        }
+    }
+
+    sortable.sort_by(|a, b| {
+        a.2.partial_cmp(&b.2)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.1.cmp(&b.1))
+    });
+    unsortable.sort_by(|a, b| b.0.cmp(&a.0));
+
+    let mut ordered = Vec::with_capacity(bucket.len());
+    let mut output_index = 0usize;
+    let consume_unsortable = |ordered: &mut Vec<String>,
+                              unsortable: &mut Vec<(usize, String)>,
+                              output_index: &mut usize| {
+        while unsortable
+            .last()
+            .map(|(idx, _)| *idx <= *output_index)
+            .unwrap_or(false)
+        {
+            if let Some((_, id)) = unsortable.pop() {
+                ordered.push(id);
+                *output_index += 1;
+            }
+        }
+    };
+
+    consume_unsortable(&mut ordered, &mut unsortable, &mut output_index);
+    for (id, _, _) in sortable {
+        ordered.push(id);
+        output_index += 1;
+        consume_unsortable(&mut ordered, &mut unsortable, &mut output_index);
+    }
+    while let Some((_, id)) = unsortable.pop() {
+        ordered.push(id);
+    }
+
+    *bucket = ordered;
 }
 
 fn pair_crossings(
@@ -239,7 +358,9 @@ pub(super) fn compute_ranks_subset_for(
 ) -> HashMap<String, usize> {
     if matches!(
         graph.kind,
-        crate::ir::DiagramKind::State | crate::ir::DiagramKind::Er
+        crate::ir::DiagramKind::State
+            | crate::ir::DiagramKind::Er
+            | crate::ir::DiagramKind::Requirement
     ) {
         super::network_simplex::compute_ranks_network_simplex(node_ids, edges, node_order)
     } else {

@@ -10,7 +10,13 @@ pub fn lookup_icon(name: &str) -> Option<(f32, f32, &'static str)> {
         .or_else(|| name.strip_prefix("fab:"))
         .or_else(|| name.strip_prefix("fas:"))
         .unwrap_or(name);
+    let clean = clean.strip_prefix("fa-").unwrap_or(clean);
     match clean {
+        "twitter" => Some((
+            512.0,
+            512.0,
+            "M459.4 151.7c.3 4.5 .3 9.1 .3 13.6 0 138.7-105.6 298.6-298.6 298.6-59.5 0-114.7-17.2-161.1-47.1 8.4 1 16.8 1.5 25.6 1.5 49.3 0 94.6-16.8 130.7-45-46.1-1-84.8-31.2-98.1-72.8 6.5 1 13 2 19.8 2 9.4 0 18.8-1.3 27.6-3.6-48.1-9.7-84.1-52-84.1-103v-1.3c14.3 7.8 30.5 12.7 47.8 13.3-28.3-18.8-46.8-51-46.8-87.4 0-19.5 5.2-37.4 14.3-53 51.7 63.7 129.3 105.3 216.4 109.8-1.6-7.8-2.6-15.9-2.6-24 0-57.8 46.8-104.9 104.9-104.9 30.2 0 57.5 12.7 76.7 33.1 23.7-4.5 46.5-13.3 66.6-25.3-7.8 24.4-24.4 44.8-46.1 57.8 21.1-2.3 41.6-8.1 60.4-16.2-14.3 20.8-32.2 39.3-52.6 54.3z",
+        )),
         "server" => Some((
             512.0,
             512.0,
@@ -139,4 +145,11 @@ pub fn render_icon_svg(name: &str, x: f32, y: f32, size: f32, fill: &str) -> Str
             "<text x=\"{cx:.2}\" y=\"{cy:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-size=\"{fs:.1}\" fill=\"{fill}\">{name}</text>"
         )
     }
+}
+
+pub fn render_unknown_icon_svg(x: f32, y: f32, size: f32) -> String {
+    let scale = size / 80.0;
+    format!(
+        "<g transform=\"translate({x:.2},{y:.2}) scale({scale:.6})\"><rect width=\"80\" height=\"80\" fill=\"#087ebf\" stroke-width=\"0\"/><text transform=\"translate(21.16 64.67)\" fill=\"#fff\" font-family=\"ArialMT, Arial\" font-size=\"67.75\"><tspan x=\"0\" y=\"0\">?</tspan></text></g>"
+    )
 }
