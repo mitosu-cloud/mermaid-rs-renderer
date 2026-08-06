@@ -3361,7 +3361,7 @@ fn normalize_font_family(font_family: &str) -> String {
 
 fn svg_font_style_block(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> String {
     let css_font_family = css_font_family_list(&theme.font_family);
-    let embedded_font = embedded_font_faces_css(&font_family_lists_to_embed(layout, theme, config));
+    let embedded_font = embedded_font_faces_css(&font_faces_to_embed(layout, theme, config));
     format!(
         "<style>{embedded_font}svg{{font-family:{font_family};font-size:{font_size}px;fill:{fill};}}</style>",
         embedded_font = embedded_font,
@@ -3375,67 +3375,78 @@ fn error_style_block(_theme: &Theme) -> String {
     "<style>.error-icon{fill:#552222;}.error-text{fill:#552222;stroke:#552222;}</style>".to_string()
 }
 
-fn embedded_font_faces_css(font_families: &[&str]) -> String {
+fn embedded_font_faces_css(font_faces: &[(&str, u16)]) -> String {
     let mut seen = Vec::new();
     let mut css = String::new();
-    for font_family in font_families {
+    for (font_family, font_weight) in font_faces {
         let Some(family) = primary_named_font_family(font_family) else {
             continue;
         };
         if seen
             .iter()
-            .any(|seen_family: &String| seen_family.eq_ignore_ascii_case(&family))
+            .any(|(seen_family, seen_weight): &(String, u16)| {
+                seen_family.eq_ignore_ascii_case(&family) && seen_weight == font_weight
+            })
         {
             continue;
         }
-        let Some(font) = text_metrics::embedded_font_data(font_family) else {
+        let font = if *font_weight == 400 {
+            text_metrics::embedded_font_data(font_family)
+        } else {
+            text_metrics::embedded_font_data_with_weight(font_family, *font_weight)
+        };
+        let Some(font) = font else {
             continue;
         };
-        seen.push(family.clone());
+        seen.push((family.clone(), *font_weight));
         css.push_str(&format!(
-            "@font-face{{font-family:{};src:url(data:{};base64,{}) format(\"{}\");font-weight:400;font-style:normal;}}",
+            "@font-face{{font-family:{};src:url(data:{};base64,{}) format(\"{}\");font-weight:{};font-style:normal;}}",
             css_string(&family),
             font.mime_type,
             base64_encode(&font.bytes),
-            font.format_hint
+            font.format_hint,
+            font_weight
         ));
     }
     css
 }
 
-fn font_family_lists_to_embed<'a>(
+fn font_faces_to_embed<'a>(
     layout: &Layout,
     theme: &'a Theme,
     config: &'a LayoutConfig,
-) -> Vec<&'a str> {
-    let mut families = vec![theme.font_family.as_str()];
+) -> Vec<(&'a str, u16)> {
+    let mut families = vec![(theme.font_family.as_str(), 400)];
+    if matches!(layout.diagram, DiagramData::Cynefin(_)) {
+        families.push((theme.font_family.as_str(), 700));
+    }
     if !matches!(layout.diagram, DiagramData::C4(_)) {
         return families;
     }
     let c4 = &config.c4;
     families.extend([
-        c4.person_font_family.as_str(),
-        c4.external_person_font_family.as_str(),
-        c4.system_font_family.as_str(),
-        c4.external_system_font_family.as_str(),
-        c4.system_db_font_family.as_str(),
-        c4.external_system_db_font_family.as_str(),
-        c4.system_queue_font_family.as_str(),
-        c4.external_system_queue_font_family.as_str(),
-        c4.boundary_font_family.as_str(),
-        c4.message_font_family.as_str(),
-        c4.container_font_family.as_str(),
-        c4.external_container_font_family.as_str(),
-        c4.container_db_font_family.as_str(),
-        c4.external_container_db_font_family.as_str(),
-        c4.container_queue_font_family.as_str(),
-        c4.external_container_queue_font_family.as_str(),
-        c4.component_font_family.as_str(),
-        c4.external_component_font_family.as_str(),
-        c4.component_db_font_family.as_str(),
-        c4.external_component_db_font_family.as_str(),
-        c4.component_queue_font_family.as_str(),
-        c4.external_component_queue_font_family.as_str(),
+        (c4.person_font_family.as_str(), 400),
+        (c4.external_person_font_family.as_str(), 400),
+        (c4.system_font_family.as_str(), 400),
+        (c4.external_system_font_family.as_str(), 400),
+        (c4.system_db_font_family.as_str(), 400),
+        (c4.external_system_db_font_family.as_str(), 400),
+        (c4.system_queue_font_family.as_str(), 400),
+        (c4.external_system_queue_font_family.as_str(), 400),
+        (c4.boundary_font_family.as_str(), 400),
+        (c4.message_font_family.as_str(), 400),
+        (c4.container_font_family.as_str(), 400),
+        (c4.external_container_font_family.as_str(), 400),
+        (c4.container_db_font_family.as_str(), 400),
+        (c4.external_container_db_font_family.as_str(), 400),
+        (c4.container_queue_font_family.as_str(), 400),
+        (c4.external_container_queue_font_family.as_str(), 400),
+        (c4.component_font_family.as_str(), 400),
+        (c4.external_component_font_family.as_str(), 400),
+        (c4.component_db_font_family.as_str(), 400),
+        (c4.external_component_db_font_family.as_str(), 400),
+        (c4.component_queue_font_family.as_str(), 400),
+        (c4.external_component_queue_font_family.as_str(), 400),
     ]);
     families
 }
@@ -5082,18 +5093,12 @@ fn cynefin_domain_bg<'a>(
 
 fn cynefin_domain_meta(domain: crate::ir::CynefinDomainName) -> (&'static str, &'static str) {
     match domain {
-        crate::ir::CynefinDomainName::Complex => {
-            ("Probe &#8594; Sense &#8594; Respond", "Emergent Practices")
-        }
+        crate::ir::CynefinDomainName::Complex => ("Probe → Sense → Respond", "Emergent Practices"),
         crate::ir::CynefinDomainName::Complicated => {
-            ("Sense &#8594; Analyse &#8594; Respond", "Good Practices")
+            ("Sense → Analyse → Respond", "Good Practices")
         }
-        crate::ir::CynefinDomainName::Clear => {
-            ("Sense &#8594; Categorise &#8594; Respond", "Best Practices")
-        }
-        crate::ir::CynefinDomainName::Chaotic => {
-            ("Act &#8594; Sense &#8594; Respond", "Novel Practices")
-        }
+        crate::ir::CynefinDomainName::Clear => ("Sense → Categorise → Respond", "Best Practices"),
+        crate::ir::CynefinDomainName::Chaotic => ("Act → Sense → Respond", "Novel Practices"),
         crate::ir::CynefinDomainName::Confusion => ("", "Disorder"),
     }
 }
@@ -11591,6 +11596,19 @@ mod tests {
     }
 
     #[test]
+    fn cynefin_embeds_bold_mermaid_font_face_for_bold_labels() {
+        let parsed = parse_mermaid("cynefin-beta\ncomplex").unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let svg = render_svg(&layout, &theme, &config);
+
+        if crate::text_metrics::embedded_font_data_with_weight(&theme.font_family, 700).is_some() {
+            assert!(svg.contains("font-weight:700;font-style:normal;"));
+        }
+    }
+
+    #[test]
     fn sequence_default_colors_match_mermaid_element_defaults() {
         let parsed = parse_mermaid(
             "sequenceDiagram\nAlice->>+John: Hello\nNote over Alice: Remember\nJohn-->>-Alice: Back",
@@ -11740,7 +11758,7 @@ complex --> complicated: \"clarify\"",
         assert!(svg.contains("viewBox=\"0 0 880 680\""));
         assert!(svg.contains("class=\"cynefinBoundary\""));
         assert!(svg.contains("class=\"cynefinCliff\""));
-        assert!(svg.contains(">Probe &#8594; Sense &#8594; Respond</text>"));
+        assert!(svg.contains(">Probe → Sense → Respond</text>"));
         assert!(svg.contains(">+1 more</text>"));
         assert!(svg.contains("marker-end=\"url(#cynefin-arrow-my-svg)\""));
         assert!(svg.contains(">clarify</text>"));

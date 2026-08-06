@@ -1,0 +1,28 @@
+%%{init: {"cynefin": {"width": 900, "showDomainDescriptions": false}}}%%
+cynefin-beta
+  title Team Practices
+  accTitle: Cynefin for team practices
+  accDescr: A Cynefin map categorizing software tasks by complexity domain
+
+  complex
+    "Retrospectives"
+    "Pair programming"
+
+  complicated
+    "Code review"
+    "Architecture decisions"
+
+  clear
+    "Deployment checklist"
+
+  chaotic
+    "Incident response"
+
+  confusion
+    "New initiative"
+    "Ambiguous request"
+
+  complex --> complicated : "Pattern emerges"
+  complicated --> clear : "Best practice found"
+  clear --> chaotic : "Complacency"
+  chaotic --> complex : "Stabilized"

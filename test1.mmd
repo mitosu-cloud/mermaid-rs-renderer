@@ -1,0 +1,40 @@
+flowchart TD
+    PC_START([Pending]) --> PC_PROMOTE{PM promotes<br>to shortlist?}
+    PC_PROMOTE -->|Yes| shortlisted[shortlisted]
+
+    shortlisted --> S_INT{Interview<br>or bind?}
+    S_INT -->|Interview| interviewing[interviewing]
+    S_INT -->|Bind| bound[bound<br>homeowner committed]
+    S_INT -->|Un-shortlist| PC_PROMOTE
+
+    interviewing --> I_DEC{Either party<br>walks away?}
+    I_DEC -->|Yes| declined[declined]
+    I_DEC -->|No| I_DONE{Homeowner has<br>enough info?}
+    I_DONE -->|Yes| interviewed[interviewed]
+    I_DONE -->|Another round<br>video / chat / site visit| interviewing
+
+    interviewed --> IV_DEC{Either party<br>walks away?}
+    IV_DEC -->|Yes| declined
+    IV_DEC -->|No| IV_BIND{Homeowner<br>binds?}
+    IV_BIND -->|Yes| bound[bound<br>homeowner committed]
+    IV_BIND -->|Another round| interviewing
+
+    bound --> C_RESP{Contractor<br>responds}
+    C_RESP -->|Accepts| PC_DONE([In Progress])
+    C_RESP -->|Requires visit| interviewing
+    C_RESP -->|Declines| declined
+
+    style PC_START fill:#FF9800,color:#fff,stroke:#F57C00
+    style PC_PROMOTE fill:#fff,color:#000,stroke:#F57C00
+    style shortlisted fill:#FFE0B2,color:#000,stroke:#F57C00
+    style interviewing fill:#FFB74D,color:#000,stroke:#F57C00
+    style interviewed fill:#FF9800,color:#fff,stroke:#F57C00
+    style bound fill:#F57C00,color:#fff,stroke:#E65100
+    style declined fill:#9E9E9E,color:#fff,stroke:#616161
+    style PC_DONE fill:#2196F3,color:#fff,stroke:#1976D2
+    style S_INT fill:#fff,color:#000,stroke:#F57C00
+    style I_DEC fill:#fff,color:#000,stroke:#F57C00
+    style I_DONE fill:#fff,color:#000,stroke:#F57C00
+    style IV_DEC fill:#fff,color:#000,stroke:#F57C00
+    style IV_BIND fill:#fff,color:#000,stroke:#F57C00
+    style C_RESP fill:#fff,color:#000,stroke:#E65100

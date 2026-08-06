@@ -14343,3 +14343,131 @@ Verification:
 - Regenerated `tests/mermaid-js-comparison/comparison-output/eventmodeling-data-blocks-and-reset-rs.svg`.
 - `bash tests/mermaid-js-comparison/render-comparison.sh eventmodeling-data-blocks-and-reset` passed after allowing Chromium for the JS renderer: RS 1 ok, JS 1 ok.
 - `magick -background white tests/mermaid-js-comparison/comparison-output/eventmodeling-data-blocks-and-reset-rs.svg /private/tmp/eventmodeling-data-blocks-and-reset-rs.png` passed; only the pre-existing fontconfig cache warning was printed.
+
+## cynefin-* — Investigation and changes — 2026-05-27T13:32:29Z
+
+Mandatory visual-appearance checks:
+- Aspect ratio + size class: the existing `comparison-output/cynefin-*-rs.svg` files were stale flowchart fallbacks, not current Cynefin output. `cynefin-basic-framework-rs.svg` was `2204.3896x166.33945` while JS is `880x680`; `cynefin-transitions-and-confusion-rs.svg` was `1885.5128x406.3402` while JS is `980x680`.
+- Layout topology: stale RS outputs arranged tokens like `cynefin`, `beta`, `complex`, and quoted item fragments as flowchart nodes in one long strip. JS output is a four-quadrant Cynefin framework with center confusion ellipse, domain badges, and curved transition labels.
+- Edge shape: stale RS had generic flowchart edges/markers. JS Cynefin uses framework boundary curves and quadratic domain transition arrows.
+- Inter-element spacing ratios: stale RS had no Cynefin regions, so region/item spacing was not comparable.
+- Label-vs-container fit: stale RS quoted labels were truncated into fragments such as `"Analyze`, `"Apply`, and `"Unknown`, because the diagram was parsed as flowchart text rather than Cynefin syntax.
+- State of the art comparison summary: side by side, the stale RS comparison SVGs did not look like the same diagrams at all. The current native RS renderer produces real Cynefin charts when given the source; the broken files were stale generated artifacts from before Cynefin support landed.
+
+Structural diffs:
+- Active `tests/mermaid-js-comparison/reference` currently has no `cynefin-*.mmd` files because the published Mermaid CLI package in `tests/mermaid-js-comparison/node_modules` still does not contain the Cynefin diagram module.
+- The sibling `../mermaid` checkout does contain `packages/mermaid/src/diagrams/cynefin`, and the existing JS SVGs in `comparison-output` are real Cynefin renderings from that upstream source.
+- Current RS Cynefin output initially missed inline config handling for `%%{init: {"cynefin": ...}}%%`, so a transition fixture with `width: 900` and `showDomainDescriptions: false` stayed at default `880x680` with subtitles instead of matching JS `980x680`.
+
+Visual defects in RS:
+- The stale comparison-output RS files were visibly wrong because they were generated before native Cynefin detection/rendering.
+- Current RS native rendering is recognizably aligned with JS after regeneration. Remaining visual differences are minor font-weight/text-size differences, with RS domain/title labels slightly heavier.
+
+Changes applied:
+- `src/cli.rs:646` — added a regression for inline Cynefin init config merging.
+- `src/cli.rs:1081` — merged `cynefin` init settings into `Config.layout.cynefin`: `useMaxWidth`, `width`, `height`, `padding`, `showDomainDescriptions`, and `boundaryAmplitude`.
+- Regenerated the stale ignored RS comparison-output files from the current native renderer:
+  - `tests/mermaid-js-comparison/comparison-output/cynefin-basic-framework-rs.svg`
+  - `tests/mermaid-js-comparison/comparison-output/cynefin-transitions-and-confusion-rs.svg`
+
+Pass 2 findings:
+- `cynefin-basic-framework`: JS and regenerated RS both have viewBox `0 0 880 680`, four domain background rects, eight item badges, zero transition paths, and 23 text nodes. RS no longer contains flowchart fallback text such as `cynefin` or `beta`.
+- `cynefin-transitions-and-confusion`: JS and regenerated RS both have viewBox `0 0 980 680`, four domain background rects, eight item badges, four transition paths, and 18 text nodes. Inline `cynefin.width` and `showDomainDescriptions` now apply in RS.
+- ImageMagick rasterized both regenerated RS SVGs successfully; only the pre-existing fontconfig cache warning was printed.
+
+Verification:
+- `cargo test cynefin` passed.
+- `cargo test merge_init_config_updates_cynefin_config` passed.
+- `cargo build --release` passed with pre-existing warnings.
+
+## cynefin-* — Comparison fixture repair — 2026-05-27T13:40:19Z
+
+Root cause:
+- The generated `comparison-output/cynefin-*-rs.svg` files were stale, and the active fixture could not regenerate Cynefin examples because there were no `reference/cynefin-*.mmd` sources.
+- The installed `tests/mermaid-js-comparison/node_modules/mermaid` package does not include the Cynefin diagram module yet, while the sibling `../mermaid/packages/mermaid/dist/mermaid.min.js` bundle does. Plain `mmdc` therefore cannot produce Cynefin JS goldens from this fixture today.
+
+Changes applied:
+- `tests/mermaid-js-comparison/reference/cynefin-basic-framework.mmd` — added the upstream Incident Response Cynefin example to the active comparison inputs.
+- `tests/mermaid-js-comparison/reference/cynefin-transitions-and-confusion.mmd` — added the transition/confusion example with inline `cynefin.width` and `showDomainDescriptions` config.
+- `tests/mermaid-js-comparison/render-upstream-mermaid.mjs` — added a small Puppeteer renderer that loads the sibling upstream Mermaid bundle and calls `mermaid.render("my-svg", source)`.
+- `tests/mermaid-js-comparison/render-comparison.sh` — routes only `cynefin-beta` references through the upstream bundle when it is present; all existing diagrams still use the normal `mmdc` path.
+
+Pass 2 findings:
+- `cynefin-basic-framework`: comparison script now regenerates both sides successfully. JS and RS both have viewBox `0 0 880 680`, 23 text nodes, 8 item rects, and 0 transition arrow paths.
+- `cynefin-transitions-and-confusion`: comparison script now regenerates both sides successfully. JS and RS both have viewBox `0 0 980 680`, 18 text nodes, 8 item rects, and 4 transition arrow paths.
+- RS no longer contains flowchart fallback markers/text for either active Cynefin example.
+
+Verification:
+- `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-basic-framework` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
+- `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-transitions-and-confusion` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
+- `cargo test cynefin --quiet` passed with pre-existing warnings.
+- `cargo test merge_init_config_updates_cynefin_config --quiet` passed with pre-existing warnings.
+- `cargo build --release` passed with pre-existing warnings.
+
+## cynefin-* — Default theme parity — 2026-05-27T13:45:45Z
+
+Root cause:
+- Upstream Mermaid's default Cynefin style resolves `cynefinBoundary`/`cynefinArrowLine` to `#333333` and `cynefinDomainLabel`/`cynefinTitle` to `#131300`.
+- RS used a slate boundary/arrow color (`#2F3B4D`) and `#333333` label/title color for the default theme, leaving the generated SVG styles visibly different even after the layout and element counts matched.
+
+Changes applied:
+- `src/theme.rs` — changed `CynefinTheme::mermaid_default()` to use Mermaid's default label color `#131300`.
+- `src/theme.rs` — changed the default `Theme` Cynefin block to use `CynefinTheme::mermaid_default()`, restoring the default boundary/arrow color to `#333333`.
+
+Pass 2 findings:
+- `cynefin-basic-framework`: JS and RS both have viewBox `0 0 880 680`, 23 text nodes, 8 item rects, 0 transition arrow paths, boundary style `stroke:#333333`, and title fill `#131300`.
+- `cynefin-transitions-and-confusion`: JS and RS both have viewBox `0 0 980 680`, 18 text nodes, 8 item rects, 4 transition arrow paths, boundary style `stroke:#333333`, and title fill `#131300`.
+
+Verification:
+- `cargo test cynefin --quiet` passed with pre-existing warnings.
+- `cargo test merge_init_config_updates_cynefin_config --quiet` passed with pre-existing warnings.
+- `cargo build --release` passed with pre-existing warnings.
+- `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-basic-framework` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
+- `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-transitions-and-confusion` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
+
+## cynefin-* — Bold font-face parity — 2026-05-27T13:58:34Z
+
+Root cause:
+- RS already embeds the resolved Mermaid font face to make SVGs self-contained, but it only embedded the normal `400` face.
+- Cynefin domain labels and titles use `font-weight:bold`. With only the normal face embedded, browser renderers synthesize bold for RS instead of using the real bold face that Mermaid JS gets through Chromium's system font lookup.
+
+Changes applied:
+- `src/text_metrics.rs` — added weighted embedded font lookup so callers can request the same resolved family at `700`.
+- `src/render.rs` — changed font-face CSS generation to track `(family, weight)` pairs and emit the actual `font-weight` for each embedded face.
+- `src/render.rs` — added the Cynefin default font family at weight `700` only for Cynefin diagrams, avoiding a broad file-size increase for every rendered diagram.
+- `src/render.rs` — added a focused regression that Cynefin emits a `font-weight:700` face when the bold face can be resolved.
+
+Pass 2 findings:
+- `cynefin-basic-framework`: RS now emits embedded font weights `[400, 700]`; JS and RS both have viewBox `0 0 880 680`, 23 text nodes, 8 item rects, and 0 transition arrows.
+- `cynefin-transitions-and-confusion`: RS now emits embedded font weights `[400, 700]`; JS and RS both have viewBox `0 0 980 680`, 18 text nodes, 8 item rects, and 4 transition arrows.
+- A control check on an existing non-Cynefin output (`flowchart-default-node-rs.svg`) still shows only weight `[400]`, so this pass does not double font embedding for the general suite.
+- Chromium screenshot RMSE after regeneration: `cynefin-basic-framework` `1687.92 (0.025756)`, `cynefin-transitions-and-confusion` `1133.4 (0.0172945)`.
+
+Verification:
+- `cargo test cynefin --quiet` passed with pre-existing warnings.
+- `cargo test render_svg_declares_and_embeds_mermaid_font --quiet` passed with pre-existing warnings.
+- `cargo test cynefin_embeds_bold_mermaid_font_face_for_bold_labels --quiet` passed with pre-existing warnings.
+- `cargo build --release` passed with pre-existing warnings.
+- `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-basic-framework` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
+- `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-transitions-and-confusion` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
+
+## cynefin-* — Subtitle text parity — 2026-05-27T13:51:03Z
+
+Root cause:
+- Upstream Mermaid writes the Cynefin decision-model subtitle arrows as literal Unicode arrows (`→`).
+- RS hardcoded the subtitles with numeric XML entities (`&#8594;`), so the visual render was equivalent but the generated SVG text content differed.
+
+Changes applied:
+- `src/render.rs` — changed Cynefin domain metadata subtitles to use literal `→` characters, matching upstream Mermaid output.
+- `src/render.rs` — updated the Cynefin renderer regression assertion to expect the literal arrow text.
+
+Pass 2 findings:
+- `cynefin-basic-framework`: JS and RS both have viewBox `0 0 880 680`, 23 text nodes, matching Cynefin text content, matching normalized Cynefin CSS declarations, and no remaining `&#8594;` entities in RS.
+- `cynefin-transitions-and-confusion`: JS and RS both have viewBox `0 0 980 680`, 18 text nodes, matching Cynefin text content, matching normalized Cynefin CSS declarations, and no remaining `&#8594;` entities in RS.
+
+Verification:
+- `cargo test cynefin --quiet` passed with pre-existing warnings.
+- `cargo test merge_init_config_updates_cynefin_config --quiet` passed with pre-existing warnings.
+- `cargo build --release` passed with pre-existing warnings.
+- `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-basic-framework` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
+- `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-transitions-and-confusion` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.

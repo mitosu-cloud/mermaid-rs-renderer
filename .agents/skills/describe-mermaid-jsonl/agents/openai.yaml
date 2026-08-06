@@ -1,0 +1,4 @@
+interface:
+  display_name: "Describe Mermaid JSONL"
+  short_description: "Fill Mermaid JSONL descriptions"
+  default_prompt: "Use $describe-mermaid-jsonl to fill the next <DESCRIPTION> placeholder in a Mermaid JSONL training file."

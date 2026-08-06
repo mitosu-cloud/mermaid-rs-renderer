@@ -130,8 +130,15 @@ pub struct EmbeddedFontData {
 }
 
 pub fn embedded_font_data(font_family: &str) -> Option<EmbeddedFontData> {
+    embedded_font_data_with_weight(font_family, Weight::NORMAL.0)
+}
+
+pub fn embedded_font_data_with_weight(
+    font_family: &str,
+    font_weight: u16,
+) -> Option<EmbeddedFontData> {
     let mut guard = TEXT_MEASURER.lock().ok()?;
-    guard.embedded_font_data(font_family)
+    guard.embedded_font_data(font_family, Weight(font_weight))
 }
 
 struct TextMeasurer {
@@ -267,10 +274,14 @@ impl TextMeasurer {
         loaded
     }
 
-    fn embedded_font_data(&mut self, font_family: &str) -> Option<EmbeddedFontData> {
-        let family_key = cache_key(font_family, Weight::NORMAL);
+    fn embedded_font_data(
+        &mut self,
+        font_family: &str,
+        weight: Weight,
+    ) -> Option<EmbeddedFontData> {
+        let family_key = cache_key(font_family, weight);
         if !self.cache.contains_key(&family_key) {
-            let face = self.load_face(font_family, Weight::NORMAL);
+            let face = self.load_face(font_family, weight);
             self.cache.insert(family_key.clone(), face);
         }
         let face = self.cache.get(&family_key)?.as_ref()?;

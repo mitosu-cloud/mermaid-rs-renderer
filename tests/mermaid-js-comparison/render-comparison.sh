@@ -14,6 +14,8 @@ OUT_DIR="$SCRIPT_DIR/comparison-output"
 MMDR="$REPO_DIR/target/release/mmdr"
 MMDC="$SCRIPT_DIR/node_modules/.bin/mmdc"
 PUPPETEER_CONFIG="$SCRIPT_DIR/puppeteer-config.json"
+UPSTREAM_RENDERER="$SCRIPT_DIR/render-upstream-mermaid.mjs"
+UPSTREAM_MERMAID_DIST="$SCRIPT_DIR/../../../mermaid/packages/mermaid/dist/mermaid.min.js"
 
 mkdir -p "$OUT_DIR"
 
@@ -54,7 +56,16 @@ for mmd in "${files[@]}"; do
     fi
 
     # Render with mermaid-js
-    if "$MMDC" -i "$mmd" -o "$OUT_DIR/${name}-js.svg" -p "$PUPPETEER_CONFIG" --quiet 2>/dev/null; then
+    # Cynefin currently exists in the sibling Mermaid checkout but not in the
+    # published mermaid package installed by mermaid-cli. Route only those
+    # diagrams through the upstream bundle so the fixture can regenerate them.
+    if grep -Eq '^[[:space:]]*cynefin-beta([[:space:]:]|$)' "$mmd" && [ -f "$UPSTREAM_RENDERER" ] && [ -f "$UPSTREAM_MERMAID_DIST" ]; then
+        js_cmd=(node "$UPSTREAM_RENDERER" -i "$mmd" -o "$OUT_DIR/${name}-js.svg" -p "$PUPPETEER_CONFIG" --quiet)
+    else
+        js_cmd=("$MMDC" -i "$mmd" -o "$OUT_DIR/${name}-js.svg" -p "$PUPPETEER_CONFIG" --quiet)
+    fi
+
+    if "${js_cmd[@]}" 2>/dev/null; then
         js_ok=$((js_ok + 1))
     else
         js_fail=$((js_fail + 1))

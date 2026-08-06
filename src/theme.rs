@@ -175,7 +175,7 @@ pub struct CynefinTheme {
 
 impl CynefinTheme {
     pub fn mermaid_default() -> Self {
-        Self::light("#333333", MERMAID_TEXT_COLOR, "#333333")
+        Self::light("#333333", MERMAID_TEXT_COLOR, "#131300")
     }
 
     fn light(line_color: &str, text_color: &str, label_color: &str) -> Self {
@@ -393,7 +393,7 @@ impl Theme {
             cscale_colors: Vec::new(),
             xy_chart: XYChartTheme::mermaid_default(),
             quadrant: QuadrantTheme::mermaid_default(),
-            cynefin: CynefinTheme::light("#2F3B4D", MERMAID_TEXT_COLOR, "#333333"),
+            cynefin: CynefinTheme::mermaid_default(),
             radar: RadarTheme::default(),
         }
     }

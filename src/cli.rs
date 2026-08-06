@@ -642,6 +642,28 @@ sequenceDiagram
         assert!(!merged.layout.treemap.show_values);
         assert_eq!(merged.layout.treemap.value_format, "$.1%");
     }
+
+    #[test]
+    fn merge_init_config_updates_cynefin_config() {
+        let config = Config::default();
+        let init = json!({
+            "cynefin": {
+                "useMaxWidth": false,
+                "width": 900,
+                "height": 640,
+                "padding": 32,
+                "showDomainDescriptions": false,
+                "boundaryAmplitude": 4
+            }
+        });
+        let merged = merge_init_config(config, init);
+        assert!(!merged.layout.cynefin.use_max_width);
+        assert_eq!(merged.layout.cynefin.width, 900.0);
+        assert_eq!(merged.layout.cynefin.height, 640.0);
+        assert_eq!(merged.layout.cynefin.padding, 32.0);
+        assert!(!merged.layout.cynefin.show_domain_descriptions);
+        assert_eq!(merged.layout.cynefin.boundary_amplitude, 4.0);
+    }
 }
 
 fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
@@ -1054,6 +1076,29 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
         }
         if let Some(val) = treemap.get("valueFormat").and_then(|v| v.as_str()) {
             config.layout.treemap.value_format = val.to_string();
+        }
+    }
+    if let Some(cynefin) = init.get("cynefin") {
+        if let Some(val) = cynefin.get("useMaxWidth").and_then(|v| v.as_bool()) {
+            config.layout.cynefin.use_max_width = val;
+        }
+        if let Some(val) = cynefin.get("width").and_then(json_f32) {
+            config.layout.cynefin.width = val;
+        }
+        if let Some(val) = cynefin.get("height").and_then(json_f32) {
+            config.layout.cynefin.height = val;
+        }
+        if let Some(val) = cynefin.get("padding").and_then(json_f32) {
+            config.layout.cynefin.padding = val;
+        }
+        if let Some(val) = cynefin
+            .get("showDomainDescriptions")
+            .and_then(|v| v.as_bool())
+        {
+            config.layout.cynefin.show_domain_descriptions = val;
+        }
+        if let Some(val) = cynefin.get("boundaryAmplitude").and_then(json_f32) {
+            config.layout.cynefin.boundary_amplitude = val;
         }
     }
     if let Some(xychart) = init.get("xyChart") {
