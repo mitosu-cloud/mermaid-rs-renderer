@@ -3627,3 +3627,50 @@ The earlier "stereotype symbols missing" reports from iter #52 were agent misrea
 - The duplicate semantic classes are gone.
 - The edge now connects the declaration nodes.
 - No literal backtick syntax, text clipping, overlap, or label/container overflow was found.
+
+## block-basic-links — Pass 1 findings — 2026-09-25T00:05:53+00:00
+
+**Visual appearance**
+
+- JS is **150.31 × 50 px**; Rust is **64.69 × 42 px**. Rust’s aspect ratio is nearly half the reference’s.
+- The JS boxes are 41.44 px wide with a 57.44 px gap. Rust’s boxes are about 17 px wide with a 14.4 px gap; `space` has no allocated width.
+- JS connects the box boundaries with a visible arrow. Rust connects their centers, leaving the arrowhead hidden beneath B.
+- These do not yet look like the same diagram.
+
+**Structural differences**
+
+- Both labels are present, but box dimensions, spacing, connector endpoints, and line color differ.
+
+**Visual defects**
+
+- The connector passes beneath the labels and its arrowhead is obscured. Neither label overflows its box.
+
+## block-basic-links — Changes applied — 2026-09-25T00:08:40+00:00
+
+- `src/layout/block.rs:4` — use Mermaid's 8 px grid gaps and include node spans when inferring column count.
+- `src/layout/block.rs:103` — allocate the widest child width to every column, including `space`, and stretch cells to the shared row height.
+- `src/layout/block.rs:170` — route through the midpoint with endpoints clipped to shape boundaries; reserve 4 px for arrowheads.
+- `src/layout/block.rs:247` — intersect edges with rectangle, polygon, and ellipse boundaries.
+- `src/layout/mod.rs:7948` — match squareRect.ts label padding for block rectangles (16 px horizontally and 8 px vertically by default).
+- `src/render.rs:1195` — use 1 px normal block edges, matching the JS stylesheet.
+- `src/theme.rs:111` — restore Mermaid's default #333333 line color.
+
+## block-basic-links — Pass 2 findings — 2026-09-25T00:10:26+00:00
+
+**Visual appearance**
+
+- Both canvases are now **150.3125 × 50 px**, with 41.44 × 40 px boxes and a 57.44 px gap.
+- Both connectors run between the box boundaries at the same height, with a visible arrowhead touching B.
+- The SVG path commands differ, but both draw the same straight horizontal connector.
+
+**Structural differences**
+
+- Rust rounds some coordinates to two decimals and uses SVG text instead of HTML labels.
+
+**Visual defects**
+
+- No hidden arrowhead, overlap, clipping, or label overflow remains. Minor text rasterization differences are visible when enlarged.
+
+**Visual match: yes.**
+
+Build: cargo build --release succeeded. Re-render: SVG and PNG succeeded. Tests were not run in this skill pass.

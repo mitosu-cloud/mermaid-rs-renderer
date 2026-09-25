@@ -108,7 +108,7 @@ impl Theme {
             primary_color,
             primary_text_color: "#333333".to_string(),
             primary_border_color: "#9370DB".to_string(),
-            line_color: "#2F3B4D".to_string(),
+            line_color: "#333333".to_string(),
             secondary_color,
             tertiary_color,
             edge_label_background: "rgba(248,250,252, 0.92)".to_string(),

@@ -1,6 +1,8 @@
 use super::*;
 
 const BLOCK_VIEWBOX_PADDING: f32 = 5.0;
+const BLOCK_GRID_GAP: f32 = 8.0;
+const BLOCK_MARKER_OFFSET: f32 = 4.0;
 
 pub(super) fn measure_block_label(text: &str, theme: &Theme, config: &LayoutConfig) -> TextBlock {
     // Block labels use their rendered width and only explicit line breaks.
@@ -18,8 +20,8 @@ pub(super) fn measure_block_label(text: &str, theme: &Theme, config: &LayoutConf
 pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &LayoutConfig) -> Layout {
     let mut nodes = build_graph_node_layouts(graph, theme, config);
 
-    let node_gap = (theme.font_size * 0.4).max(4.0);
-    let column_gap = (theme.font_size * 0.45).max(6.0);
+    let node_gap = BLOCK_GRID_GAP;
+    let column_gap = BLOCK_GRID_GAP;
     let origin_x = 6.0;
     let origin_y = 6.0;
 
@@ -60,7 +62,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
         } else if inferred_columns > 0 {
             inferred_columns
         } else {
-            placement_nodes.len().max(1)
+            placement_nodes.iter().map(|node| node.span.max(1)).sum()
         }
     });
     let mut column_widths = vec![0.0f32; columns];
@@ -97,6 +99,13 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
         }
         col += span;
     }
+
+    // Mermaid's block grid uses the widest normalized child for every column,
+    // including invisible space cells, and the tallest child for every row.
+    let column_width = column_widths.iter().copied().fold(0.0, f32::max);
+    let row_height = row_heights.iter().copied().fold(0.0, f32::max);
+    column_widths.fill(column_width);
+    row_heights.fill(row_height);
 
     column_x[0] = origin_x;
     for i in 1..columns {
@@ -135,10 +144,10 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
                     }
                 }
             }
-            let x = start_x + (span_width - layout.width) / 2.0;
-            let y = row_y[row] + (row_heights[row] - layout.height) / 2.0;
-            layout.x = x;
-            layout.y = y;
+            layout.width = span_width;
+            layout.height = row_heights[row];
+            layout.x = start_x;
+            layout.y = row_y[row];
         }
         col += span;
     }
@@ -158,6 +167,18 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             to_layout.x + to_layout.width / 2.0,
             to_layout.y + to_layout.height / 2.0,
         );
+        let midpoint = (
+            (from_center.0 + to_center.0) / 2.0,
+            (from_center.1 + to_center.1) / 2.0,
+        );
+        let mut start = block_boundary_point(from_layout, to_center);
+        let mut end = block_boundary_point(to_layout, from_center);
+        if edge.arrow_start {
+            start = trim_block_endpoint(start, midpoint);
+        }
+        if edge.arrow_end {
+            end = trim_block_endpoint(end, midpoint);
+        }
         let label = edge.label.as_ref().map(|l| measure_label(l, theme, config));
         let start_label = edge
             .start_label
@@ -180,7 +201,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             label_anchor: None,
             start_label_anchor: None,
             end_label_anchor: None,
-            points: vec![from_center, to_center],
+            points: vec![start, midpoint, end],
             directed: edge.directed,
             arrow_start: edge.arrow_start,
             arrow_end: edge.arrow_end,
@@ -192,7 +213,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             sequence_arrow_start: edge.sequence_arrow_start,
             style: edge.style,
             override_style,
-            curve: None,
+            curve: Some(crate::ir::CurveType::Basis),
         });
     }
 
@@ -221,6 +242,53 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             state_notes: Vec::new(),
         },
     }
+}
+
+fn block_boundary_point(node: &NodeLayout, target: (f32, f32)) -> (f32, f32) {
+    let center = (node.x + node.width / 2.0, node.y + node.height / 2.0);
+    let direction = (target.0 - center.0, target.1 - center.1);
+    if direction.0.abs() < 0.001 && direction.1.abs() < 0.001 {
+        return center;
+    }
+    if matches!(
+        node.shape,
+        crate::ir::NodeShape::Circle | crate::ir::NodeShape::DoubleCircle
+    ) && let Some(point) = ray_ellipse_intersection(
+        center,
+        direction,
+        center,
+        node.width / 2.0,
+        node.height / 2.0,
+    ) {
+        return point;
+    }
+    if let Some(polygon) = shape_polygon_points(node)
+        && let Some(point) = ray_polygon_intersection(center, direction, &polygon)
+    {
+        return point;
+    }
+    let half_width = node.width / 2.0;
+    let half_height = node.height / 2.0;
+    let scale = if direction.1.abs() * half_width > direction.0.abs() * half_height {
+        half_height / direction.1.abs()
+    } else {
+        half_width / direction.0.abs()
+    };
+    (
+        center.0 + direction.0 * scale,
+        center.1 + direction.1 * scale,
+    )
+}
+
+fn trim_block_endpoint(point: (f32, f32), target: (f32, f32)) -> (f32, f32) {
+    let dx = target.0 - point.0;
+    let dy = target.1 - point.1;
+    let length = dx.hypot(dy);
+    if length <= BLOCK_MARKER_OFFSET {
+        return point;
+    }
+    let scale = BLOCK_MARKER_OFFSET / length;
+    (point.0 + dx * scale, point.1 + dy * scale)
 }
 
 fn infer_block_grid(graph: &Graph) -> (Vec<crate::ir::BlockNode>, usize) {

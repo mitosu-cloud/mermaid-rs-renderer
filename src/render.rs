@@ -1192,6 +1192,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         let base_edge_width = match layout.kind {
             crate::ir::DiagramKind::Class
             | crate::ir::DiagramKind::State
+            | crate::ir::DiagramKind::Block
             | crate::ir::DiagramKind::Er => 1.0,
             _ => 2.0,
         };

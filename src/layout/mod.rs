@@ -7945,6 +7945,9 @@ fn shape_size(
         crate::ir::DiagramKind::Er => (1.05, 1.15),
         crate::ir::DiagramKind::Kanban => (2.3, 0.67),
         crate::ir::DiagramKind::Requirement => (0.1, 1.0),
+        // squareRect.ts uses twice the block padding horizontally and one
+        // block padding vertically, on each side of the label.
+        crate::ir::DiagramKind::Block if shape == crate::ir::NodeShape::Rectangle => (0.8, 0.8),
         crate::ir::DiagramKind::Block => (0.2, 0.4),
         _ => (1.0, 1.0),
     };
