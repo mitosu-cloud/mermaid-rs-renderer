@@ -289,7 +289,9 @@ Supported:
 
 ## Features
 
-**Diagram types:** `flowchart` / `graph` | `sequenceDiagram` | `classDiagram` | `stateDiagram-v2` | `erDiagram` | `pie` | `gantt` | `journey` | `timeline` | `mindmap` | `gitGraph` | `xychart-beta` | `quadrantChart` | `sankey-beta` | `kanban` | `C4Context` | `block-beta` | `architecture-beta` | `requirementDiagram` | `zenuml` | `packet-beta` | `radar-beta` | `treemap`
+**Diagram types:** `flowchart` / `graph` | `sequenceDiagram` | `classDiagram` | `stateDiagram-v2` | `erDiagram` | `pie` | `gantt` | `journey` | `timeline` | `mindmap` | `gitGraph` | `xychart-beta` | `quadrantChart` | `sankey-beta` | `kanban` | `C4Context` | `block-beta` | `architecture-beta` | `requirementDiagram` | `zenuml` | `packet-beta` | `radar-beta` | `treemap` | `swimlane-beta` | `cynefin-beta` | `eventmodeling` | `railroad-beta` / `railroad-ebnf-beta` / `railroad-abnf-beta` / `railroad-peg-beta` (core grammar subset)
+
+The railroad parser handles named rules, sequences, choices, optional terms, and repetition. It currently rejects ABNF bounded repetition and PEG lookahead. Event modeling currently renders `tf` / `timeframe` statements with inferred links between adjacent frames.
 
 **Node shapes:** rectangle, round-rect, stadium, circle, double-circle, diamond, hexagon, cylinder, subroutine, trapezoid, parallelogram, asymmetric
 

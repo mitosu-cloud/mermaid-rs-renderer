@@ -15,6 +15,8 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::Path;
 
+mod railroad;
+
 fn fit_dimensions_to_preferred_ratio(
     width: f32,
     height: f32,
@@ -480,9 +482,85 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         return svg;
     }
 
+    if let DiagramData::Cynefin(ref cynefin) = layout.diagram {
+        svg.push_str(&render_cynefin(cynefin, theme));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    if let DiagramData::EventModeling(ref event_modeling) = layout.diagram {
+        svg.push_str(&render_event_modeling(event_modeling, width, theme));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    if let DiagramData::Railroad(ref railroad) = layout.diagram {
+        svg.push_str(&railroad::render_railroad(railroad, theme));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
     for subgraph in &layout.subgraphs {
         let label_empty = subgraph.label.trim().is_empty();
-        if is_state {
+        if let DiagramData::Swimlane { direction } = &layout.diagram {
+            let sub_fill = subgraph
+                .style
+                .fill
+                .as_ref()
+                .unwrap_or(&theme.cluster_background);
+            let sub_stroke = subgraph
+                .style
+                .stroke
+                .as_ref()
+                .unwrap_or(&theme.cluster_border);
+            let sub_stroke_width = subgraph.style.stroke_width.unwrap_or(1.0);
+            let label_color = subgraph
+                .style
+                .text_color
+                .as_ref()
+                .unwrap_or(&theme.primary_text_color);
+            let horizontal = matches!(
+                direction,
+                crate::ir::Direction::LeftRight | crate::ir::Direction::RightLeft
+            );
+            let header = 32.0_f32;
+            svg.push_str(&format!(
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"/>",
+                subgraph.x, subgraph.y, subgraph.width, subgraph.height,
+                sub_fill, sub_stroke, sub_stroke_width
+            ));
+            if horizontal {
+                let divider_x = subgraph.x + header;
+                svg.push_str(&format!(
+                    "<line x1=\"{divider_x:.2}\" y1=\"{:.2}\" x2=\"{divider_x:.2}\" y2=\"{:.2}\" stroke=\"{}\"/>",
+                    subgraph.y, subgraph.y + subgraph.height, sub_stroke
+                ));
+                if !label_empty {
+                    let cx = subgraph.x + header * 0.5;
+                    let cy = subgraph.y + subgraph.height * 0.5;
+                    svg.push_str(&format!(
+                        "<text x=\"{cx:.2}\" y=\"{cy:.2}\" transform=\"rotate(-90 {cx:.2} {cy:.2})\" text-anchor=\"middle\" dominant-baseline=\"middle\" fill=\"{}\" font-family=\"{}\" font-size=\"{:.2}\">{}</text>",
+                        label_color, escape_xml(&theme.font_family), theme.font_size,
+                        escape_xml(&subgraph.label)
+                    ));
+                }
+            } else {
+                let divider_y = subgraph.y + header;
+                svg.push_str(&format!(
+                    "<line x1=\"{:.2}\" y1=\"{divider_y:.2}\" x2=\"{:.2}\" y2=\"{divider_y:.2}\" stroke=\"{}\"/>",
+                    subgraph.x, subgraph.x + subgraph.width, sub_stroke
+                ));
+                if !label_empty {
+                    let cx = subgraph.x + subgraph.width * 0.5;
+                    let cy = subgraph.y + header * 0.5;
+                    svg.push_str(&format!(
+                        "<text x=\"{cx:.2}\" y=\"{cy:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" fill=\"{}\" font-family=\"{}\" font-size=\"{:.2}\">{}</text>",
+                        label_color, escape_xml(&theme.font_family), theme.font_size,
+                        escape_xml(&subgraph.label)
+                    ));
+                }
+            }
+        } else if is_state {
             let sub_fill = subgraph.style.fill.as_ref().unwrap_or(&theme.primary_color);
             let sub_stroke = subgraph
                 .style
@@ -1508,7 +1586,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     layout.kind == crate::ir::DiagramKind::Class,
                 ));
             }
-            let center_x = node.x + node.width / 2.0;
+            let mut center_x = node.x + node.width / 2.0;
+            if node.shape == crate::ir::NodeShape::Asymmetric {
+                // Center the label in the rectangular body to the right of the notch.
+                center_x += node.height / 8.0;
+            }
             let center_y = node.y + node.height / 2.0;
             let hide_label = node
                 .label
@@ -1624,6 +1706,24 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         "middle",
                         node.style.text_color.as_deref(),
                         false,
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Block {
+                    let baseline_offset =
+                        text_metrics::centered_baseline_offset(theme.font_size, &theme.font_family)
+                            .unwrap_or(theme.font_size * 0.35);
+                    let first_baseline = center_y - node.label.height / 2.0
+                        + theme.font_size * config.label_line_height / 2.0
+                        + baseline_offset;
+                    text_block_svg_with_font_size(
+                        center_x,
+                        first_baseline,
+                        &node.label,
+                        theme,
+                        config,
+                        theme.font_size,
+                        "middle",
+                        node.style.text_color.as_deref(),
+                        true,
                     )
                 } else {
                     text_block_svg(
@@ -7235,7 +7335,7 @@ fn edge_endpoint_angle(points: &[(f32, f32)], start: bool) -> f32 {
 fn primary_font(fonts: &str) -> String {
     fonts
         .split(',')
-        .map(|s| s.trim().trim_matches('"'))
+        .map(|s| s.trim().trim_matches('"').trim_matches('\''))
         .find(|s| !s.is_empty())
         .unwrap_or("Inter")
         .to_string()
@@ -7577,19 +7677,19 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::Asymmetric => {
-            let slant = w * 0.22;
+            let notch = h / 4.0;
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",
                 x,
                 y,
-                x + w - slant,
+                x + w,
                 y,
                 x + w,
-                y + h / 2.0,
-                x + w - slant,
                 y + h,
                 x,
-                y + h
+                y + h,
+                x + notch,
+                y + h / 2.0
             );
             format!(
                 "<polygon points=\"{}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
@@ -8313,6 +8413,40 @@ mod tests {
     use crate::layout::compute_layout;
 
     #[test]
+    fn block_asymmetric_shape_has_left_notch_and_room_for_label() {
+        let parsed =
+            crate::parser::parse_mermaid("block\n id1>\"This is the text in the box\"]").unwrap();
+        let theme = Theme::mermaid_default();
+        let config = LayoutConfig::default();
+        let layout = compute_layout(&parsed.graph, &theme, &config);
+        let node = &layout.nodes["id1"];
+        assert_eq!(layout.nodes.len(), 1);
+        assert_eq!((node.x, node.y), (5.0, 5.0));
+        assert!((layout.width - node.width - 10.0).abs() < 0.01);
+        assert!((layout.height - 42.0).abs() < 0.01);
+        assert!((node.height - 32.0).abs() < 0.01);
+        // 8px of label padding plus an 8px notch, matching rectLeftInvArrow.ts.
+        assert!((node.width - node.label.width - 16.0).abs() < 0.01);
+
+        // Use a fixed box to check the outline independently of font metrics.
+        let mut shape = node.clone();
+        shape.x = 0.0;
+        shape.y = 0.0;
+        shape.width = 200.0;
+        shape.height = 32.0;
+        assert!(
+            shape_svg(&shape, &theme, &config)
+                .contains("points=\"0.00,0.00 200.00,0.00 200.00,32.00 0.00,32.00 8.00,16.00\"")
+        );
+
+        let svg = render_svg(&layout, &theme, &config);
+        assert!(svg.contains("This is the text in the box"));
+        assert!(!svg.contains("id1&gt;"));
+        assert!(svg.contains("stroke=\"#9370DB\""));
+        assert!(svg.contains("font-family=\"Trebuchet MS,Verdana,Arial,sans-serif\""));
+    }
+
+    #[test]
     fn render_svg_basic() {
         let mut graph = Graph::new();
         graph.direction = Direction::LeftRight;
@@ -9008,6 +9142,191 @@ fn render_ishikawa(layout: &crate::layout::IshikawaLayout, theme: &Theme) -> Str
 }
 
 // ── Wardley map renderer ────────────────────────────────────────────────
+
+fn render_event_modeling(data: &crate::ir::EventModelingData, width: f32, theme: &Theme) -> String {
+    use crate::ir::EventFrameKind;
+
+    let mut svg = String::new();
+    let rows = ["UI/Automation", "Command/Read Model", "Events"];
+    let lane_of = |kind: EventFrameKind| -> usize {
+        match kind {
+            EventFrameKind::Ui | EventFrameKind::Processor => 0,
+            EventFrameKind::Command | EventFrameKind::ReadModel => 1,
+            EventFrameKind::Event => 2,
+        }
+    };
+    let frame_rect = |index: usize, kind: EventFrameKind| -> (f32, f32, f32, f32) {
+        (
+            205.0 + index as f32 * 145.0,
+            39.0 + lane_of(kind) as f32 * 120.0,
+            130.0,
+            84.0,
+        )
+    };
+    for (index, label) in rows.iter().enumerate() {
+        let y = 25.0 + index as f32 * 120.0;
+        svg.push_str(&format!(
+            "<rect x=\"25\" y=\"{y:.2}\" width=\"{:.2}\" height=\"112\" rx=\"4\" fill=\"#FAFAFA\" stroke=\"#E5E5E5\"/>",
+            width - 50.0
+        ));
+        svg.push_str(&format!(
+            "<text x=\"50\" y=\"{:.2}\" font-family=\"{}\" font-size=\"14\" font-weight=\"600\" fill=\"{}\">{}</text>",
+            y + 27.0, escape_xml(&theme.font_family), theme.primary_text_color, label
+        ));
+    }
+    svg.push_str("<defs><marker id=\"eventmodeling-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"7\" markerHeight=\"7\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"#444\"/></marker></defs>");
+    for (index, pair) in data.frames.windows(2).enumerate() {
+        let (sx, sy, sw, sh) = frame_rect(index, pair[0].kind);
+        let (tx, ty, _tw, th) = frame_rect(index + 1, pair[1].kind);
+        let source_lane = lane_of(pair[0].kind);
+        let target_lane = lane_of(pair[1].kind);
+        let (x1, y1, x2, y2) = if source_lane < target_lane {
+            (sx + sw * 0.7, sy + sh, tx + 40.0, ty)
+        } else if source_lane > target_lane {
+            (sx + sw * 0.7, sy, tx + 40.0, ty + th)
+        } else {
+            (sx + sw, sy + sh * 0.5, tx, ty + th * 0.5)
+        };
+        svg.push_str(&format!(
+            "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"#444\" stroke-width=\"1\" marker-end=\"url(#eventmodeling-arrow)\"/>",
+        ));
+    }
+    for (index, frame) in data.frames.iter().enumerate() {
+        let (x, y, w, h) = frame_rect(index, frame.kind);
+        let fill = match frame.kind {
+            EventFrameKind::Ui => "#FFFFFF",
+            EventFrameKind::Processor => "#F0F0F0",
+            EventFrameKind::Command => "#C8DFFF",
+            EventFrameKind::ReadModel => "#D7F4AD",
+            EventFrameKind::Event => "#FFB677",
+        };
+        svg.push_str(&format!(
+            "<g class=\"event-timeframe\" data-id=\"{}\"><rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"4\" fill=\"{fill}\" stroke=\"#BBBBBB\"/>",
+            escape_xml(&frame.id)
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"14\" font-weight=\"600\" fill=\"{}\">{}</text></g>",
+            x + w * 0.5, y + h * 0.5, escape_xml(&theme.font_family),
+            theme.primary_text_color, escape_xml(&frame.label)
+        ));
+    }
+    svg
+}
+
+fn render_cynefin(data: &crate::ir::CynefinData, theme: &Theme) -> String {
+    let mut svg = String::new();
+    let domains = [
+        ("complex", "Complex", 40.0, 55.0, "#E8F5E9"),
+        ("complicated", "Complicated", 400.0, 55.0, "#E3F2FD"),
+        ("chaotic", "Chaotic", 40.0, 300.0, "#FBE9E7"),
+        ("clear", "Clear", 400.0, 300.0, "#FFF8E1"),
+    ];
+    for (_, _, x, y, fill) in domains {
+        svg.push_str(&format!(
+            "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"360\" height=\"245\" fill=\"{fill}\"/>",
+        ));
+    }
+    // The two wavy boundaries and the clear/chaotic cliff are the defining
+    // visual structure of a Cynefin diagram.
+    svg.push_str(&format!(
+        "<path d=\"M 400 55 C 390 105 410 155 400 205 S 410 270 400 300\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\" stroke-dasharray=\"4 3\"/>",
+        theme.primary_border_color
+    ));
+    svg.push_str(&format!(
+        "<path d=\"M 40 300 C 130 290 210 310 300 300 S 500 290 600 300 S 700 310 760 300\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\" stroke-dasharray=\"4 3\"/>",
+        theme.primary_border_color
+    ));
+    svg.push_str("<path d=\"M 400 300 C 390 350 410 400 400 450 S 390 515 400 545\" fill=\"none\" stroke=\"#8B0000\" stroke-width=\"4\"/>");
+    svg.push_str(&format!(
+        "<ellipse cx=\"400\" cy=\"300\" rx=\"82\" ry=\"54\" fill=\"#F3E5F5\" stroke=\"{}\" stroke-width=\"2\" stroke-dasharray=\"4 3\"/>",
+        theme.primary_border_color
+    ));
+    if let Some(title) = &data.title {
+        svg.push_str(&format!(
+            "<text x=\"400\" y=\"35\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"20\" font-weight=\"600\" fill=\"{}\">{}</text>",
+            escape_xml(&theme.font_family), theme.primary_text_color, escape_xml(title)
+        ));
+    }
+    for (_, label, x, y, _) in domains {
+        let label_y = if y < 300.0 { 145.0 } else { 410.0 };
+        svg.push_str(&format!(
+            "<text x=\"{:.2}\" y=\"{label_y:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"18\" font-weight=\"600\" fill=\"{}\">{}</text>",
+            x + 180.0, escape_xml(&theme.font_family),
+            theme.primary_text_color, label
+        ));
+    }
+    svg.push_str(&format!(
+        "<text x=\"400\" y=\"293\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"16\" font-weight=\"600\" fill=\"{}\">Confusion</text>",
+        escape_xml(&theme.font_family), theme.primary_text_color
+    ));
+
+    let mut counts = std::collections::HashMap::<&str, usize>::new();
+    for item in &data.items {
+        let (x, y) = match item.domain.as_str() {
+            "complex" => (92.0, 189.0),
+            "complicated" => (452.0, 189.0),
+            "chaotic" => (92.0, 451.0),
+            "clear" => (452.0, 451.0),
+            "confusion" => (334.0, 306.0),
+            _ => continue,
+        };
+        let count = counts.entry(item.domain.as_str()).or_insert(0);
+        let item_y = y + *count as f32 * 32.0;
+        *count += 1;
+        let width = (text_metrics::get_computed_text_length(&item.label, 12.0, &theme.font_family)
+            + 18.0)
+            .clamp(
+                66.0,
+                if item.domain == "confusion" {
+                    132.0
+                } else {
+                    300.0
+                },
+            );
+        svg.push_str(&format!(
+            "<rect x=\"{x:.2}\" y=\"{item_y:.2}\" width=\"{width:.2}\" height=\"25\" rx=\"6\" fill=\"#FFFFFF\" stroke=\"{}\" stroke-width=\"1\"/>",
+            theme.primary_border_color
+        ));
+        svg.push_str(&format!(
+            "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"{}\" font-size=\"12\" fill=\"{}\">{}</text>",
+            x + 9.0, item_y + 17.0, escape_xml(&theme.font_family),
+            theme.primary_text_color, escape_xml(&item.label)
+        ));
+    }
+
+    let point = |domain: &str| -> Option<(f32, f32)> {
+        match domain {
+            "complex" => Some((260.0, 180.0)),
+            "complicated" => Some((540.0, 180.0)),
+            "chaotic" => Some((260.0, 420.0)),
+            "clear" => Some((540.0, 420.0)),
+            "confusion" => Some((400.0, 300.0)),
+            _ => None,
+        }
+    };
+    svg.push_str("<defs><marker id=\"cynefin-arrow\" viewBox=\"0 0 10 10\" refX=\"9\" refY=\"5\" markerWidth=\"8\" markerHeight=\"8\" orient=\"auto\"><path d=\"M 0 0 L 10 5 L 0 10 z\" fill=\"#666\"/></marker></defs>");
+    for transition in &data.transitions {
+        let (Some((x1, y1)), Some((x2, y2))) = (point(&transition.from), point(&transition.to))
+        else {
+            continue;
+        };
+        if transition.from == transition.to {
+            continue;
+        }
+        svg.push_str(&format!(
+            "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"#666\" stroke-width=\"1.5\" marker-end=\"url(#cynefin-arrow)\"/>",
+        ));
+        if let Some(label) = &transition.label {
+            svg.push_str(&format!(
+                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"11\" fill=\"{}\">{}</text>",
+                (x1 + x2) * 0.5, (y1 + y2) * 0.5 - 7.0,
+                escape_xml(&theme.font_family), theme.primary_text_color,
+                escape_xml(label)
+            ));
+        }
+    }
+    svg
+}
 
 fn render_wardley(layout: &crate::layout::WardleyLayout, theme: &Theme) -> String {
     let mut svg = String::new();

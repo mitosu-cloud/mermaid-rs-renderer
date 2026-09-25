@@ -20,6 +20,10 @@ pub enum Direction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagramKind {
     Flowchart,
+    Swimlane,
+    Cynefin,
+    EventModeling,
+    Railroad,
     Class,
     State,
     Sequence,
@@ -594,6 +598,70 @@ pub struct WardleyData {
 }
 
 #[derive(Debug, Clone)]
+pub struct CynefinItem {
+    pub domain: String,
+    pub label: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CynefinTransition {
+    pub from: String,
+    pub to: String,
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CynefinData {
+    pub title: Option<String>,
+    pub items: Vec<CynefinItem>,
+    pub transitions: Vec<CynefinTransition>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventFrameKind {
+    Ui,
+    Processor,
+    Command,
+    ReadModel,
+    Event,
+}
+
+#[derive(Debug, Clone)]
+pub struct EventFrame {
+    pub id: String,
+    pub kind: EventFrameKind,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EventModelingData {
+    pub frames: Vec<EventFrame>,
+}
+
+#[derive(Debug, Clone)]
+pub enum RailroadExpr {
+    Terminal(String),
+    Nonterminal(String),
+    Sequence(Vec<RailroadExpr>),
+    Choice(Vec<RailroadExpr>),
+    Optional(Box<RailroadExpr>),
+    ZeroOrMore(Box<RailroadExpr>),
+    OneOrMore(Box<RailroadExpr>),
+}
+
+#[derive(Debug, Clone)]
+pub struct RailroadRule {
+    pub name: String,
+    pub expression: RailroadExpr,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RailroadData {
+    pub title: Option<String>,
+    pub rules: Vec<RailroadRule>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Graph {
     pub kind: DiagramKind,
     pub direction: Direction,
@@ -638,6 +706,9 @@ pub struct Graph {
     pub tree_view: TreeViewData,
     pub ishikawa: IshikawaData,
     pub wardley: WardleyData,
+    pub cynefin: CynefinData,
+    pub event_modeling: EventModelingData,
+    pub railroad: RailroadData,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -864,6 +935,9 @@ impl Graph {
             tree_view: TreeViewData::default(),
             ishikawa: IshikawaData::default(),
             wardley: WardleyData::default(),
+            cynefin: CynefinData::default(),
+            event_modeling: EventModelingData::default(),
+            railroad: RailroadData::default(),
         }
     }
 

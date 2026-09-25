@@ -1,5 +1,20 @@
 use super::*;
 
+const BLOCK_VIEWBOX_PADDING: f32 = 5.0;
+
+pub(super) fn measure_block_label(text: &str, theme: &Theme, config: &LayoutConfig) -> TextBlock {
+    // Block labels use their rendered width and only explicit line breaks.
+    // The generic fast estimate and character-count floor widen short labels.
+    let mut label = measure_label_no_wrap(text, theme, config);
+    label.width = label
+        .lines
+        .iter()
+        .map(|line| text_width(&line.text(), theme.font_size, &theme.font_family, false))
+        .fold(0.0, f32::max);
+    label.height = label.lines.len() as f32 * theme.font_size * config.label_line_height;
+    label
+}
+
 pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &LayoutConfig) -> Layout {
     let mut nodes = build_graph_node_layouts(graph, theme, config);
 
@@ -12,15 +27,20 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
 
     let Some(block) = graph.block.as_ref() else {
         let mut subgraphs = build_subgraph_layouts(graph, &nodes, theme, config);
-        normalize_layout(&mut nodes, edges.as_mut_slice(), &mut subgraphs);
+        normalize_layout_with_padding(
+            &mut nodes,
+            edges.as_mut_slice(),
+            &mut subgraphs,
+            BLOCK_VIEWBOX_PADDING,
+        );
         let (max_x, max_y) = bounds_without_padding(&nodes, &subgraphs);
         return Layout {
             kind: graph.kind,
             nodes,
             edges,
             subgraphs,
-            width: max_x + 6.0,
-            height: max_y + 6.0,
+            width: max_x + BLOCK_VIEWBOX_PADDING,
+            height: max_y + BLOCK_VIEWBOX_PADDING,
             acc_title: None,
             acc_descr: None,
             diagram: DiagramData::Graph {
@@ -177,11 +197,16 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
     }
 
     let mut subgraphs = build_subgraph_layouts(graph, &nodes, theme, config);
-    normalize_layout(&mut nodes, edges.as_mut_slice(), &mut subgraphs);
+    normalize_layout_with_padding(
+        &mut nodes,
+        edges.as_mut_slice(),
+        &mut subgraphs,
+        BLOCK_VIEWBOX_PADDING,
+    );
 
     let (max_x, max_y) = bounds_with_edges(&nodes, &subgraphs, &edges);
-    let width = max_x + 6.0;
-    let height = max_y + 6.0;
+    let width = max_x + BLOCK_VIEWBOX_PADDING;
+    let height = max_y + BLOCK_VIEWBOX_PADDING;
 
     Layout {
         kind: graph.kind,

@@ -1,0 +1,12 @@
+swimlane-beta LR
+subgraph Sales[Sales]
+  request[Request]
+  approve[Approve]
+  request --> approve
+end
+subgraph Operations[Operations]
+  deploy[Deploy]
+  monitor[Monitor]
+  deploy --> monitor
+end
+approve --> deploy

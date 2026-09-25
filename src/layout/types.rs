@@ -567,6 +567,10 @@ pub struct VennLayout {
 #[derive(Debug, Clone)]
 pub enum DiagramData {
     Graph { state_notes: Vec<StateNoteLayout> },
+    Swimlane { direction: Direction },
+    Cynefin(crate::ir::CynefinData),
+    EventModeling(crate::ir::EventModelingData),
+    Railroad(crate::ir::RailroadData),
     Sequence(SequenceData),
     Pie(PieData),
     Quadrant(QuadrantLayout),

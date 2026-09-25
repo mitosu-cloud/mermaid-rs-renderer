@@ -683,13 +683,13 @@ pub(super) fn shape_polygon_points(node: &NodeLayout) -> Option<Vec<(f32, f32)>>
             Some(points)
         }
         crate::ir::NodeShape::Asymmetric => {
-            let slant = w * 0.22;
+            let notch = h / 4.0;
             Some(vec![
                 (x, y),
-                (x + w - slant, y),
-                (x + w, y + h / 2.0),
-                (x + w - slant, y + h),
+                (x + w, y),
+                (x + w, y + h),
                 (x, y + h),
+                (x + notch, y + h / 2.0),
             ])
         }
         _ => None,

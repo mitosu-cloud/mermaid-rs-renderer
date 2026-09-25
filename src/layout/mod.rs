@@ -2,7 +2,9 @@ mod architecture;
 mod block;
 mod brandes_kopf;
 mod c4;
+mod cynefin;
 mod error;
+mod event_modeling;
 mod gantt;
 mod gitgraph;
 mod ishikawa;
@@ -15,11 +17,13 @@ mod network_simplex;
 mod pie;
 mod quadrant;
 mod radar;
+pub(crate) mod railroad;
 mod ranking;
 mod routing;
 mod sankey;
 mod sequence;
 mod state_dagre;
+mod swimlane;
 mod text;
 mod timeline;
 mod tree_view;
@@ -294,6 +298,14 @@ pub fn compute_layout_with_metrics(
         }
         crate::ir::DiagramKind::Ishikawa => ishikawa::compute_ishikawa_layout(graph, theme, config),
         crate::ir::DiagramKind::Wardley => wardley::compute_wardley_layout(graph, theme, config),
+        crate::ir::DiagramKind::Swimlane => {
+            swimlane::compute_swimlane_layout(graph, theme, config, Some(&mut stage_metrics))
+        }
+        crate::ir::DiagramKind::Cynefin => cynefin::compute_cynefin_layout(graph),
+        crate::ir::DiagramKind::EventModeling => {
+            event_modeling::compute_event_modeling_layout(graph)
+        }
+        crate::ir::DiagramKind::Railroad => railroad::compute_railroad_layout(graph),
         crate::ir::DiagramKind::Class
         | crate::ir::DiagramKind::State
         | crate::ir::DiagramKind::Er
@@ -5293,6 +5305,15 @@ fn normalize_layout(
     edges: &mut [EdgeLayout],
     subgraphs: &mut [SubgraphLayout],
 ) {
+    normalize_layout_with_padding(nodes, edges, subgraphs, LAYOUT_BOUNDARY_PAD);
+}
+
+fn normalize_layout_with_padding(
+    nodes: &mut BTreeMap<String, NodeLayout>,
+    edges: &mut [EdgeLayout],
+    subgraphs: &mut [SubgraphLayout],
+    padding: f32,
+) {
     let mut min_x = f32::MAX;
     let mut min_y = f32::MAX;
     for node in nodes.values() {
@@ -5314,7 +5335,6 @@ fn normalize_layout(
     if !min_x.is_finite() || !min_y.is_finite() {
         return;
     }
-    let padding = LAYOUT_BOUNDARY_PAD;
     let shift_x = padding - min_x;
     let shift_y = padding - min_y;
 
@@ -5408,6 +5428,8 @@ fn build_graph_node_layouts(
         } else if has_html_formatting(&node.label) {
             let normalized = normalize_html_label(&node.label);
             measure_markdown_label(&normalized, theme, config)
+        } else if graph.kind == crate::ir::DiagramKind::Block {
+            block::measure_block_label(&node.label, theme, config)
         } else {
             measure_label(&node.label, theme, config)
         };
@@ -7923,7 +7945,7 @@ fn shape_size(
         crate::ir::DiagramKind::Er => (1.05, 1.15),
         crate::ir::DiagramKind::Kanban => (2.3, 0.67),
         crate::ir::DiagramKind::Requirement => (0.1, 1.0),
-        crate::ir::DiagramKind::Block => (0.5, 0.35),
+        crate::ir::DiagramKind::Block => (0.2, 0.4),
         _ => (1.0, 1.0),
     };
     let mut pad_x = config.node_padding_x * pad_x_factor * kind_pad_x_scale;
@@ -7993,10 +8015,13 @@ fn shape_size(
             height *= HEXAGON_HEIGHT_SCALE;
         }
         crate::ir::NodeShape::Parallelogram | crate::ir::NodeShape::ParallelogramAlt => {}
-        crate::ir::NodeShape::Trapezoid
-        | crate::ir::NodeShape::TrapezoidAlt
-        | crate::ir::NodeShape::Asymmetric => {
+        crate::ir::NodeShape::Trapezoid | crate::ir::NodeShape::TrapezoidAlt => {
             width *= TRAPEZOID_WIDTH_SCALE;
+        }
+        crate::ir::NodeShape::Asymmetric => {
+            // Mermaid's rectLeftInvArrow adds a left notch of h/4 outside
+            // the padded label box, rather than scaling the entire width.
+            width += height / 4.0;
         }
         crate::ir::NodeShape::Subroutine => {}
         crate::ir::NodeShape::SmallCircle | crate::ir::NodeShape::FilledCircle => {

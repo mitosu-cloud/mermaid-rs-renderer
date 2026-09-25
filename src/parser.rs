@@ -4,6 +4,8 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::{HashMap, VecDeque};
 
+mod railroad;
+
 type NodeTokenParts = (
     String,
     Option<String>,
@@ -57,6 +59,9 @@ pub struct ParseOutput {
 }
 
 pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
+    if let Some(kind) = detect_unimplemented_diagram(input) {
+        anyhow::bail!("Mermaid diagram type '{kind}' is not implemented");
+    }
     match detect_diagram_kind(input) {
         DiagramKind::Class => parse_class_diagram(input),
         DiagramKind::State => parse_state_diagram(input),
@@ -84,8 +89,29 @@ pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
         DiagramKind::TreeView => parse_tree_view_diagram(input),
         DiagramKind::Ishikawa => parse_ishikawa_diagram(input),
         DiagramKind::Wardley => parse_wardley_diagram(input),
+        DiagramKind::Swimlane => parse_swimlane_diagram(input),
+        DiagramKind::Cynefin => parse_cynefin_diagram(input),
+        DiagramKind::EventModeling => parse_event_modeling_diagram(input),
+        DiagramKind::Railroad => railroad::parse_railroad(input),
         DiagramKind::Flowchart => parse_flowchart(input),
     }
+}
+
+fn detect_unimplemented_diagram(input: &str) -> Option<&'static str> {
+    let input = extract_yaml_frontmatter(input).1;
+    for line in input.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("%%") {
+            continue;
+        }
+        let keyword = line.split_whitespace().next()?;
+        return match keyword.to_ascii_lowercase().as_str() {
+            "usecase-beta" => Some("usecase-beta"),
+            "agentflow-beta" => Some("agentflow-beta"),
+            _ => None,
+        };
+    }
+    None
 }
 
 fn detect_diagram_kind(input: &str) -> DiagramKind {
@@ -107,6 +133,22 @@ fn detect_diagram_kind(input: &str) -> DiagramKind {
             continue;
         }
         let lower = without_comment.to_ascii_lowercase();
+        if lower.starts_with("swimlane-beta") {
+            return DiagramKind::Swimlane;
+        }
+        if lower.starts_with("cynefin-beta") {
+            return DiagramKind::Cynefin;
+        }
+        if lower.starts_with("eventmodeling") {
+            return DiagramKind::EventModeling;
+        }
+        if lower.starts_with("railroad-beta")
+            || lower.starts_with("railroad-ebnf-beta")
+            || lower.starts_with("railroad-abnf-beta")
+            || lower.starts_with("railroad-peg-beta")
+        {
+            return DiagramKind::Railroad;
+        }
         if lower.starts_with("sequencediagram") {
             return DiagramKind::Sequence;
         }
@@ -299,8 +341,133 @@ fn preprocess_input_keep_indent(input: &str) -> Result<(Vec<String>, Option<serd
 }
 
 fn parse_flowchart(input: &str) -> Result<ParseOutput> {
+    parse_flowchart_like(input, DiagramKind::Flowchart)
+}
+
+fn parse_swimlane_diagram(input: &str) -> Result<ParseOutput> {
+    parse_flowchart_like(input, DiagramKind::Swimlane)
+}
+
+fn is_cynefin_domain(value: &str) -> bool {
+    matches!(
+        value,
+        "complex" | "complicated" | "clear" | "chaotic" | "confusion"
+    )
+}
+
+fn parse_cynefin_diagram(input: &str) -> Result<ParseOutput> {
     let mut graph = Graph::new();
-    graph.kind = DiagramKind::Flowchart;
+    graph.kind = DiagramKind::Cynefin;
+    let (lines, init_config) = preprocess_input(input)?;
+    let mut current_domain: Option<String> = None;
+
+    for line in lines {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("cynefin-beta") {
+            continue;
+        }
+        if let Some(title) = line.strip_prefix("title ") {
+            graph.cynefin.title = Some(strip_quotes(title.trim()));
+            continue;
+        }
+        if let Some(title) = line.strip_prefix("accTitle:") {
+            graph.acc_title = Some(title.trim().to_string());
+            continue;
+        }
+        if let Some(description) = line.strip_prefix("accDescr:") {
+            graph.acc_descr = Some(description.trim().to_string());
+            continue;
+        }
+        if let Some((from, rest)) = line.split_once("-->") {
+            let (to, label) = rest
+                .split_once(':')
+                .map(|(to, label)| (to.trim(), Some(strip_quotes(label.trim()))))
+                .unwrap_or((rest.trim(), None));
+            let from = from.trim().to_ascii_lowercase();
+            let to = to.to_ascii_lowercase();
+            if !is_cynefin_domain(&from) || !is_cynefin_domain(&to) {
+                anyhow::bail!("invalid Cynefin transition: {line}");
+            }
+            graph
+                .cynefin
+                .transitions
+                .push(crate::ir::CynefinTransition { from, to, label });
+            continue;
+        }
+        let lower = line.to_ascii_lowercase();
+        if is_cynefin_domain(&lower) {
+            current_domain = Some(lower);
+            continue;
+        }
+        if (line.starts_with('"') && line.ends_with('"'))
+            || (line.starts_with('\'') && line.ends_with('\''))
+        {
+            let Some(domain) = current_domain.as_ref() else {
+                anyhow::bail!("Cynefin item appears before a domain: {line}");
+            };
+            graph.cynefin.items.push(crate::ir::CynefinItem {
+                domain: domain.clone(),
+                label: strip_quotes(line),
+            });
+            continue;
+        }
+        anyhow::bail!("unsupported Cynefin statement: {line}");
+    }
+
+    Ok(ParseOutput { graph, init_config })
+}
+
+fn parse_event_modeling_diagram(input: &str) -> Result<ParseOutput> {
+    use crate::ir::{EventFrame, EventFrameKind};
+
+    let mut graph = Graph::new();
+    graph.kind = DiagramKind::EventModeling;
+    let (lines, init_config) = preprocess_input(input)?;
+    let mut ids = std::collections::HashSet::new();
+
+    for line in lines {
+        let line = line.trim();
+        if line.is_empty() || line == "eventmodeling" {
+            continue;
+        }
+        if let Some(title) = line.strip_prefix("accTitle:") {
+            graph.acc_title = Some(title.trim().to_string());
+            continue;
+        }
+        if let Some(description) = line.strip_prefix("accDescr:") {
+            graph.acc_descr = Some(description.trim().to_string());
+            continue;
+        }
+        let parts = line.split_whitespace().collect::<Vec<_>>();
+        if parts.len() != 4 || !matches!(parts[0], "tf" | "timeframe") {
+            anyhow::bail!("unsupported event modeling statement: {line}");
+        }
+        let kind = match parts[2].to_ascii_lowercase().as_str() {
+            "ui" => EventFrameKind::Ui,
+            "pcr" | "processor" => EventFrameKind::Processor,
+            "cmd" | "command" => EventFrameKind::Command,
+            "rmo" | "readmodel" => EventFrameKind::ReadModel,
+            "evt" | "event" => EventFrameKind::Event,
+            _ => anyhow::bail!("unknown event modeling entity type: {}", parts[2]),
+        };
+        if !ids.insert(parts[1].to_string()) {
+            anyhow::bail!("duplicate event modeling timeframe: {}", parts[1]);
+        }
+        graph.event_modeling.frames.push(EventFrame {
+            id: parts[1].to_string(),
+            kind,
+            label: parts[3].to_string(),
+        });
+    }
+    if graph.event_modeling.frames.is_empty() {
+        anyhow::bail!("event modeling diagram has no timeframes");
+    }
+    Ok(ParseOutput { graph, init_config })
+}
+
+fn parse_flowchart_like(input: &str, kind: DiagramKind) -> Result<ParseOutput> {
+    let mut graph = Graph::new();
+    graph.kind = kind;
     let mut subgraph_stack: Vec<usize> = Vec::new();
 
     let (lines, init_config) = preprocess_input(input)?;
@@ -313,6 +480,15 @@ fn parse_flowchart(input: &str) -> Result<ParseOutput> {
 
             if let Some(caps) = HEADER_RE.captures(&line) {
                 if let Some(dir) = caps.get(2).and_then(|m| Direction::from_token(m.as_str())) {
+                    graph.direction = dir;
+                }
+                continue;
+            }
+
+            if kind == DiagramKind::Swimlane
+                && let Some(rest) = line.strip_prefix("swimlane-beta")
+            {
+                if let Some(dir) = Direction::from_token(rest.trim()) {
                     graph.direction = dir;
                 }
                 continue;
@@ -4660,11 +4836,11 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
-        let mut tokens = line.split_whitespace().collect::<Vec<_>>();
+        let tokens = split_block_row_tokens(line);
         if tokens.is_empty() {
             continue;
         }
-        for raw in tokens.drain(..) {
+        for raw in tokens {
             let mut token = raw.trim();
             if token.is_empty() {
                 continue;
@@ -4707,6 +4883,79 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
     graph.block = Some(block);
 
     Ok(ParseOutput { graph, init_config })
+}
+
+// Preserve spaces inside node labels and shape delimiters when splitting a block row.
+fn split_block_row_tokens(line: &str) -> Vec<&str> {
+    let mut tokens = Vec::new();
+    let mut start = None;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut square_depth = 0usize;
+    let mut paren_depth = 0usize;
+    let mut brace_depth = 0usize;
+    let mut asymmetric = false;
+
+    for (idx, ch) in line.char_indices() {
+        if start.is_none() {
+            if ch.is_whitespace() {
+                continue;
+            }
+            start = Some(idx);
+        }
+
+        if let Some(active_quote) = quote {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' | '`' => quote = Some(ch),
+            '[' => square_depth += 1,
+            ']' => {
+                square_depth = square_depth.saturating_sub(1);
+                asymmetric = false;
+            }
+            '(' => paren_depth += 1,
+            ')' => paren_depth = paren_depth.saturating_sub(1),
+            '{' => brace_depth += 1,
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            '>' if square_depth == 0
+                && paren_depth == 0
+                && brace_depth == 0
+                && line[..idx].chars().next_back() != Some(']') =>
+            {
+                asymmetric = true;
+            }
+            _ if ch.is_whitespace()
+                && square_depth == 0
+                && paren_depth == 0
+                && brace_depth == 0
+                && !asymmetric =>
+            {
+                if let Some(token_start) = start.take() {
+                    tokens.push(&line[token_start..idx]);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let Some(token_start) = start {
+        tokens.push(&line[token_start..]);
+    }
+
+    tokens
 }
 
 fn parse_packet_diagram(input: &str) -> Result<ParseOutput> {
@@ -7813,6 +8062,15 @@ fn extract_bracket_coords(s: &str) -> Option<(f32, f32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unimplemented_diagrams_report_an_error_instead_of_rendering_as_flowcharts() {
+        for keyword in ["usecase-beta", "agentflow-beta"] {
+            let input = format!("{keyword}\nexample");
+            let error = parse_mermaid(&input).unwrap_err();
+            assert!(error.to_string().contains(keyword));
+        }
+    }
     use crate::ir::DiagramKind;
 
     #[test]
@@ -8389,6 +8647,39 @@ A["foo & bar"] & B --> C"#;
         let parsed = parse_mermaid(input).unwrap();
         assert_eq!(parsed.graph.kind, DiagramKind::Block);
         assert_eq!(parsed.graph.edges.len(), 1);
+    }
+
+    #[test]
+    fn parse_block_asymmetric_label_with_spaces() {
+        let input = "block\n  id1>\"This is the text in the box\"]";
+        let parsed = parse_mermaid(input).unwrap();
+        let block = parsed.graph.block.as_ref().unwrap();
+        let node = parsed.graph.nodes.get("id1").unwrap();
+
+        assert_eq!(parsed.graph.kind, DiagramKind::Block);
+        assert_eq!(parsed.graph.nodes.len(), 1);
+        assert_eq!(block.nodes.len(), 1);
+        assert_eq!(block.nodes[0].id, "id1");
+        assert_eq!(node.label, "This is the text in the box");
+        assert_eq!(node.shape, crate::ir::NodeShape::Asymmetric);
+    }
+
+    #[test]
+    fn split_block_row_tokens_respects_node_syntax() {
+        let tokens = split_block_row_tokens(
+            r#"a["A label"] b:2 id1>"This is the text in the box"] arrow<[" "]>(right) c@{ shape: odd, label: "Odd Label" }"#,
+        );
+
+        assert_eq!(
+            tokens,
+            vec![
+                r#"a["A label"]"#,
+                "b:2",
+                r#"id1>"This is the text in the box"]"#,
+                r#"arrow<[" "]>(right)"#,
+                r#"c@{ shape: odd, label: "Odd Label" }"#,
+            ]
+        );
     }
 
     #[test]

@@ -32,6 +32,8 @@ const MERMAID_GIT_TAG_LABEL_COLOR: &str = "#131300";
 const MERMAID_GIT_TAG_LABEL_BG: &str = "#ECECFF";
 const MERMAID_GIT_TAG_LABEL_BORDER: &str = "hsl(240, 60%, 86.2745098039%)";
 const MERMAID_TEXT_COLOR: &str = "#333";
+// fontdb resolves installed family names case-sensitively, unlike CSS.
+const MERMAID_FONT_FAMILY: &str = "'Trebuchet MS', Verdana, Arial, sans-serif";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
@@ -101,11 +103,11 @@ impl Theme {
         let tertiary_color = "#ECECFF".to_string();
         let pie_colors = default_pie_colors(&primary_color, &secondary_color, &tertiary_color);
         Self {
-            font_family: "'trebuchet ms', verdana, arial, sans-serif".to_string(),
+            font_family: MERMAID_FONT_FAMILY.to_string(),
             font_size: 16.0,
             primary_color,
             primary_text_color: "#333333".to_string(),
-            primary_border_color: "#7B88A8".to_string(),
+            primary_border_color: "#9370DB".to_string(),
             line_color: "#2F3B4D".to_string(),
             secondary_color,
             tertiary_color,

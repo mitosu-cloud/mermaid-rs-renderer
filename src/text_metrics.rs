@@ -17,6 +17,18 @@ pub fn measure_text_width(text: &str, font_size: f32, font_family: &str) -> Opti
     guard.measure(text, font_size, font_family)
 }
 
+/// Baseline offset from the center of a CSS line box, using Chromium's rounded
+/// pixel ascent and descent before distributing the line leading.
+pub fn centered_baseline_offset(font_size: f32, font_family: &str) -> Option<f32> {
+    let mut guard = TEXT_MEASURER.lock().ok()?;
+    let font = guard.face(font_family)?;
+    let face = font.face.as_ref()?;
+    let scale = font_size / font.units_per_em as f32;
+    let ascent = (face.ascender() as f32 * scale).round();
+    let descent = (-face.descender() as f32 * scale).round();
+    Some((ascent - descent) / 2.0)
+}
+
 /// Compute the rendered width of a text string in pixels, mirroring the
 /// browser's `SVGTextContentElement.getComputedTextLength()` API.
 ///
@@ -108,19 +120,17 @@ impl TextMeasurer {
         }
     }
 
-    fn measure(&mut self, text: &str, font_size: f32, font_family: &str) -> Option<f32> {
+    fn face(&mut self, font_family: &str) -> Option<&mut FontFace> {
         let family_key = normalize_family_key(font_family);
-        let face = if self.cache.contains_key(&family_key) {
-            self.cache
-                .get_mut(&family_key)
-                .and_then(|face| face.as_mut())
-        } else {
+        if !self.cache.contains_key(&family_key) {
             let face = self.load_face(font_family);
             self.cache.insert(family_key.clone(), face);
-            self.cache
-                .get_mut(&family_key)
-                .and_then(|face| face.as_mut())
-        }?;
+        }
+        self.cache.get_mut(&family_key)?.as_mut()
+    }
+
+    fn measure(&mut self, text: &str, font_size: f32, font_family: &str) -> Option<f32> {
+        let face = self.face(font_family)?;
         let normalized = text.replace('\t', "    ");
         face.measure_width(&normalized, font_size)
     }

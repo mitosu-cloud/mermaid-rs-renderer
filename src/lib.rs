@@ -55,6 +55,11 @@
 //! ## Supported Diagram Types
 //!
 //! - **Flowcharts** (`flowchart` / `graph`): TD, TB, LR, RL, BT directions
+//! - **Swimlanes** (`swimlane-beta`): lane based process diagrams
+//! - **Cynefin** (`cynefin-beta`): complexity domains and transitions
+//! - **Event modeling** (`eventmodeling`): timeframes and inferred flows
+//! - **Railroad diagrams** (`railroad-beta`, `railroad-ebnf-beta`, `railroad-abnf-beta`,
+//!   `railroad-peg-beta`): core grammar rules, sequences, choices, and repetition
 //! - **Sequence Diagrams** (`sequenceDiagram`)
 //! - **Class Diagrams** (`classDiagram`)
 //! - **State Diagrams** (`stateDiagram-v2`)

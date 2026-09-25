@@ -1,0 +1,4 @@
+railroad-ebnf-beta
+expression = term, { ("+" | "-"), term } ;
+term = factor, { ("*" | "/"), factor } ;
+factor = number | "(", expression, ")" ;
