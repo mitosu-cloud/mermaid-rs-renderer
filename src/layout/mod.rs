@@ -7923,6 +7923,11 @@ fn shape_size(
     theme: &Theme,
     kind: crate::ir::DiagramKind,
 ) -> (f32, f32) {
+    if kind == crate::ir::DiagramKind::Block
+        && let Some(size) = crate::block_shapes::natural_size(shape, label)
+    {
+        return size;
+    }
     if shape == crate::ir::NodeShape::Note {
         let pad_x = config.node_padding_x.min(6.0);
         let pad_y = config.node_padding_y.min(6.0);

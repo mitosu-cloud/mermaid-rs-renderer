@@ -4768,7 +4768,10 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
         let lower = line.to_ascii_lowercase();
-        if lower.starts_with("block") {
+        if matches!(lower.as_str(), "block" | "block-beta")
+            || lower.starts_with("block:")
+            || lower.starts_with("block ")
+        {
             continue;
         }
         if lower.starts_with("columns") {
@@ -7293,6 +7296,9 @@ fn parse_node_token(
         return (meta.id, Some(meta.label), Some(meta.shape), classes, false);
     }
 
+    if let Some((id, label, shape, md)) = split_block_arrow_label(trimmed) {
+        return (id, Some(label), Some(shape), classes, md);
+    }
     if let Some((id, label, shape, md)) = split_asymmetric_label(trimmed) {
         return (id, Some(label), Some(shape), classes, md);
     }
@@ -7430,6 +7436,76 @@ fn resolve_shape_name(name: &str) -> Option<crate::ir::NodeShape> {
     }
 }
 
+fn split_block_arrow_label(token: &str) -> Option<(String, String, crate::ir::NodeShape, bool)> {
+    let trimmed = token.trim();
+    let start = trimmed.find("<[")?;
+    let id = trimmed[..start].trim();
+    if id.is_empty() {
+        return None;
+    }
+    let label_end = trimmed.rfind("]>(")?;
+    if label_end <= start + 2 || !trimmed.ends_with(')') {
+        return None;
+    }
+    let label = trimmed[start + 2..label_end].trim();
+    let dirs = &trimmed[label_end + 3..trimmed.len() - 1];
+    let shape = block_arrow_shape_from_dirs(dirs)?;
+    let (text, md) = strip_quotes_markdown(label);
+    Some((id.to_string(), text, shape, md))
+}
+
+fn block_arrow_shape_from_dirs(dirs: &str) -> Option<crate::ir::NodeShape> {
+    let mut right = false;
+    let mut left = false;
+    let mut up = false;
+    let mut down = false;
+
+    for dir in dirs.split(',') {
+        match dir.trim().to_ascii_lowercase().as_str() {
+            "right" => right = true,
+            "left" => left = true,
+            "up" => up = true,
+            "down" => down = true,
+            "x" => {
+                right = true;
+                left = true;
+            }
+            "y" => {
+                up = true;
+                down = true;
+            }
+            "" => {}
+            _ => return None,
+        }
+    }
+
+    use crate::ir::NodeShape;
+    Some(match (right, left, up, down) {
+        (true, true, true, true) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::All),
+        (true, true, true, false) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::XUp),
+        (true, true, false, true) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::XDown),
+        (true, false, true, true) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::YRight),
+        (false, true, true, true) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::YLeft),
+        (true, true, false, false) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::X),
+        (false, false, true, true) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::Y),
+        (true, false, true, false) => {
+            NodeShape::BlockArrow(crate::ir::BlockArrowDirection::RightUp)
+        }
+        (true, false, false, true) => {
+            NodeShape::BlockArrow(crate::ir::BlockArrowDirection::RightDown)
+        }
+        (false, true, true, false) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::LeftUp),
+        (false, true, false, true) => {
+            NodeShape::BlockArrow(crate::ir::BlockArrowDirection::LeftDown)
+        }
+        (true, false, false, false) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::Right),
+        (false, true, false, false) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::Left),
+        (false, false, true, false) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::Up),
+        (false, false, false, true) => NodeShape::BlockArrow(crate::ir::BlockArrowDirection::Down),
+        _ => return None,
+    })
+}
+
 fn split_asymmetric_label(token: &str) -> Option<(String, String, crate::ir::NodeShape, bool)> {
     let trimmed = token.trim();
     if trimmed.contains('[') {
@@ -7547,7 +7623,7 @@ fn parse_shape_from_parens(raw: &str) -> (String, crate::ir::NodeShape, bool) {
     }
     if trimmed.starts_with("((") && trimmed.ends_with("))") {
         let (t, md) = strip_quotes_markdown(&trimmed[2..trimmed.len() - 2]);
-        return (t, crate::ir::NodeShape::DoubleCircle, md);
+        return (t, crate::ir::NodeShape::Circle, md);
     }
     if trimmed.starts_with('(') && trimmed.ends_with(')') {
         let inner = &trimmed[1..trimmed.len() - 1];

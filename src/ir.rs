@@ -729,6 +729,7 @@ pub enum NodeShape {
     Trapezoid,
     TrapezoidAlt,
     Asymmetric,
+    BlockArrow(BlockArrowDirection),
     MindmapDefault,
     Note,
     Text,
@@ -775,6 +776,26 @@ pub enum NodeShape {
     DividedRect,        // div-rect / div-proc — rectangle with horizontal divider
     LinedRect,          // lin-rect / lin-proc — rectangle with vertical lines
     WavyRect,           // wave-rect / paper-tape — rectangle with wavy top and bottom
+}
+
+/// Deduplicated direction combinations for block diagram arrow nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockArrowDirection {
+    Right,
+    Left,
+    Up,
+    Down,
+    X,
+    Y,
+    XUp,
+    XDown,
+    YRight,
+    YLeft,
+    RightUp,
+    RightDown,
+    LeftUp,
+    LeftDown,
+    All,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

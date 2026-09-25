@@ -13,6 +13,8 @@ pub(super) fn measure_block_label(text: &str, theme: &Theme, config: &LayoutConf
         .iter()
         .map(|line| text_width(&line.text(), theme.font_size, &theme.font_family, false))
         .fold(0.0, f32::max);
+    // Chromium's HTML layout rounds label widths up to 1/64 of a CSS pixel.
+    label.width = (label.width * 64.0).ceil() / 64.0;
     label.height = label.lines.len() as f32 * theme.font_size * config.label_line_height;
     label
 }
@@ -144,10 +146,12 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
                     }
                 }
             }
-            layout.width = span_width;
-            layout.height = row_heights[row];
-            layout.x = start_x;
-            layout.y = row_y[row];
+            let (width, height) =
+                crate::block_shapes::positioned_size(layout, span_width, row_heights[row], span);
+            layout.width = width;
+            layout.height = height;
+            layout.x = start_x + (span_width - width) / 2.0;
+            layout.y = row_y[row] + (row_heights[row] - height) / 2.0;
         }
         col += span;
     }
@@ -225,9 +229,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
         BLOCK_VIEWBOX_PADDING,
     );
 
-    let (max_x, max_y) = bounds_with_edges(&nodes, &subgraphs, &edges);
-    let width = max_x + BLOCK_VIEWBOX_PADDING;
-    let height = max_y + BLOCK_VIEWBOX_PADDING;
+    let (width, height) = crop_block_canvas(&mut nodes, &mut edges, &mut subgraphs);
 
     Layout {
         kind: graph.kind,
@@ -242,6 +244,71 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             state_notes: Vec::new(),
         },
     }
+}
+
+fn crop_block_canvas(
+    nodes: &mut BTreeMap<String, NodeLayout>,
+    edges: &mut [EdgeLayout],
+    subgraphs: &mut [SubgraphLayout],
+) -> (f32, f32) {
+    let (mut max_x, mut max_y) = bounds_with_edges(nodes, subgraphs, edges);
+    let mut min_x = f32::INFINITY;
+    let mut min_y = f32::INFINITY;
+    if edges.is_empty() && subgraphs.is_empty() {
+        max_x = f32::NEG_INFINITY;
+        max_y = f32::NEG_INFINITY;
+    }
+    for node in nodes.values() {
+        let (left, top, right, bottom) = crate::block_shapes::visible_bounds(node);
+        min_x = min_x.min(left);
+        min_y = min_y.min(top);
+        max_x = max_x.max(right);
+        max_y = max_y.max(bottom);
+    }
+    for sub in subgraphs.iter() {
+        min_x = min_x.min(sub.x);
+        min_y = min_y.min(sub.y);
+    }
+    for edge in edges.iter() {
+        for &(x, y) in &edge.points {
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+        }
+    }
+    if !min_x.is_finite() || !min_y.is_finite() {
+        return (BLOCK_VIEWBOX_PADDING, BLOCK_VIEWBOX_PADDING);
+    }
+    let dx = BLOCK_VIEWBOX_PADDING - min_x;
+    let dy = BLOCK_VIEWBOX_PADDING - min_y;
+    for node in nodes.values_mut() {
+        node.x += dx;
+        node.y += dy;
+    }
+    for sub in subgraphs.iter_mut() {
+        sub.x += dx;
+        sub.y += dy;
+    }
+    for edge in edges.iter_mut() {
+        for point in &mut edge.points {
+            point.0 += dx;
+            point.1 += dy;
+        }
+        for anchor in [
+            &mut edge.label_anchor,
+            &mut edge.start_label_anchor,
+            &mut edge.end_label_anchor,
+        ]
+        .into_iter()
+        .flatten()
+        {
+            anchor.0 += dx;
+            anchor.1 += dy;
+        }
+    }
+    (
+        max_x - min_x + 2.0 * BLOCK_VIEWBOX_PADDING,
+        max_y - min_y + 2.0 * BLOCK_VIEWBOX_PADDING,
+    )
 }
 
 fn block_boundary_point(node: &NodeLayout, target: (f32, f32)) -> (f32, f32) {
@@ -262,7 +329,8 @@ fn block_boundary_point(node: &NodeLayout, target: (f32, f32)) -> (f32, f32) {
     ) {
         return point;
     }
-    if let Some(polygon) = shape_polygon_points(node)
+    if let Some(polygon) =
+        crate::block_shapes::polygon_points(node).or_else(|| shape_polygon_points(node))
         && let Some(point) = ray_polygon_intersection(center, direction, &polygon)
     {
         return point;

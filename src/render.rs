@@ -1573,7 +1573,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 }
                 continue;
             }
-            svg.push_str(&shape_svg(node, theme, config));
+            svg.push_str(&shape_svg(node, theme, config, layout.kind));
             if layout.kind != crate::ir::DiagramKind::Er {
                 let divider_line_height = if layout.kind == crate::ir::DiagramKind::Class {
                     theme.font_size * config.class_label_line_height()
@@ -1592,7 +1592,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 // Center the label in the rectangular body to the right of the notch.
                 center_x += node.height / 8.0;
             }
-            let center_y = node.y + node.height / 2.0;
+            let mut center_y = node.y + node.height / 2.0;
+            if layout.kind == crate::ir::DiagramKind::Block
+                && node.shape == crate::ir::NodeShape::Cylinder
+            {
+                center_y += crate::block_shapes::PADDING / 1.5;
+            }
             let hide_label = node
                 .label
                 .lines
@@ -1763,7 +1768,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     svg.push_str(&format!("<title>{}</title>", escape_xml(title)));
                 }
             }
-            svg.push_str(&shape_svg(footbox, theme, config));
+            svg.push_str(&shape_svg(footbox, theme, config, layout.kind));
             let divider_line_height = theme.font_size * config.label_line_height;
             svg.push_str(&divider_lines_svg(
                 footbox,
@@ -7342,8 +7347,13 @@ fn primary_font(fonts: &str) -> String {
         .to_string()
 }
 
-fn shape_svg(node: &crate::layout::NodeLayout, theme: &Theme, config: &LayoutConfig) -> String {
-    let mut raw = shape_svg_inner(node, theme, config);
+fn shape_svg(
+    node: &crate::layout::NodeLayout,
+    theme: &Theme,
+    config: &LayoutConfig,
+    kind: crate::ir::DiagramKind,
+) -> String {
+    let mut raw = shape_svg_inner(node, theme, config, kind);
     // If the node has an icon, render it inside the shape
     if let Some(icon_name) = &node.icon {
         let icon_size = node.height.min(node.width) * 0.5;
@@ -7380,6 +7390,7 @@ fn shape_svg_inner(
     node: &crate::layout::NodeLayout,
     theme: &Theme,
     config: &LayoutConfig,
+    kind: crate::ir::DiagramKind,
 ) -> String {
     let stroke = node
         .style
@@ -7398,7 +7409,30 @@ fn shape_svg_inner(
     let y = node.y;
     let w = node.width;
     let h = node.height;
+    let is_block = kind == crate::ir::DiagramKind::Block;
+    if is_block && let Some(points) = crate::block_shapes::polygon_points(node) {
+        let points = points
+            .into_iter()
+            .map(|(x, y)| format!("{x:.2},{y:.2}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        return format!(
+            "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{}\"{dash}{join}/>",
+            node.style.stroke_width.unwrap_or(1.0)
+        );
+    }
     match node.shape {
+        crate::ir::NodeShape::BlockArrow(direction) => {
+            let points = crate::block_shapes::arrow_points(direction, w, h)
+                .into_iter()
+                .map(|(px, py)| format!("{:.2},{:.2}", x + px, y + py))
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!(
+                "<polygon points=\"{points}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{}\"{dash}{join}/>",
+                node.style.stroke_width.unwrap_or(1.0)
+            )
+        }
         crate::ir::NodeShape::Rectangle => format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"0\" ry=\"0\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
@@ -7506,7 +7540,7 @@ fn shape_svg_inner(
                 cx, cy, r, circle_fill, circle_stroke, stroke_width
             );
             if node.shape == crate::ir::NodeShape::DoubleCircle {
-                let r2 = r - 4.0;
+                let r2 = r - if is_block { 5.0 } else { 4.0 };
                 if r2 > 0.0 {
                     let inner_fill = if label_empty || is_state_end {
                         theme.background.as_str()
@@ -7541,20 +7575,36 @@ fn shape_svg_inner(
             h / 2.0,
             fill,
             stroke,
-            node.style.stroke_width.unwrap_or(1.0)
+            node.style
+                .stroke_width
+                .unwrap_or(if is_block { 1.3 } else { 1.0 })
         ),
         crate::ir::NodeShape::RoundRect => format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"10\" ry=\"10\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{radius}\" ry=\"{radius}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
             x,
             y,
             w,
             h,
             fill,
             stroke,
-            node.style.stroke_width.unwrap_or(1.0)
+            node.style.stroke_width.unwrap_or(1.0),
+            radius = if is_block { 5.0 } else { 10.0 }
         ),
         crate::ir::NodeShape::Cylinder => {
             let stroke_width = node.style.stroke_width.unwrap_or(1.0);
+            if is_block {
+                let rx = w / 2.0;
+                let ry = crate::block_shapes::cylinder_radius(w);
+                let top = y + ry;
+                let body = h - 2.0 * ry;
+                let path = format!(
+                    "M{x:.2},{top:.2} a{rx:.2},{ry:.2} 0,0,0 {w:.2},0 a{rx:.2},{ry:.2} 0,0,0 {:.2},0 l0,{body:.2} a{rx:.2},{ry:.2} 0,0,0 {w:.2},0 l0,{:.2}",
+                    -w, -body
+                );
+                return format!(
+                    "<path d=\"{path}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"{dash}{join}/>"
+                );
+            }
             let ry = (h * 0.12).clamp(6.0, 14.0);
             let rx = w / 2.0;
             let y_top = y + ry;
@@ -7575,13 +7625,14 @@ fn shape_svg_inner(
         }
         crate::ir::NodeShape::Subroutine => {
             let stroke_width = node.style.stroke_width.unwrap_or(1.0);
-            let inset = 6.0;
+            let inset = if is_block { 8.0 } else { 6.0 };
+            let radius = if is_block { 0.0 } else { 6.0 };
             let mut svg = format!(
-                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"6\" ry=\"6\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
+                "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{radius}\" ry=\"{radius}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
                 x, y, w, h, fill, stroke, stroke_width
             );
-            let y1 = y + 2.0;
-            let y2 = y + h - 2.0;
+            let y1 = y + if is_block { 0.0 } else { 2.0 };
+            let y2 = y + h - if is_block { 0.0 } else { 2.0 };
             let x1 = x + inset;
             let x2 = x + w - inset;
             svg.push_str(&format!(
@@ -8436,7 +8487,7 @@ mod tests {
         shape.width = 200.0;
         shape.height = 32.0;
         assert!(
-            shape_svg(&shape, &theme, &config)
+            shape_svg(&shape, &theme, &config, crate::ir::DiagramKind::Block)
                 .contains("points=\"0.00,0.00 200.00,0.00 200.00,32.00 0.00,32.00 8.00,16.00\"")
         );
 

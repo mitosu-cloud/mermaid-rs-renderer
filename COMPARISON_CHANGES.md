@@ -3674,3 +3674,501 @@ The earlier "stereotype symbols missing" reports from iter #52 were agent misrea
 **Visual match: yes.**
 
 Build: cargo build --release succeeded. Re-render: SVG and PNG succeeded. Tests were not run in this skill pass.
+
+## block-block-arrows — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 646.12500 × 50.00000 px; Rust: 5.00000 × 5.00000 px.
+- All seven arrow shapes and their Label texts are missing. The horizontal row is replaced by an empty square.
+- The topology is entirely missing. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- Seven polygons and seven labels are missing; direction combinations are not parsed.
+
+**Visual defects**
+
+- The entire diagram is invisible.
+
+## block-circle-shape — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 217.46875 × 217.46875 px; Rust: 217.46094 × 217.46094 px.
+- The outer diameter nearly matches, but an unwanted inner ring crowds the label against its border.
+- The single-node or horizontal-row topology is retained. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- Rust renders two circles for the ((...)) single-circle syntax.
+
+**Visual defects**
+
+- The label touches the extra ring.
+
+## block-double-circle — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 241.46875 × 241.46875 px; Rust: 217.46094 × 217.46094 px.
+- The outer diameter is 24 px too small and the concentric-ring gap is 4 px instead of 5 px. Label width / outer diameter is 0.96 instead of 0.86.
+- The single-node or horizontal-row topology is retained. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- Both circle radii and the canvas dimensions differ.
+
+**Visual defects**
+
+- The label is crowded against the inner ring.
+
+## block-cylindrical-shape — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 83.50000 × 69.77078 px; Rust: 83.49219 × 51.25631 px.
+- The cylinder is 18.51 px too short. Its top ellipse is flattened and unfilled, and the label is too high.
+- The single-node or horizontal-row topology is retained. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- The ellipse radius, body height, fill, and label y position differ.
+
+**Visual defects**
+
+- The white lid and compressed body visibly differ from the reference.
+
+## block-hexagon-shape — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 218.90625 × 42.00000 px; Rust: 241.48750 × 45.20000 px.
+- The hexagon is too wide and slightly too tall. Side insets are 57.87 px instead of 8 px; the long angled sides replace the shallow corners.
+- The single-node or horizontal-row topology is retained. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- Polygon vertices and canvas dimensions differ.
+
+**Visual defects**
+
+- The angled boundary crowds the label at both ends.
+
+## block-rhombus-shape — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 234.90625 × 234.90625 px; Rust: 193.26094 × 193.26094 px.
+- The diamond is 41.65 px too small in both dimensions. Label width / diamond width exceeds 1.0 instead of 0.82.
+- The single-node or horizontal-row topology is retained. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- Diamond dimensions and the half-pixel label offset differ.
+
+**Visual defects**
+
+- The label crosses both side boundaries.
+
+## block-round-edged-block — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 210.90625 × 50.00000 px; Rust: 222.19688 × 43.60000 px.
+- The box is 11.29 px too wide and 6.4 px too shallow. Corner radii are 10 px instead of 5 px.
+- The single-node or horizontal-row topology is retained. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- Dimensions, vertical padding, and corner radii differ.
+
+**Visual defects**
+
+- The reference has more vertical room around its label.
+
+## block-stadium-shaped-block — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 210.88982 × 42.00000 px; Rust: 198.34625 × 38.00000 px.
+- The stadium is 12.54 px too narrow and 4 px too short. Label width / box width is 0.98 instead of 0.92.
+- The single-node or horizontal-row topology is retained. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- Capsule size, end radius, and stroke weight differ.
+
+**Visual defects**
+
+- The label is crowded into the curved ends.
+
+## block-subroutine-shape — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 218.90625 × 42.00000 px; Rust: 199.22626 × 38.00000 px.
+- The subroutine frame is 19.68 px too narrow and 4 px too short, with rounded corners and dividers stopping short of its top and bottom.
+- The single-node or horizontal-row topology is retained. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- The frame has 6 px rounded corners and divider offsets instead of square corners with 8 px full-height dividers.
+
+**Visual defects**
+
+- Text overlaps the inset divider lines.
+
+## block-parallelogram-and-trapezoid-shapes — Pass 1 findings — 2026-09-25T02:26:39+00:00
+
+**Visual appearance**
+
+- JS canvas: 937.62500 × 50.00000 px; Rust: 802.55300 × 42.00000 px.
+- The row is 135.07 px too narrow and 8 px too short. Sides use 18% of width instead of half the height; long labels overflow the sloping boundary. Column centers are 200.14 px apart instead of 232.91 px.
+- The single-node or horizontal-row topology is retained. This fixture has no connecting edges.
+- Displayed side by side, the visible defects prevent a visual match.
+
+**Structural differences**
+
+- All four polygon outlines, column spacing, and per-shape padding differ.
+
+**Visual defects**
+
+- Both long labels cross their parallelogram boundaries.
+
+## block-block-arrows — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/parser.rs:4771` — distinguish block headers/composites from node IDs beginning with block.
+- `src/parser.rs:7436` — parse arrow labels, deduplicate directions, expand x/y aliases, and preserve combined directions.
+- `src/ir.rs:732` — represent block arrows and their direction combinations.
+- `src/block_shapes.rs:141` — port Mermaid blockArrow.ts polygon point factories; share them with drawing and edge clipping.
+- `src/layout/block.rs:249` — crop the canvas to actual visible polygon bounds.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+## block-circle-shape — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/parser.rs:7624` — parse double parentheses as a single Circle; triple parentheses remain DoubleCircle.
+- `src/block_shapes.rs:19` — use circle.ts label-width-based diameter.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+## block-double-circle — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/block_shapes.rs:20` — use doubleCircle.ts initial padding and add the positioned-pass padding to the grid diameter.
+- `src/render.rs:7543` — set the block double-circle ring gap to 5 px.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+## block-cylindrical-shape — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/block_shapes.rs:21` — include all three vertical ellipse radii in the cylinder bounds.
+- `src/render.rs:7598` — use Mermaid cylinder arc geometry and fill the top ellipse.
+- `src/render.rs:1596` — apply cylinder.ts label offset of block padding / 1.5.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+## block-hexagon-shape — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/block_shapes.rs:22` — size the hexagon from its label and height-based corner allowance.
+- `src/block_shapes.rs:83` — use h/4 corners for rendering and edge intersection.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+## block-rhombus-shape — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/block_shapes.rs:23` — size the diamond as padded label width plus padded label height.
+- `src/block_shapes.rs:94` — match question.ts half-pixel outline adjustment.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+## block-round-edged-block — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/block_shapes.rs:24` — use roundedRect.ts 8 px padding per side instead of generic shape scaling.
+- `src/render.rs:7582` — use 5 px block corner radii.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+## block-stadium-shaped-block — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/block_shapes.rs:25` — use stadium.ts natural width, height, and rounded end allowance.
+- `src/render.rs:7567` — match the classic stadium 1.3 px stroke.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+## block-subroutine-shape — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/block_shapes.rs:26` — reserve 8 px label padding plus two 8 px side frames.
+- `src/render.rs:7629` — draw square corners and full-height dividers 8 px from the sides.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+## block-parallelogram-and-trapezoid-shapes — Changes applied — 2026-09-25T02:30:56+00:00
+
+- `src/block_shapes.rs:27` — distinguish inverted-trapezoid padding from the other slanted shapes.
+- `src/block_shapes.rs:61` — derive positioned bounds from label width, grid size, and half-height slants.
+- `src/block_shapes.rs:100` — share corrected polygon outlines between rendering and edge intersections.
+- `src/layout/block.rs:16` — quantize native label widths to Chromium CSS layout precision.
+- `src/layout/block.rs:149` — center each shape in its grid cell while preserving shape-specific final bounds.
+- `src/layout/mod.rs:7926` — select block-only natural sizes before generic shape sizing.
+- `src/render.rs:7347` — pass diagram kind through shape rendering to scope geometry changes to blocks.
+- `src/lib.rs:96` — register the shared block-shape geometry module.
+
+The ten fixture passes share one source-change batch and release build. No tests or dependency files were changed.
+
+## block-block-arrows — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 646.12500 × 50.00000 px; Rust: 646.12500 × 50.00000 px. Aspect ratio and size class match.
+- All seven labeled arrows occupy the same horizontal row. Column centers are 94.875 px apart; polygons use the JS direction-specific vertices. Visible shape bounds now determine the canvas.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+## block-circle-shape — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 217.46875 × 217.46875 px; Rust: 217.46875 × 217.46875 px. Aspect ratio and size class match.
+- The outer diameter is 207.46875 px and there is one ring. The label no longer touches an erroneous inner border; label-to-diameter ratio matches the reference at 0.96.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+## block-double-circle — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 241.46875 × 241.46875 px; Rust: 241.46875 × 241.46875 px. Aspect ratio and size class match.
+- The outer diameter is 231.46875 px and the inner diameter is 221.46875 px, giving the same 5 px ring gap and 0.86 label-to-outer-diameter ratio.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+## block-cylindrical-shape — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 83.50000 × 69.77078 px; Rust: 83.50000 × 69.77078 px. Aspect ratio and size class match.
+- Both cylinders have a 73.5 px width, 59.77078 px height, and 9.25693 px vertical ellipse radius. The lid is filled and the label uses the JS downward offset of 5.3333 px.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+## block-hexagon-shape — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 218.90625 × 42.00000 px; Rust: 218.90625 × 42.00000 px. Aspect ratio and size class match.
+- Both hexagons are 208.90625 × 32 px with 8 px side insets. The label sits within the long rectangular center instead of between deep wedges.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+## block-rhombus-shape — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 234.90625 × 234.90625 px; Rust: 234.90625 × 234.90625 px. Aspect ratio and size class match.
+- Both diamonds measure 224.90625 px per side of the bounding square. The label-to-width ratio is 0.82 and the reference half-pixel offset is retained.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+## block-round-edged-block — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 210.90625 × 50.00000 px; Rust: 210.90625 × 50.00000 px. Aspect ratio and size class match.
+- Both rounded boxes are 200.90625 × 40 px with 5 px corner radii. Horizontal and vertical padding match.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+## block-stadium-shaped-block — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 210.88982 × 42.00000 px; Rust: 210.90625 × 42.00000 px. Aspect ratio and size class match.
+- Both stadiums are about 200.9 × 32 px with 16 px end radii and a 1.3 px stroke. JS approximates the circular ends with sampled curve segments, producing a 0.01643 px width difference.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+- The stadium uses a native rounded rectangle instead of JS sampled curves.
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+## block-subroutine-shape — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 218.90625 × 42.00000 px; Rust: 218.90625 × 42.00000 px. Aspect ratio and size class match.
+- Both frames are 208.90625 × 32 px with square corners and full-height dividers 8 px from each side. The label now fits between the dividers.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+## block-parallelogram-and-trapezoid-shapes — Pass 2 findings — 2026-09-25T02:32:55+00:00
+
+**Visual appearance**
+
+- JS canvas: 937.62500 × 50.00000 px; Rust: 937.62500 × 50.00000 px. Aspect ratio and size class match.
+- Both rows use 232.90625 px column-center spacing and 40 px-tall polygons. The 20 px slants, shape-specific widths, and labels follow the JS geometry.
+- The rendered single-node or row topology matches. This fixture has no connecting edges.
+- Side-by-side browser inspection shows essentially the same diagram.
+
+**Structural differences**
+
+- Rust uses SVG text instead of HTML labels and rounds drawing coordinates to two decimals. Minor baseline/rasterization differences remain when enlarged.
+
+**Visual defects**
+
+- The Pass 1 defects are absent. No new clipping, invisible labels, text overlap, or container overflow was observed.
+
+**Visual match: yes.**
+
+Build: `cargo build --release` succeeded. Re-render: SVG and PNG succeeded. No tests were run in this skill pass.
+
+Clarification to the batch change note: no test cases were added; the existing asymmetric-render test call was updated for the render helper's diagram-kind argument. The test suite was not run.
+
+## Ten block-shape gaps — Batch validation — 2026-09-25T02:33:14+00:00
+
+- All ten targeted pairs passed side-by-side visual inspection after one shared source-fix pass.
+- Release build succeeded; existing compiler warnings remain.
+- Refreshed all 422 Rust SVGs and all 422 Rust PNGs successfully for the comparison gallery.
+- Existing JS golden files were preserved.
+- `git diff --check` passed.
+- The pre-existing xcframework Info.plist edit is excluded from this commit.
