@@ -901,6 +901,13 @@ pub struct VennData {
 pub struct BlockDiagram {
     pub columns: Option<usize>,
     pub nodes: Vec<BlockNode>,
+    pub groups: BTreeMap<String, BlockGroup>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BlockGroup {
+    pub columns: Option<usize>,
+    pub nodes: Vec<BlockNode>,
 }
 
 #[derive(Debug, Clone)]

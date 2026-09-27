@@ -4172,3 +4172,338 @@ Clarification to the batch change note: no test cases were added; the existing a
 - Existing JS golden files were preserved.
 - `git diff --check` passed.
 - The pre-existing xcframework Info.plist edit is excluded from this commit.
+
+## block-block-spanning-multiple-columns — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 268.57812 × 98.00000 px; Rust: 271.25000 × 98.00000 px.
+- Missing font kerning widens A label from 48.859375 to 49.75 px, expanding each column. The two-row span arrangement is present, but its dimensions and label alignment differ.
+- There are no connecting edges in this fixture.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- No elements are missing; text width and all column widths differ.
+
+**Visual defects**
+
+- The label fits, but spacing is wider than the reference.
+
+## block-class-styling — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 150.31250 × 50.00000 px; Rust: 452.00000 × 56.00000 px.
+- The two colored nodes and a connector become a long row of overlapping boxes bearing class/style syntax. The label width and spacing ratios are no longer meaningful because declarations appear as nodes.
+- The fixtures with connectors use cubic paths in both engines; the visible differences concern endpoints or labels.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- Class definitions, class assignments, fill/stroke widths, text colors and dash patterns are not applied. Extra syntax nodes obscure the actual diagram.
+
+**Visual defects**
+
+- Boxes and labels overlap; the connector is obscured.
+
+## block-composite-blocks — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 350.25000 × 66.00000 px; Rust: 350.25000 × 50.00000 px.
+- The single-child container is missing. D becomes a sibling-sized node instead of sitting within an 8 px inset frame; its neighboring box should expand to the container height.
+- There are no connecting edges in this fixture.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- The outer composite rectangle is absent.
+
+**Visual defects**
+
+- The intended nesting and padding are absent.
+
+## block-dynamic-column-widths — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 406.96878 × 290.00000 px; Rust: 108.56250 × 338.00000 px.
+- Nested column settings leak into the outer grid. JS is a landscape diagram with a full-width top box, a nested 2×2 group beside g, and a seven-cell bottom group. Rust is a tall flat two-column arrangement.
+- There are no connecting edges in this fixture.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- Both composite rectangles and scoped column/span sizing are missing.
+
+**Visual defects**
+
+- The hierarchy and relative cell widths are wrong.
+
+## block-edges-and-styles — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 675.18750 × 307.43750 px; Rust: 227.93750 × 362.20520 px.
+- JS has a small DB circle above a tiny empty arrow, then a horizontal A/B/C composite and full-width D. Rust stacks the children vertically and shows style syntax over DB.
+- The fixtures with connectors use cubic paths in both engines; the visible differences concern endpoints or labels.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- The group rectangle and group-to-D endpoint are absent; an ID text node may be created by the group edge. Styles are not applied.
+
+**Visual defects**
+
+- The composite edge attaches to a phantom box. Empty-arrow dimensions are too large and raw style text overlaps DB.
+
+## block-individual-block-styling — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 179.04688 × 50.00000 px; Rust: 319.31250 × 56.00000 px.
+- Style declarations become long overlapping boxes and obscure the intended Start→Stop diagram. The two colored round boxes and their visual spacing are lost.
+- The fixtures with connectors use cubic paths in both engines; the visible differences concern endpoints or labels.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- Inline fill, stroke, width, text color and dash directives are parsed as content.
+
+**Visual defects**
+
+- Syntax boxes cover node labels and their connector.
+
+## block-introduction-to-block-diagrams — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 675.18750 × 307.43750 px; Rust: 227.93750 × 362.20520 px.
+- The introduction example loses the horizontal A/B/C group and becomes a vertical stack. The empty arrow is oversized and B lacks its intended purple styling.
+- The fixtures with connectors use cubic paths in both engines; the visible differences concern endpoints or labels.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- The composite container, group endpoint and style application are absent.
+
+**Visual defects**
+
+- Raw style syntax overlaps DB; the topology visibly differs.
+
+## block-merging-blocks-horizontally — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 106.85938 × 210.00000 px; Rust: 91.75000 × 194.00000 px.
+- The four-node vertical stack has no enclosing frame and omits the 8 px container inset. Missing kerning also widens each cell slightly.
+- There are no connecting edges in this fixture.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- The composite border/fill is absent.
+
+**Visual defects**
+
+- Nodes appear as separate boxes rather than children of one container.
+
+## block-system-architecture — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 316.01562 × 207.78084 px; Rust: 515.60940 × 476.39548 px.
+- JS is a compact three-column architecture with small empty arrows. Rust adds several rows of class syntax, moves Frontend to a later row, and enlarges the arrows.
+- There are no connecting edges in this fixture.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- Class assignments and definitions are not applied; extra declaration nodes alter placement.
+
+**Visual defects**
+
+- The architecture topology and colors are wrong; raw class syntax is visible.
+
+## block-text-with-links — Pass 1 findings — 2026-09-27T00:21:30+00:00
+
+**Visual appearance**
+
+- JS: 199.75000 × 50.00000 px; Rust: 199.75000 × 50.00000 px.
+- The two nodes and horizontal connector align, but the X label is shifted 2 px left, is measured too wide, and has an extra rounded bordered background instead of the tight gray rectangle.
+- The fixtures with connectors use cubic paths in both engines; the visible differences concern endpoints or labels.
+- Side-by-side inspection confirms a visible gap.
+
+**Structural differences**
+
+- Edge-label anchor, width, baseline and background attributes differ.
+
+**Visual defects**
+
+- The edge label looks like an extra rounded node.
+
+## block-block-spanning-multiple-columns — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/text_metrics.rs:98` — add horizontal pair kerning from the font kern table.
+- `src/layout/block.rs:7` — measure block labels with kerning and CSS width quantization.
+
+## block-class-styling — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/parser.rs:4875` — consume classDef, class, style and linkStyle directives before parsing edges/nodes; remove trailing statement semicolons.
+
+## block-composite-blocks — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/parser.rs:4758` — distinguish the diagram header from anonymous and named composites.
+- `src/ir.rs:901` — retain scoped composite nodes and column settings.
+- `src/layout/block.rs:267` — size composite children recursively and preserve the 8 px inset.
+- `src/render.rs:685` — draw square composite frames with Mermaid block fill/stroke opacity.
+
+## block-dynamic-column-widths — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/parser.rs:4850` — keep column settings on the innermost block.
+- `src/layout/block.rs:267` — port recursive sibling normalization and allocated-width expansion from Mermaid block/layout.ts.
+- `src/layout/block.rs:334` — position rows using per-row heights, nested origins and column spans.
+
+## block-edges-and-styles — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/parser.rs:4895` — recognize composite edge endpoints without creating text nodes.
+- `src/layout/block.rs:378` — preserve exact group rectangles and route connectors to their boundaries.
+- `src/parser.rs:4875` — apply the B style directive.
+
+## block-individual-block-styling — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/parser.rs:4875` — use the existing style parser for node fill, stroke, stroke width, text color and dash patterns.
+
+## block-introduction-to-block-diagrams — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/layout/block.rs:10` — collapse whitespace-only labels to zero size, matching HTML.
+- `src/layout/block.rs:267` — place the horizontal child group inside the outer vertical grid.
+- `src/layout/block.rs:96` — attach the group-to-D edge to the composite boundary.
+
+## block-merging-blocks-horizontally — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/parser.rs:4758` — retain the anonymous container and its local one-column setting.
+- `src/layout/block.rs:378` — emit a composite frame around all four children.
+
+## block-system-architecture — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/parser.rs:4875` — apply named style classes and multi-node assignments without inserting declaration nodes.
+- `src/layout/block.rs:10` — size blank arrows from an empty label.
+- `src/layout/block.rs:230` — use visible initial shape bounds in grid measurement.
+
+## block-text-with-links — Changes applied — 2026-09-27T00:26:50+00:00
+
+- `src/layout/block.rs:128` — measure edge labels with the block font metrics and preserve the untrimmed midpoint anchor.
+- `src/render.rs:1343` — render a tight, unbordered gray block edge label with the HTML-equivalent text baseline.
+
+These ten fixture passes share one source-edit batch and release build. Composite parser helpers were adapted from the existing `origin/fixes/mermaid-official-comparison-cleanup` branch; layout sizing/placement follows the current sibling Mermaid source.
+
+## block-block-spanning-multiple-columns — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: yes**
+
+- JS viewBox: `-5 -49 268.578125 98`; Rust: `0 0 268.57813 98`. Canvas dimensions agree to floating-point precision.
+- The two-row column spans, box widths and label fit now match. Kerning restores the intended spacing.
+- Remaining: Minor text rasterization/baseline differences remain.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## block-class-styling — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: partial**
+
+- JS viewBox: `-5 -25 150.3125 50`; Rust: `0 0 150.3125 50`. Canvas dimensions agree to floating-point precision.
+- Only the two intended boxes remain. Class fills, label colors, stroke widths, dash spacing, topology and the horizontal connector are restored.
+- Remaining: The thick A border has rounded outside corners and B has rounded dash ends; JS uses square joins/caps.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## block-composite-blocks — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: yes**
+
+- JS viewBox: `-5 -33 350.25 66`; Rust: `0 0 350.25 66`. Canvas dimensions agree to floating-point precision.
+- The single-child composite has its frame and 8 px inset; the neighboring box has the matching height.
+- Remaining: Minor text rasterization differences remain.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## block-dynamic-column-widths — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: yes**
+
+- JS viewBox: `-5 -169 406.9687805175781 290`; Rust: `0 0 406.96878 290`. Canvas dimensions agree to floating-point precision.
+- Both nested grids, their local columns, the wide top span and the seven-cell bottom row now match. All labels fit.
+- Remaining: Minor text baseline/rasterization differences remain.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## block-edges-and-styles — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: yes**
+
+- JS viewBox: `-5 -146.4375 675.1875 307.4375`; Rust: `0 0 675.1875 307.4375`. Canvas dimensions agree to floating-point precision.
+- The small DB circle and empty arrow, horizontal A/B/C composite, styled B and wide D now match. Group-to-D and diagonal C-to-D connectors meet the correct boundaries.
+- Remaining: The existing rounded stroke-join convention is slightly visible on the thick B border.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## block-individual-block-styling — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: partial**
+
+- JS viewBox: `-5 -25 179.046875 50`; Rust: `0 0 179.04688 50`. Canvas dimensions agree to floating-point precision.
+- Start and Stop have the correct sizes, round-box geometry, fills, text colors and connector. Raw style syntax no longer becomes diagram content.
+- Remaining: Red dash ends are rounded in Rust and square in JS.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## block-introduction-to-block-diagrams — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: yes**
+
+- JS viewBox: `-5 -146.4375 675.1875 307.4375`; Rust: `0 0 675.1875 307.4375`. Canvas dimensions agree to floating-point precision.
+- The introduction layout, composite frame, tiny blank arrow, colors, labels and both edge endpoints now match.
+- Remaining: The existing rounded stroke-join convention is slightly visible on the thick B border.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## block-merging-blocks-horizontally — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: yes**
+
+- JS viewBox: `-5 -105 106.859375 210`; Rust: `0 0 106.859375 210`. Canvas dimensions agree to floating-point precision.
+- The four children appear inside one correctly sized frame with matching inset and spacing; labels fit.
+- Remaining: Minor text rasterization/baseline differences remain.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## block-system-architecture — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: yes**
+
+- JS viewBox: `-5 -102.65617370605469 316.015625 207.7808380126953`; Rust: `0 0 316.01563 207.78084`. Canvas dimensions agree to floating-point precision.
+- The compact architecture now has the correct topology, colors, cylinder dimensions and small empty directional arrows. Class syntax creates no extra boxes.
+- Remaining: Minor text rasterization/baseline differences remain.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## block-text-with-links — Pass 2 verification — 2026-09-27T00:31:17+00:00
+
+**Visual match: yes**
+
+- JS viewBox: `-5 -25 199.75 50`; Rust: `0 0 199.75 50`. Canvas dimensions agree to floating-point precision.
+- The X label is centered at the untrimmed edge midpoint with the correct tight gray background, width and baseline. Node and connector placement match.
+- Remaining: Minor text rasterization differences remain.
+- Re-read both SVGs and inspected the regenerated side-by-side gallery image. SVG structure uses Rust native text and paths versus JS HTML labels; no unexpected declaration nodes remain.
+- Release build and Rust SVG/PNG rendering succeeded. No test suite was run, per the svg-parity workflow.
+
+## Block comparison batch 2 — Validation — 2026-09-27T00:31:50+00:00
+
+- Addressed ten fixtures: eight visually match and two retain visible stroke-cap/join differences. These remaining differences are documented above; no second source fix pass was made.
+- `cargo build --release` succeeded with 34 existing warnings. No test suite was run, as required by the svg-parity skill.
+- Regenerated all 422 Rust SVGs and 422 Rust PNGs successfully with the absolute release binary path. Existing JS golden files were retained.
+- All ten target canvas dimensions match JS to floating-point precision. The previous ten shape fixtures retain their prior canvas dimensions.
+- Saved ten side-by-side screenshots as `<fixture>-parity.png` in the ignored comparison-output folder. The gallery reflects the refreshed SVG files.
+- `git diff --check` passed. The unrelated framework Info.plist change is excluded from this batch.

@@ -4761,30 +4761,130 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
     graph.direction = Direction::LeftRight;
     let (lines, init_config) = preprocess_input(input)?;
     let mut block = crate::ir::BlockDiagram::default();
+    let mut seen_header = false;
+    let mut block_subgraph_stack: Vec<usize> = Vec::new();
+    let mut block_group_stack: Vec<String> = Vec::new();
+    let mut anonymous_block_count = 0usize;
 
     for raw_line in lines {
-        let line = raw_line.trim();
+        let line = raw_line.trim().trim_end_matches(';').trim();
         if line.is_empty() {
             continue;
         }
         let lower = line.to_ascii_lowercase();
-        if matches!(lower.as_str(), "block" | "block-beta")
-            || lower.starts_with("block:")
-            || lower.starts_with("block ")
-        {
+        if lower == "block" || lower == "block-beta" {
+            if !seen_header {
+                seen_header = true;
+                continue;
+            }
+            let id = format!("__block_{}", anonymous_block_count);
+            anonymous_block_count += 1;
+            push_block_node(
+                &mut block,
+                &block_group_stack,
+                crate::ir::BlockNode {
+                    id: id.clone(),
+                    span: 1,
+                    is_space: false,
+                },
+            );
+            block
+                .groups
+                .entry(id.clone())
+                .or_insert_with(crate::ir::BlockGroup::default);
+            graph.subgraphs.push(Subgraph {
+                id: Some(id),
+                label: String::new(),
+                nodes: Vec::new(),
+                direction: None,
+                icon: None,
+                markdown_label: false,
+            });
+            block_subgraph_stack.push(graph.subgraphs.len() - 1);
+            block_group_stack.push(
+                graph
+                    .subgraphs
+                    .last()
+                    .and_then(|subgraph| subgraph.id.clone())
+                    .unwrap_or_default(),
+            );
+            continue;
+        }
+        if let Some((id, span)) = parse_block_composite_header(line) {
+            push_block_node(
+                &mut block,
+                &block_group_stack,
+                crate::ir::BlockNode {
+                    id: id.clone(),
+                    span,
+                    is_space: false,
+                },
+            );
+            block
+                .groups
+                .entry(id.clone())
+                .or_insert_with(crate::ir::BlockGroup::default);
+            graph.subgraphs.push(Subgraph {
+                id: Some(id),
+                label: String::new(),
+                nodes: Vec::new(),
+                direction: None,
+                icon: None,
+                markdown_label: false,
+            });
+            block_subgraph_stack.push(graph.subgraphs.len() - 1);
+            block_group_stack.push(
+                graph
+                    .subgraphs
+                    .last()
+                    .and_then(|subgraph| subgraph.id.clone())
+                    .unwrap_or_default(),
+            );
+            continue;
+        }
+        if lower == "end" {
+            block_subgraph_stack.pop();
+            block_group_stack.pop();
             continue;
         }
         if lower.starts_with("columns") {
             let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2
-                && let Ok(cols) = parts[1].parse::<usize>()
-                && cols > 0
-            {
-                block.columns = Some(cols);
+            let parsed_columns = if parts.len() >= 2 && parts[1].eq_ignore_ascii_case("auto") {
+                Some(None)
+            } else if parts.len() >= 2 {
+                parts[1]
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|cols| *cols > 0)
+                    .map(Some)
+            } else {
+                None
+            };
+            if let Some(columns) = parsed_columns {
+                if let Some(group_id) = block_group_stack.last() {
+                    if let Some(group) = block.groups.get_mut(group_id) {
+                        group.columns = columns;
+                    }
+                } else {
+                    block.columns = columns;
+                }
             }
             continue;
         }
-        if lower == "end" {
+        if line.starts_with("classDef") {
+            parse_class_def(line, &mut graph);
+            continue;
+        }
+        if line.starts_with("class ") {
+            parse_class_line(line, &mut graph);
+            continue;
+        }
+        if line.starts_with("style ") {
+            parse_style_line(line, &mut graph);
+            continue;
+        }
+        if line.starts_with("linkStyle") {
+            parse_link_style_line(line, &mut graph);
             continue;
         }
         if let Some((left, label, right, edge_meta)) = parse_edge_line(line) {
@@ -4794,18 +4894,26 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
             for source in &sources {
                 let (source_id, source_label, source_shape, source_classes, _source_md) =
                     parse_node_token(source);
+                if is_block_composite_id(&graph, &source_id) {
+                    continue;
+                }
                 graph.ensure_node(&source_id, source_label, source_shape);
                 if !source_classes.is_empty() {
                     apply_node_classes(&mut graph, &source_id, &source_classes);
                 }
+                add_node_to_subgraphs(&mut graph, &block_subgraph_stack, &source_id);
             }
             for target in &targets {
                 let (target_id, target_label, target_shape, target_classes, _target_md) =
                     parse_node_token(target);
+                if is_block_composite_id(&graph, &target_id) {
+                    continue;
+                }
                 graph.ensure_node(&target_id, target_label, target_shape);
                 if !target_classes.is_empty() {
                     apply_node_classes(&mut graph, &target_id, &target_classes);
                 }
+                add_node_to_subgraphs(&mut graph, &block_subgraph_stack, &target_id);
             }
 
             for source in &sources {
@@ -4858,11 +4966,15 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
             }
             let is_space = token.eq_ignore_ascii_case("space");
             if is_space {
-                block.nodes.push(crate::ir::BlockNode {
-                    id: "__space".to_string(),
-                    span,
-                    is_space: true,
-                });
+                push_block_node(
+                    &mut block,
+                    &block_group_stack,
+                    crate::ir::BlockNode {
+                        id: "__space".to_string(),
+                        span,
+                        is_space: true,
+                    },
+                );
                 continue;
             }
             let (id, label, shape, classes, _node_md) = parse_node_token(token);
@@ -4873,11 +4985,16 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
             if !classes.is_empty() {
                 apply_node_classes(&mut graph, &id, &classes);
             }
-            block.nodes.push(crate::ir::BlockNode {
-                id,
-                span,
-                is_space: false,
-            });
+            add_node_to_subgraphs(&mut graph, &block_subgraph_stack, &id);
+            push_block_node(
+                &mut block,
+                &block_group_stack,
+                crate::ir::BlockNode {
+                    id,
+                    span,
+                    is_space: false,
+                },
+            );
         }
     }
 
@@ -4886,6 +5003,47 @@ fn parse_block_diagram(input: &str) -> Result<ParseOutput> {
     graph.block = Some(block);
 
     Ok(ParseOutput { graph, init_config })
+}
+
+fn push_block_node(
+    block: &mut crate::ir::BlockDiagram,
+    group_stack: &[String],
+    node: crate::ir::BlockNode,
+) {
+    if let Some(group_id) = group_stack.last()
+        && let Some(group) = block.groups.get_mut(group_id)
+    {
+        group.nodes.push(node);
+        return;
+    }
+    block.nodes.push(node);
+}
+
+fn parse_block_composite_header(line: &str) -> Option<(String, usize)> {
+    let rest = line.strip_prefix("block:")?.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    let (id, span) = if let Some((base, span_raw)) = rest.rsplit_once(':') {
+        if let Ok(span) = span_raw.trim().parse::<usize>() {
+            (base.trim(), span.max(1))
+        } else {
+            (rest, 1)
+        }
+    } else {
+        (rest, 1)
+    };
+    if id.is_empty() {
+        return None;
+    }
+    Some((id.to_string(), span))
+}
+
+fn is_block_composite_id(graph: &Graph, id: &str) -> bool {
+    graph
+        .subgraphs
+        .iter()
+        .any(|sub| sub.id.as_deref() == Some(id))
 }
 
 // Preserve spaces inside node labels and shape delimiters when splitting a block row.

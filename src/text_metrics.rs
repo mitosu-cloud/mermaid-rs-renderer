@@ -94,6 +94,39 @@ fn fallback_text_width(text: &str, font_size: f32) -> f32 {
         * font_size
 }
 
+/// Measure browser-style label advances including horizontal font kerning.
+pub fn measure_text_width_with_kerning(
+    text: &str,
+    font_size: f32,
+    font_family: &str,
+) -> Option<f32> {
+    let mut measurer = TEXT_MEASURER.lock().ok()?;
+    let font = measurer.face(font_family)?;
+    let width = font.measure_width(text, font_size)?;
+    let face = font.face.as_ref()?;
+    let Some(table) = face.tables().kern else {
+        return Some(width);
+    };
+    let mut adjustment = 0i32;
+    let mut previous = None;
+    for ch in text.chars() {
+        let glyph = if ch == '\n' {
+            None
+        } else {
+            face.glyph_index(ch)
+        };
+        if let (Some(left), Some(right)) = (previous, glyph) {
+            for subtable in table.subtables {
+                if subtable.horizontal && !subtable.variable && !subtable.has_cross_stream {
+                    adjustment += subtable.glyphs_kerning(left, right).unwrap_or(0) as i32;
+                }
+            }
+        }
+        previous = glyph;
+    }
+    Some((width + adjustment as f32 * font_size / font.units_per_em as f32).max(0.0))
+}
+
 pub fn average_char_width(font_family: &str, font_size: f32) -> Option<f32> {
     if font_size <= 0.0 {
         return None;

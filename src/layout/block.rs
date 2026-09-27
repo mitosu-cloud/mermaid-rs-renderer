@@ -8,10 +8,24 @@ pub(super) fn measure_block_label(text: &str, theme: &Theme, config: &LayoutConf
     // Block labels use their rendered width and only explicit line breaks.
     // The generic fast estimate and character-count floor widen short labels.
     let mut label = measure_label_no_wrap(text, theme, config);
+    // HTML collapses whitespace-only labels to a zero-size box. In particular,
+    // blank arrow labels must not reserve a full line of text.
+    if text.trim().is_empty() {
+        label.width = 0.0;
+        label.height = 0.0;
+        return label;
+    }
     label.width = label
         .lines
         .iter()
-        .map(|line| text_width(&line.text(), theme.font_size, &theme.font_family, false))
+        .map(|line| {
+            crate::text_metrics::measure_text_width_with_kerning(
+                &line.text(),
+                theme.font_size,
+                &theme.font_family,
+            )
+            .unwrap_or_else(|| text_width(&line.text(), theme.font_size, &theme.font_family, false))
+        })
         .fold(0.0, f32::max);
     // Chromium's HTML layout rounds label widths up to 1/64 of a CSS pixel.
     label.width = (label.width * 64.0).ceil() / 64.0;
@@ -21,11 +35,6 @@ pub(super) fn measure_block_label(text: &str, theme: &Theme, config: &LayoutConf
 
 pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &LayoutConfig) -> Layout {
     let mut nodes = build_graph_node_layouts(graph, theme, config);
-
-    let node_gap = BLOCK_GRID_GAP;
-    let column_gap = BLOCK_GRID_GAP;
-    let origin_x = 6.0;
-    let origin_y = 6.0;
 
     let mut edges: Vec<EdgeLayout> = Vec::new();
 
@@ -53,137 +62,68 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
         };
     };
 
-    let (placement_nodes, inferred_columns) = if block.nodes.is_empty() {
+    let (placement_nodes, inferred_columns) = if block.nodes.is_empty() && block.groups.is_empty() {
         infer_block_grid(graph)
     } else {
         (block.nodes.clone(), 0)
     };
-    let columns = block.columns.unwrap_or_else(|| {
-        if placement_nodes.is_empty() {
-            1
-        } else if inferred_columns > 0 {
-            inferred_columns
+    let mut root = BlockCell {
+        id: String::new(),
+        span: 1,
+        is_space: false,
+        is_group: true,
+        columns: if inferred_columns > 0 {
+            Some(inferred_columns)
         } else {
-            placement_nodes.iter().map(|node| node.span.max(1)).sum()
-        }
-    });
-    let mut column_widths = vec![0.0f32; columns];
-    let mut column_x = vec![0.0f32; columns];
-    let mut row_y = Vec::<f32>::new();
-
-    let mut row = 0usize;
-    let mut col = 0usize;
-    let mut row_heights: Vec<f32> = vec![0.0];
-
-    for node in &placement_nodes {
-        if col >= columns {
-            col = 0;
-            row += 1;
-            row_heights.push(0.0);
-        }
-        let span = node.span.max(1).min(columns);
-        if col + span > columns {
-            col = 0;
-            row += 1;
-            row_heights.push(0.0);
-        }
-        if !node.is_space
-            && let Some(layout) = nodes.get(&node.id)
-        {
-            let per_col = layout.width / span as f32;
-            for i in 0..span {
-                let idx = col + i;
-                if idx < columns {
-                    column_widths[idx] = column_widths[idx].max(per_col);
-                }
-            }
-            row_heights[row] = row_heights[row].max(layout.height);
-        }
-        col += span;
-    }
-
-    // Mermaid's block grid uses the widest normalized child for every column,
-    // including invisible space cells, and the tallest child for every row.
-    let column_width = column_widths.iter().copied().fold(0.0, f32::max);
-    let row_height = row_heights.iter().copied().fold(0.0, f32::max);
-    column_widths.fill(column_width);
-    row_heights.fill(row_height);
-
-    column_x[0] = origin_x;
-    for i in 1..columns {
-        column_x[i] = column_x[i - 1] + column_widths[i - 1] + column_gap;
-    }
-
-    let mut y_cursor = origin_y;
-    for h in &row_heights {
-        row_y.push(y_cursor);
-        y_cursor += *h + node_gap;
-    }
-
-    row = 0;
-    col = 0;
-    for node in &placement_nodes {
-        if col >= columns {
-            col = 0;
-            row += 1;
-        }
-        let span = node.span.max(1).min(columns);
-        if col + span > columns {
-            col = 0;
-            row += 1;
-        }
-        if !node.is_space
-            && let Some(layout) = nodes.get_mut(&node.id)
-        {
-            let start_x = column_x[col];
-            let mut span_width = 0.0;
-            for i in 0..span {
-                let idx = col + i;
-                if idx < columns {
-                    span_width += column_widths[idx];
-                    if i + 1 < span {
-                        span_width += column_gap;
-                    }
-                }
-            }
-            let (width, height) =
-                crate::block_shapes::positioned_size(layout, span_width, row_heights[row], span);
-            layout.width = width;
-            layout.height = height;
-            layout.x = start_x + (span_width - width) / 2.0;
-            layout.y = row_y[row] + (row_heights[row] - height) / 2.0;
-        }
-        col += span;
+            block.columns
+        },
+        bounds: BlockBounds::default(),
+        children: placement_nodes
+            .iter()
+            .map(|item| build_block_cell(item, block, &nodes))
+            .collect(),
+    };
+    size_block_cells(&mut root, 0.0, 0.0);
+    root.bounds.x = -root.bounds.width / 2.0;
+    root.bounds.y = -root.bounds.height / 2.0;
+    position_block_cells(&mut root);
+    let mut subgraphs = Vec::new();
+    let mut group_bounds = HashMap::new();
+    for child in &root.children {
+        place_block_cell(child, graph, &mut nodes, &mut subgraphs, &mut group_bounds);
     }
 
     for edge in &graph.edges {
-        let Some(from_layout) = nodes.get(&edge.from) else {
+        let Some(from_box) = block_endpoint_bounds(&edge.from, &nodes, &group_bounds) else {
             continue;
         };
-        let Some(to_layout) = nodes.get(&edge.to) else {
+        let Some(to_box) = block_endpoint_bounds(&edge.to, &nodes, &group_bounds) else {
             continue;
         };
-        let from_center = (
-            from_layout.x + from_layout.width / 2.0,
-            from_layout.y + from_layout.height / 2.0,
-        );
-        let to_center = (
-            to_layout.x + to_layout.width / 2.0,
-            to_layout.y + to_layout.height / 2.0,
-        );
+        let from_center = from_box.center();
+        let to_center = to_box.center();
         let midpoint = (
             (from_center.0 + to_center.0) / 2.0,
             (from_center.1 + to_center.1) / 2.0,
         );
-        let mut start = block_boundary_point(from_layout, to_center);
-        let mut end = block_boundary_point(to_layout, from_center);
+        let mut start = nodes.get(&edge.from).map_or_else(
+            || from_box.intersect(to_center),
+            |node| block_boundary_point(node, to_center),
+        );
+        let mut end = nodes.get(&edge.to).map_or_else(
+            || to_box.intersect(from_center),
+            |node| block_boundary_point(node, from_center),
+        );
         if edge.arrow_start {
             start = trim_block_endpoint(start, midpoint);
         }
         if edge.arrow_end {
             end = trim_block_endpoint(end, midpoint);
         }
-        let label = edge.label.as_ref().map(|l| measure_label(l, theme, config));
+        let label = edge
+            .label
+            .as_ref()
+            .map(|l| measure_block_label(l, theme, config));
         let start_label = edge
             .start_label
             .as_ref()
@@ -202,7 +142,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             label,
             start_label,
             end_label,
-            label_anchor: None,
+            label_anchor: Some(midpoint),
             start_label_anchor: None,
             end_label_anchor: None,
             points: vec![start, midpoint, end],
@@ -221,7 +161,6 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
         });
     }
 
-    let mut subgraphs = build_subgraph_layouts(graph, &nodes, theme, config);
     normalize_layout_with_padding(
         &mut nodes,
         edges.as_mut_slice(),
@@ -244,6 +183,262 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             state_notes: Vec::new(),
         },
     }
+}
+
+#[derive(Clone, Copy, Default)]
+struct BlockBounds {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+impl BlockBounds {
+    fn center(self) -> (f32, f32) {
+        (self.x + self.width / 2.0, self.y + self.height / 2.0)
+    }
+
+    fn intersect(self, target: (f32, f32)) -> (f32, f32) {
+        let center = self.center();
+        let direction = (target.0 - center.0, target.1 - center.1);
+        if direction.0.abs() < 0.001 && direction.1.abs() < 0.001 {
+            return center;
+        }
+        let scale = if direction.1.abs() * self.width > direction.0.abs() * self.height {
+            self.height / 2.0 / direction.1.abs()
+        } else {
+            self.width / 2.0 / direction.0.abs()
+        };
+        (
+            center.0 + direction.0 * scale,
+            center.1 + direction.1 * scale,
+        )
+    }
+}
+
+struct BlockCell {
+    id: String,
+    span: usize,
+    is_space: bool,
+    is_group: bool,
+    columns: Option<usize>,
+    bounds: BlockBounds,
+    children: Vec<BlockCell>,
+}
+
+fn build_block_cell(
+    item: &crate::ir::BlockNode,
+    block: &crate::ir::BlockDiagram,
+    nodes: &BTreeMap<String, NodeLayout>,
+) -> BlockCell {
+    let group = block.groups.get(&item.id);
+    let (width, height) = nodes
+        .get(&item.id)
+        .map(|node| {
+            let (left, top, right, bottom) = crate::block_shapes::visible_bounds(node);
+            (right - left, bottom - top)
+        })
+        .unwrap_or((0.0, 0.0));
+    BlockCell {
+        id: item.id.clone(),
+        span: item.span.max(1),
+        is_space: item.is_space,
+        is_group: group.is_some(),
+        columns: group.and_then(|g| g.columns),
+        bounds: BlockBounds {
+            x: 0.0,
+            y: 0.0,
+            width,
+            height,
+        },
+        children: group
+            .map(|g| {
+                g.nodes
+                    .iter()
+                    .map(|child| build_block_cell(child, block, nodes))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
+/// Mermaid first measures each nested grid, assigns shared sibling sizes, and
+/// then expands the grids to their allocated widths. Group columns stay local.
+fn size_block_cells(cell: &mut BlockCell, sibling_width: f32, sibling_height: f32) {
+    let p = BLOCK_GRID_GAP;
+    if cell.bounds.width == 0.0 {
+        cell.bounds.width = sibling_width;
+        cell.bounds.height = sibling_height;
+    }
+    if cell.children.is_empty() {
+        return;
+    }
+    for child in &mut cell.children {
+        size_block_cells(child, 0.0, 0.0);
+    }
+    let mut max_width = 0.0f32;
+    let mut max_height = 0.0f32;
+    for child in &cell.children {
+        if !child.is_space {
+            max_width = max_width.max(child.bounds.width / child.span as f32);
+            max_height = max_height.max(child.bounds.height);
+        }
+    }
+    for child in &mut cell.children {
+        child.bounds.width = max_width * child.span as f32 + p * (child.span - 1) as f32;
+        child.bounds.height = max_height;
+    }
+    for child in &mut cell.children {
+        size_block_cells(child, max_width, max_height);
+    }
+    let num_items: usize = cell.children.iter().map(|child| child.span).sum();
+    let x_size = cell
+        .columns
+        .filter(|&cols| cols > 0 && cols < num_items)
+        .unwrap_or(cell.children.len());
+    let y_size = num_items.div_ceil(x_size);
+    let mut width = x_size as f32 * (max_width + p) + p;
+    let mut height = y_size as f32 * (max_height + p) + p;
+    if width < sibling_width {
+        width = sibling_width;
+        height = sibling_height;
+        let child_width = (width - x_size as f32 * p - p) / x_size as f32;
+        let child_height = (height - y_size as f32 * p - p) / y_size as f32;
+        for child in &mut cell.children {
+            child.bounds.width = child_width.max(0.0);
+            child.bounds.height = child_height.max(0.0);
+        }
+    }
+    if width < cell.bounds.width {
+        width = cell.bounds.width;
+        let num = cell
+            .columns
+            .map_or(cell.children.len(), |cols| cols.min(cell.children.len()))
+            .max(1);
+        let child_width = (width - num as f32 * p - p) / num as f32;
+        for child in &mut cell.children {
+            child.bounds.width = child_width.max(0.0);
+        }
+    }
+    cell.bounds.width = width;
+    cell.bounds.height = height;
+}
+
+fn block_row_and_advance(columns: Option<usize>, position: usize, span: usize) -> (usize, usize) {
+    match columns.filter(|&cols| cols > 0) {
+        Some(cols) => (position / cols, span.min(cols - position % cols)),
+        None => (0, span),
+    }
+}
+
+fn position_block_cells(cell: &mut BlockCell) {
+    let p = BLOCK_GRID_GAP;
+    let mut row_heights = BTreeMap::<usize, f32>::new();
+    let mut position = 0;
+    for child in &cell.children {
+        let (row, advance) = block_row_and_advance(cell.columns, position, child.span);
+        row_heights
+            .entry(row)
+            .and_modify(|h| *h = h.max(child.bounds.height))
+            .or_insert(child.bounds.height);
+        position += advance;
+    }
+    let mut row_offsets = BTreeMap::new();
+    let mut offset = 0.0;
+    for (&row, &height) in &row_heights {
+        row_offsets.insert(row, offset);
+        offset += height + p;
+    }
+    let (_, cy) = cell.bounds.center();
+    let left = if cell.id.is_empty() {
+        -p
+    } else {
+        cell.bounds.x
+    };
+    let mut cursor = left;
+    let mut previous_row = 0;
+    position = 0;
+    for child in &mut cell.children {
+        let (row, advance) = block_row_and_advance(cell.columns, position, child.span);
+        if row != previous_row {
+            cursor = left;
+            previous_row = row;
+        }
+        child.bounds.x = cursor + p;
+        child.bounds.y = cy - cell.bounds.height / 2.0
+            + row_offsets[&row]
+            + (row_heights[&row] - child.bounds.height) / 2.0
+            + p;
+        cursor = child.bounds.x + child.bounds.width;
+        position_block_cells(child);
+        position += advance;
+    }
+}
+
+fn place_block_cell(
+    cell: &BlockCell,
+    graph: &Graph,
+    nodes: &mut BTreeMap<String, NodeLayout>,
+    subgraphs: &mut Vec<SubgraphLayout>,
+    groups: &mut HashMap<String, BlockBounds>,
+) {
+    if cell.is_space {
+        return;
+    }
+    if cell.is_group {
+        groups.insert(cell.id.clone(), cell.bounds);
+        let members = graph
+            .subgraphs
+            .iter()
+            .find(|sub| sub.id.as_deref() == Some(cell.id.as_str()))
+            .map(|sub| sub.nodes.clone())
+            .unwrap_or_default();
+        subgraphs.push(SubgraphLayout {
+            label: String::new(),
+            label_block: TextBlock {
+                lines: Vec::new(),
+                width: 0.0,
+                height: 0.0,
+            },
+            nodes: members,
+            x: cell.bounds.x,
+            y: cell.bounds.y,
+            width: cell.bounds.width,
+            height: cell.bounds.height,
+            style: resolve_node_style(&cell.id, graph),
+            icon: None,
+        });
+        for child in &cell.children {
+            place_block_cell(child, graph, nodes, subgraphs, groups);
+        }
+    } else if let Some(node) = nodes.get_mut(&cell.id) {
+        let (width, height) = crate::block_shapes::positioned_size(
+            node,
+            cell.bounds.width,
+            cell.bounds.height,
+            cell.span,
+        );
+        node.x = cell.bounds.x + (cell.bounds.width - width) / 2.0;
+        node.y = cell.bounds.y + (cell.bounds.height - height) / 2.0;
+        node.width = width;
+        node.height = height;
+    }
+}
+
+fn block_endpoint_bounds(
+    id: &str,
+    nodes: &BTreeMap<String, NodeLayout>,
+    groups: &HashMap<String, BlockBounds>,
+) -> Option<BlockBounds> {
+    nodes
+        .get(id)
+        .map(|node| BlockBounds {
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
+        })
+        .or_else(|| groups.get(id).copied())
 }
 
 fn crop_block_canvas(

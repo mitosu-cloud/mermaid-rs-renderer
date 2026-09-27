@@ -682,8 +682,27 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 && sub_stroke.as_str() == "none"
                 && sub_stroke_width <= 0.0;
             if !invisible {
+                let block_group = layout.kind == crate::ir::DiagramKind::Block;
+                let radius = if block_group { 0.0 } else { 10.0 };
+                let opacity = if block_group {
+                    format!(
+                        " fill-opacity=\"{}\" stroke-opacity=\"{}\"",
+                        if subgraph.style.fill.is_none() {
+                            0.5
+                        } else {
+                            1.0
+                        },
+                        if subgraph.style.stroke.is_none() {
+                            0.2
+                        } else {
+                            1.0
+                        }
+                    )
+                } else {
+                    String::new()
+                };
                 svg.push_str(&format!(
-                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"10\" ry=\"10\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{} />",
+                    "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{radius}\" ry=\"{radius}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{}{opacity} />",
                     subgraph.x,
                     subgraph.y,
                     subgraph.width,
@@ -1321,31 +1340,55 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             if let Some(label) = edge.label.as_ref()
                 && let Some((x, y)) = edge.label_anchor
             {
-                let (pad_x, pad_y) = edge_label_padding(layout.kind, config);
-                let (fill_opacity, stroke_opacity) = match layout.kind {
-                    crate::ir::DiagramKind::State => (0.7, 0.25),
-                    crate::ir::DiagramKind::Flowchart => (0.95, 0.45),
-                    _ => (0.85, 0.35),
-                };
-                let label_scale = if layout.kind == crate::ir::DiagramKind::State {
-                    (state_font_size / theme.font_size).min(1.0)
-                } else {
-                    1.0
-                };
-                let label_w = label.width * label_scale;
-                let label_h = label.height * label_scale;
-                let rect = LabelRect::from_center(x, y, label_w, label_h, pad_x, pad_y);
-                let label_fill = theme.edge_label_background.as_str();
-                if label_fill != "none" {
-                    let visible = edge_label_background_visible(
-                        layout.kind,
-                        EdgeLabelKind::Center,
-                        &edge.points,
-                        rect,
-                    );
-                    let fill_opacity = if visible { fill_opacity } else { 0.0 };
-                    let stroke_opacity = if visible { stroke_opacity } else { 0.0 };
+                if layout.kind == crate::ir::DiagramKind::Block {
                     svg.push_str(&format!(
+                        "<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"rgba(232,232,232,0.8)\"/>",
+                        x-label.width/2.0, y-label.height/2.0, label.width, label.height
+                    ));
+                    let baseline = y - label.height / 2.0
+                        + theme.font_size * config.label_line_height / 2.0
+                        + text_metrics::centered_baseline_offset(
+                            theme.font_size,
+                            &theme.font_family,
+                        )
+                        .unwrap_or(theme.font_size * 0.35);
+                    svg.push_str(&text_block_svg_with_font_size(
+                        x,
+                        baseline,
+                        label,
+                        theme,
+                        config,
+                        theme.font_size,
+                        "middle",
+                        edge.override_style.label_color.as_deref(),
+                        true,
+                    ));
+                } else {
+                    let (pad_x, pad_y) = edge_label_padding(layout.kind, config);
+                    let (fill_opacity, stroke_opacity) = match layout.kind {
+                        crate::ir::DiagramKind::State => (0.7, 0.25),
+                        crate::ir::DiagramKind::Flowchart => (0.95, 0.45),
+                        _ => (0.85, 0.35),
+                    };
+                    let label_scale = if layout.kind == crate::ir::DiagramKind::State {
+                        (state_font_size / theme.font_size).min(1.0)
+                    } else {
+                        1.0
+                    };
+                    let label_w = label.width * label_scale;
+                    let label_h = label.height * label_scale;
+                    let rect = LabelRect::from_center(x, y, label_w, label_h, pad_x, pad_y);
+                    let label_fill = theme.edge_label_background.as_str();
+                    if label_fill != "none" {
+                        let visible = edge_label_background_visible(
+                            layout.kind,
+                            EdgeLabelKind::Center,
+                            &edge.points,
+                            rect,
+                        );
+                        let fill_opacity = if visible { fill_opacity } else { 0.0 };
+                        let stroke_opacity = if visible { stroke_opacity } else { 0.0 };
+                        svg.push_str(&format!(
                         "<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"2\" ry=\"2\" fill=\"{}\" fill-opacity=\"{:.2}\" stroke=\"{}\" stroke-opacity=\"{:.2}\" stroke-width=\"0.8\"/>",
                         rect.x,
                         rect.y,
@@ -1356,37 +1399,38 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         theme.primary_border_color,
                         stroke_opacity
                     ));
-                }
-                if layout.kind == crate::ir::DiagramKind::State {
-                    svg.push_str(&format!(
+                    }
+                    if layout.kind == crate::ir::DiagramKind::State {
+                        svg.push_str(&format!(
                         "<g class=\"edgeLabel\" data-edge-id=\"{edge_id}\" data-label-kind=\"center\">"
                     ));
-                    svg.push_str(&text_block_svg_with_font_size(
-                        x,
-                        y,
-                        label,
-                        theme,
-                        config,
-                        state_font_size,
-                        "middle",
-                        edge.override_style.label_color.as_deref(),
-                        false,
-                    ));
-                    svg.push_str("</g>");
-                } else {
-                    svg.push_str(&format!(
+                        svg.push_str(&text_block_svg_with_font_size(
+                            x,
+                            y,
+                            label,
+                            theme,
+                            config,
+                            state_font_size,
+                            "middle",
+                            edge.override_style.label_color.as_deref(),
+                            false,
+                        ));
+                        svg.push_str("</g>");
+                    } else {
+                        svg.push_str(&format!(
                         "<g class=\"edgeLabel\" data-edge-id=\"{edge_id}\" data-label-kind=\"center\">"
                     ));
-                    svg.push_str(&text_block_svg(
-                        x,
-                        y,
-                        label,
-                        theme,
-                        config,
-                        true,
-                        edge.override_style.label_color.as_deref(),
-                    ));
-                    svg.push_str("</g>");
+                        svg.push_str(&text_block_svg(
+                            x,
+                            y,
+                            label,
+                            theme,
+                            config,
+                            true,
+                            edge.override_style.label_color.as_deref(),
+                        ));
+                        svg.push_str("</g>");
+                    }
                 }
             }
 
