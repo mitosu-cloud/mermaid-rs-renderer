@@ -4762,3 +4762,64 @@ All 422 Rust SVG/PNG pairs regenerated successfully. Only the 14 radar SVGs chan
 - `cargo build --release` passed with 34 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. All 408 non-radar SVGs are byte-for-byte unchanged from the pre-edit snapshot.
 - No test suite was run and no test files were edited, per the svg-parity skill. `git diff --check` passed.
 - Saved 14 side-by-side review images as `<fixture>-parity.png` in the ignored comparison-output folder, including the custom-style example with its remaining differences. Existing JS goldens were used; all Rust gallery images are refreshed.
+
+## radar-radar-diagram-with-radar-style-options — Pass 1 findings — 2026-10-06T23:06:19+00:00
+
+### Pass 1 — custom radar styles
+
+**Visual appearance**
+
+- Rust’s five spokes are dark gray instead of the requested red.
+- The four grid polygons use `#DEDEDE` instead of JS’s darker `#CCCCCC`.
+- Both series have 2 px outlines instead of 3 px; their stroke-to-radius ratio is 0.0067 rather than 0.010.
+
+**Structural differences**
+
+- The mismatches are the spoke stroke color, grid fill/stroke color, and series stroke width.
+
+**Visual defects**
+
+- The chart is recognizably the same diagram, but its colors and outline weight visibly differ. These three style gaps prevent a visual match.
+
+Validated `radar-radar-diagram-with-radar-style-options` in the established comparison-output folder, its reference source, Cargo.toml and the sibling Mermaid checkout. Read both raw SVGs and inspected their current side-by-side rendering.
+
+- Checked aspect ratio/size class, topology, polygon shapes, spacing ratios and every label’s fit before diagnosing style differences. Both viewBoxes are 700×700 and center at (350,350); there is no gross layout difference. Spoke endpoints and all polygon vertices agree within serialization precision. This fixture intentionally uses straight polygon segments, not curved series or diagram connector edges.
+- The axis-label radial offset/radius is 19/300=0.0633, and legend row step/marker size is 20/12=1.667 in both outputs. There are no state containers or bidirectional connector labels to assess.
+- The top spoke extends from (350,350) to (350,50). All five spokes use #333333 instead of #FF0000. Both series polygons use width 2 instead of 3; the four grid polygons use #DEDEDE for fill and stroke instead of #CCCCCC.
+- No separate overlap, clipping, boundary overflow or invisible-text defect was observed. Axis labels, legend and title retain #333 text on white, about 12.6:1 contrast. Mermaid’s radarAxisLabel applies CSS color, not SVG fill, so the reference labels remain dark even when the spokes are red.
+- Read Mermaid radar styles.ts and the existing Rust style/configuration paths. Exactly three issue categories are selected for this fix pass.
+
+## radar-radar-diagram-with-radar-style-options — Changes applied — 2026-10-06T23:07:07+00:00
+
+- `src/theme.rs:39` — add radar style defaults and a shared override merge that preserves omitted settings and accepts numeric/CSS-px values. Keep old serialized themes compatible through serde defaults and initialize all built-in themes.
+- `src/config.rs` — load nested themeVariables.radar styles from Mermaid config files.
+- `src/cli.rs` — apply nested radar styles from YAML frontmatter and init directives using the same merge.
+- `src/render/radar.rs` — use the configured spoke color/width, grid color/opacity/width, series opacity/width and axis/legend font sizes. Legend swatches share series opacity. SVG text fill follows the reference rather than inheriting the CSS axis color.
+- One source fix pass, four source files edited. No parser or geometry changes were needed for the three selected issues. Read Mermaid radar styles.ts and theme-default.js to verify defaults and CSS behavior.
+
+## radar-radar-diagram-with-radar-style-options — Pass 2 findings — 2026-10-06T23:08:46+00:00
+
+### Pass 2 — custom radar styles
+
+**Visual appearance**
+
+- **Visual match: yes.** The red spokes, darker grid, and 3 px series outlines now match JS.
+
+**Structural differences**
+
+- Rust stores styling in SVG attributes while JS uses CSS classes. Polygon coordinates differ only by rounding, with no visible effect.
+
+**Visual defects**
+
+- No visible defects remain in this comparison; all three reported gaps are addressed.
+
+All 422 Rust SVG/PNG pairs regenerated successfully. Only this SVG changed. I’m recording the result and committing the iteration.
+
+### Verification details
+
+- Re-read the generated Rust SVG and compared the golden CSS rules with its explicit styles. All five spokes are #FF0000 with width 2. All four grid polygons have fill/stroke #CCCCCC, fill opacity 0.3 and stroke width 1. Both series use the reference HSL colors, opacity 0.5 and stroke width 3.
+- Inspected the updated side-by-side browser rendering. Canvas is 700×700 with the same center, straight polygon silhouettes, spacing and labels. Stroke/radius now matches at 3/300=0.010. Axis label clearance/radius remains 19/300=0.0633; legend row step/marker size remains 20/12=1.667.
+- All axis, legend and title text fits with the same reference clearances. No overlap, clipping, boundary overflow or invisible text was observed. The unchanged #333 SVG text fill matches the golden’s visible labels despite its separate red CSS color property.
+- `cargo build --release` passed with 34 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Only radar-radar-diagram-with-radar-style-options-rs.svg changed; all 421 other SVGs are byte-for-byte unchanged from the pre-edit snapshot.
+- No test suite was run and no test files were edited, per the svg-parity skill. `git diff --check` passed. Existing JS goldens were used.
+- Updated the ignored side-by-side review image radar-radar-diagram-with-radar-style-options-parity.png and all Rust gallery exports.

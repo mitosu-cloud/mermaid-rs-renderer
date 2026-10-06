@@ -69,6 +69,16 @@ pub(super) fn render_radar(radar: &RadarData, theme: &Theme) -> String {
     let count = radar.axes.len();
     let font = escape_xml(&normalize_font_family(&theme.font_family));
     let text_color = escape_xml(&theme.text_color);
+    let style = &theme.radar;
+    let axis_color = escape_xml(style.axis_color.as_deref().unwrap_or(&theme.line_color));
+    let grid_color = escape_xml(&style.graticule_color);
+    let axis_width = style.axis_stroke_width;
+    let axis_font_size = style.axis_label_font_size;
+    let grid_opacity = style.graticule_opacity;
+    let grid_width = style.graticule_stroke_width;
+    let curve_opacity = style.curve_opacity;
+    let curve_width = style.curve_stroke_width;
+    let legend_font_size = style.legend_font_size;
     let max = radar.max.unwrap_or_else(|| {
         radar
             .curves
@@ -88,7 +98,7 @@ pub(super) fn render_radar(radar: &RadarData, theme: &Theme) -> String {
         };
         let _ = write!(
             svg,
-            "<{geometry} fill=\"#DEDEDE\" fill-opacity=\"0.3\" stroke=\"#DEDEDE\" stroke-width=\"1\"/>"
+            "<{geometry} fill=\"{grid_color}\" fill-opacity=\"{grid_opacity}\" stroke=\"{grid_color}\" stroke-width=\"{grid_width}\"/>"
         );
     }
 
@@ -97,7 +107,7 @@ pub(super) fn render_radar(radar: &RadarData, theme: &Theme) -> String {
         let (x, y) = (RADIUS * cos, RADIUS * sin);
         let _ = write!(
             svg,
-            "<line x1=\"0\" y1=\"0\" x2=\"{x:.3}\" y2=\"{y:.3}\" stroke=\"#333333\" stroke-width=\"2\"/>"
+            "<line x1=\"0\" y1=\"0\" x2=\"{x:.3}\" y2=\"{y:.3}\" stroke=\"{axis_color}\" stroke-width=\"{axis_width}\"/>"
         );
         let anchor = if cos > 0.01 {
             "start"
@@ -117,7 +127,7 @@ pub(super) fn render_radar(radar: &RadarData, theme: &Theme) -> String {
         let label = escape_xml(&axis.label);
         let _ = write!(
             svg,
-            "<text x=\"{x:.3}\" y=\"{y:.3}\" text-anchor=\"{anchor}\" dominant-baseline=\"{baseline}\" font-family=\"{font}\" font-size=\"12\" fill=\"{text_color}\">{label}</text>"
+            "<text x=\"{x:.3}\" y=\"{y:.3}\" text-anchor=\"{anchor}\" dominant-baseline=\"{baseline}\" font-family=\"{font}\" font-size=\"{axis_font_size}\" fill=\"{text_color}\">{label}</text>"
         );
     }
 
@@ -146,7 +156,7 @@ pub(super) fn render_radar(radar: &RadarData, theme: &Theme) -> String {
         };
         let _ = write!(
             svg,
-            "<{geometry} fill=\"{color}\" fill-opacity=\"0.5\" stroke=\"{color}\" stroke-width=\"2\"/>"
+            "<{geometry} fill=\"{color}\" fill-opacity=\"{curve_opacity}\" stroke=\"{color}\" stroke-width=\"{curve_width}\"/>"
         );
     }
 
@@ -157,7 +167,7 @@ pub(super) fn render_radar(radar: &RadarData, theme: &Theme) -> String {
             let label = escape_xml(&curve.label);
             let _ = write!(
                 svg,
-                "<g transform=\"translate(262.5, {y:.3})\"><rect width=\"12\" height=\"12\" fill=\"{color}\" fill-opacity=\"0.5\" stroke=\"{color}\"/><text x=\"16\" y=\"0\" text-anchor=\"start\" dominant-baseline=\"hanging\" font-family=\"{font}\" font-size=\"12\" fill=\"{text_color}\">{label}</text></g>"
+                "<g transform=\"translate(262.5, {y:.3})\"><rect width=\"12\" height=\"12\" fill=\"{color}\" fill-opacity=\"{curve_opacity}\" stroke=\"{color}\"/><text x=\"16\" y=\"0\" text-anchor=\"start\" dominant-baseline=\"hanging\" font-family=\"{font}\" font-size=\"{legend_font_size}\" fill=\"{text_color}\">{label}</text></g>"
             );
         }
     }

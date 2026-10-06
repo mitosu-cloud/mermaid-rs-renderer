@@ -1063,6 +1063,7 @@ struct ThemeVariables {
     pie_outer_stroke_width: Option<NumberOrString>,
     pie_outer_stroke_color: Option<String>,
     pie_opacity: Option<NumberOrString>,
+    radar: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1758,6 +1759,9 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
             && let Some(opacity) = v.as_f32()
         {
             config.theme.pie_opacity = opacity;
+        }
+        if let Some(radar) = vars.radar {
+            config.theme.radar.apply_overrides(&radar);
         }
     }
 

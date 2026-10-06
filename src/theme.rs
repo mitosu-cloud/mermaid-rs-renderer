@@ -36,6 +36,67 @@ const MERMAID_TEXT_COLOR: &str = "#333";
 const MERMAID_FONT_FAMILY: &str = "'Trebuchet MS', Verdana, Arial, sans-serif";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RadarStyle {
+    /// Omitted axis colors follow the theme's line color.
+    pub axis_color: Option<String>,
+    pub axis_stroke_width: f32,
+    pub axis_label_font_size: f32,
+    pub curve_opacity: f32,
+    pub curve_stroke_width: f32,
+    pub graticule_color: String,
+    pub graticule_stroke_width: f32,
+    pub graticule_opacity: f32,
+    pub legend_font_size: f32,
+}
+
+impl Default for RadarStyle {
+    fn default() -> Self {
+        Self {
+            axis_color: None,
+            axis_stroke_width: 2.0,
+            axis_label_font_size: 12.0,
+            curve_opacity: 0.5,
+            curve_stroke_width: 2.0,
+            graticule_color: "#DEDEDE".to_string(),
+            graticule_stroke_width: 1.0,
+            graticule_opacity: 0.3,
+            legend_font_size: 12.0,
+        }
+    }
+}
+
+impl RadarStyle {
+    /// Apply only supplied style keys so init data preserves config-file values.
+    pub(crate) fn apply_overrides(&mut self, overrides: &serde_json::Value) {
+        if let Some(color) = overrides.get("axisColor").and_then(|v| v.as_str()) {
+            self.axis_color = Some(color.to_string());
+        }
+        if let Some(color) = overrides.get("graticuleColor").and_then(|v| v.as_str()) {
+            self.graticule_color = color.to_string();
+        }
+        for (key, target) in [
+            ("axisStrokeWidth", &mut self.axis_stroke_width),
+            ("axisLabelFontSize", &mut self.axis_label_font_size),
+            ("curveOpacity", &mut self.curve_opacity),
+            ("curveStrokeWidth", &mut self.curve_stroke_width),
+            ("graticuleStrokeWidth", &mut self.graticule_stroke_width),
+            ("graticuleOpacity", &mut self.graticule_opacity),
+            ("legendFontSize", &mut self.legend_font_size),
+        ] {
+            let number = overrides.get(key).and_then(|value| match value {
+                serde_json::Value::Number(number) => number.as_f64().map(|v| v as f32),
+                serde_json::Value::String(text) => crate::config::parse_css_number(text),
+                _ => None,
+            });
+            if let Some(number) = number.filter(|v| v.is_finite() && *v >= 0.0) {
+                *target = number;
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
     pub font_family: String,
     pub font_size: f32,
@@ -81,6 +142,8 @@ pub struct Theme {
     /// Used by timeline diagrams. Empty means use the default HSL palette.
     #[serde(default)]
     pub cscale_colors: Vec<String>,
+    #[serde(default)]
+    pub radar: RadarStyle,
 }
 
 impl Theme {
@@ -164,6 +227,7 @@ impl Theme {
             pie_outer_stroke_color: "#000000".to_string(),
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
+            radar: RadarStyle::default(),
         }
     }
 
@@ -215,6 +279,7 @@ impl Theme {
             pie_outer_stroke_color: "#CBD5E1".to_string(),
             pie_opacity: 0.85,
             cscale_colors: Vec::new(),
+            radar: RadarStyle::default(),
         }
     }
     /// Official Mermaid "dark" theme — dark background with bright accents.
@@ -265,6 +330,7 @@ impl Theme {
             pie_outer_stroke_color: "#3E4452".to_string(),
             pie_opacity: 0.85,
             cscale_colors: Vec::new(),
+            radar: RadarStyle::default(),
         }
     }
 
@@ -327,6 +393,7 @@ impl Theme {
             pie_outer_stroke_color: "#999999".to_string(),
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
+            radar: RadarStyle::default(),
         }
     }
 
@@ -389,6 +456,7 @@ impl Theme {
             pie_outer_stroke_color: "#6EAA49".to_string(),
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
+            radar: RadarStyle::default(),
         }
     }
 
@@ -442,6 +510,7 @@ impl Theme {
             pie_outer_stroke_color: "black".to_string(),
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
+            radar: RadarStyle::default(),
         }
     }
 }

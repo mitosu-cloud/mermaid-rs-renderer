@@ -534,6 +534,9 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
         }
     }
     if let Some(theme_vars) = init.get("themeVariables") {
+        if let Some(radar) = theme_vars.get("radar") {
+            config.theme.radar.apply_overrides(radar);
+        }
         let tag_label_border_explicit = theme_vars
             .get("tagLabelBorder")
             .and_then(|v| v.as_str())
