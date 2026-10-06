@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 mod packet;
+mod radar;
 mod railroad;
 
 fn fit_dimensions_to_preferred_ratio(
@@ -218,6 +219,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             width_attr = "100%".to_string();
             height_attr.clear();
             style_attr = format!(" style=\"max-width: {viewbox_width}px;{preferred_ratio_style}\"");
+        } else if matches!(layout.diagram, DiagramData::Radar(_)) {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {viewbox_width}px;{preferred_ratio_style}\" overflow=\"visible\""
+            );
         } else if matches!(layout.diagram, DiagramData::Timeline(_)) {
             // Timeline: responsive width + white background (matching JS).
             width_attr = "100%".to_string();
@@ -303,6 +310,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
             theme.background
         ));
+    }
+
+    if let DiagramData::Radar(ref radar) = layout.diagram {
+        svg.push_str(&radar::render_radar(radar, theme));
+        svg.push_str("</svg>");
+        return svg;
     }
 
     if let DiagramData::Packet(ref packet) = layout.diagram {
@@ -411,12 +424,6 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
 
     if layout.kind == crate::ir::DiagramKind::Architecture {
         svg.push_str(&render_architecture(layout, theme, config, &color_ids));
-        svg.push_str("</svg>");
-        return svg;
-    }
-
-    if layout.kind == crate::ir::DiagramKind::Radar {
-        svg.push_str(&render_radar(layout, theme, config));
         svg.push_str("</svg>");
         return svg;
     }
@@ -3169,210 +3176,6 @@ fn render_requirement(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> 
         svg.push_str("</g>");
     }
 
-    svg
-}
-
-fn render_radar(layout: &Layout, theme: &Theme, _config: &LayoutConfig) -> String {
-    use std::f32::consts::PI;
-
-    const WIDTH: f32 = 700.0;
-    const HEIGHT: f32 = 700.0;
-    const CENTER_X: f32 = WIDTH / 2.0;
-    const CENTER_Y: f32 = HEIGHT / 2.0;
-    const MAX_RADIUS: f32 = 300.0;
-    const GRID_STEPS: usize = 5;
-    const AXIS_LABEL_OFFSET: f32 = 15.0;
-    const LEGEND_BOX_SIZE: f32 = 12.0;
-    const LEGEND_GAP: f32 = 4.0;
-    const GRID_COLOR: &str = "#DEDEDE";
-    const AXIS_COLOR: &str = "#333333";
-    const RADAR_HUES: [i32; 12] = [240, 60, 80, 270, 300, 330, 0, 30, 90, 150, 180, 210];
-    const RADAR_LIGHTNESS: &str = "76.2745098039%";
-
-    fn radar_index(id: &str) -> usize {
-        id.rsplit('_')
-            .next()
-            .and_then(|part| part.parse::<usize>().ok())
-            .unwrap_or(usize::MAX)
-    }
-
-    fn parse_series(node: &crate::layout::NodeLayout) -> Option<(String, Vec<(String, f32)>)> {
-        let text_lines: Vec<String> = node
-            .label
-            .lines
-            .iter()
-            .map(|l| l.text().into_owned())
-            .collect();
-        let mut lines = text_lines
-            .iter()
-            .map(|line| line.trim())
-            .filter(|line| !line.is_empty());
-        let name = lines.next()?.to_string();
-        let mut pairs = Vec::new();
-        for line in lines {
-            let Some((axis_raw, value_raw)) = line.split_once(':') else {
-                continue;
-            };
-            let axis = axis_raw.trim();
-            let value_str = value_raw.trim();
-            if axis.is_empty() || value_str.is_empty() {
-                continue;
-            }
-            let Ok(value) = value_str.parse::<f32>() else {
-                continue;
-            };
-            pairs.push((axis.to_string(), value.max(0.0)));
-        }
-        if pairs.is_empty() {
-            None
-        } else {
-            Some((name, pairs))
-        }
-    }
-
-    let mut nodes: Vec<&crate::layout::NodeLayout> =
-        layout.nodes.values().filter(|node| !node.hidden).collect();
-    nodes.sort_by_key(|node| radar_index(&node.id));
-
-    let mut raw_series = Vec::new();
-    for node in nodes {
-        if let Some(series) = parse_series(node) {
-            raw_series.push(series);
-        }
-    }
-    let Some((_, first_pairs)) = raw_series.first() else {
-        return String::new();
-    };
-
-    let axes: Vec<String> = first_pairs.iter().map(|(axis, _)| axis.clone()).collect();
-    let axis_count = axes.len();
-    if axis_count == 0 {
-        return String::new();
-    }
-
-    let mut series_values: Vec<(String, Vec<f32>)> = Vec::new();
-    let mut max_value = 0.0f32;
-    for (name, pairs) in &raw_series {
-        let mut values = Vec::with_capacity(axis_count);
-        for axis in &axes {
-            let value = pairs
-                .iter()
-                .find_map(|(a, v)| (a == axis).then_some(*v))
-                .unwrap_or(0.0);
-            max_value = max_value.max(value);
-            values.push(value);
-        }
-        series_values.push((name.clone(), values));
-    }
-
-    if max_value <= 0.0 {
-        max_value = 1.0;
-    }
-    let scale = MAX_RADIUS / max_value;
-    let angle_step = 2.0 * PI / axis_count as f32;
-    let start_angle = -PI / 2.0;
-
-    let mut svg = String::new();
-    svg.push_str(&format!(
-        "<g transform=\"translate({:.3}, {:.3})\">",
-        CENTER_X, CENTER_Y
-    ));
-
-    for step in 1..=GRID_STEPS {
-        let r = MAX_RADIUS * step as f32 / GRID_STEPS as f32;
-        svg.push_str(&format!(
-            "<circle r=\"{:.3}\" fill=\"{}\" fill-opacity=\"0.3\" stroke=\"{}\" stroke-width=\"1\" />",
-            r, GRID_COLOR, GRID_COLOR
-        ));
-    }
-
-    for (idx, axis) in axes.iter().enumerate() {
-        let angle = start_angle + angle_step * idx as f32;
-        let x = MAX_RADIUS * angle.cos();
-        let y = MAX_RADIUS * angle.sin();
-        svg.push_str(&format!(
-            "<line x1=\"0\" y1=\"0\" x2=\"{:.3}\" y2=\"{:.3}\" stroke=\"{}\" stroke-width=\"2\" />",
-            x, y, AXIS_COLOR
-        ));
-        let label_r = MAX_RADIUS + AXIS_LABEL_OFFSET;
-        let mut lx = label_r * angle.cos();
-        let ly = label_r * angle.sin();
-        let anchor = if angle.cos() > 0.35 {
-            lx -= 6.0;
-            "end"
-        } else if angle.cos() < -0.35 {
-            lx += 6.0;
-            "start"
-        } else {
-            "middle"
-        };
-        svg.push_str(&format!(
-            "<text x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"{}\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"12\" fill=\"{}\">{}</text>",
-            lx,
-            ly,
-            anchor,
-            normalize_font_family(&theme.font_family),
-            AXIS_COLOR,
-            escape_xml(axis)
-        ));
-    }
-
-    for (series_idx, (name, values)) in series_values.iter().enumerate() {
-        let hue = RADAR_HUES[series_idx % RADAR_HUES.len()];
-        let color = format!("hsl({}, 100%, {})", hue, RADAR_LIGHTNESS);
-        let mut points = Vec::with_capacity(axis_count);
-        for (idx, value) in values.iter().enumerate() {
-            let angle = start_angle + angle_step * idx as f32;
-            let r = value * scale;
-            points.push((r * angle.cos(), r * angle.sin()));
-        }
-        if points.is_empty() {
-            continue;
-        }
-        let mut d = String::new();
-        d.push_str(&format!("M{:.3},{:.3}", points[0].0, points[0].1));
-        for point in points.iter().skip(1) {
-            d.push_str(&format!(" L{:.3},{:.3}", point.0, point.1));
-        }
-        d.push_str(" Z");
-        svg.push_str(&format!(
-            "<path d=\"{}\" fill=\"{}\" fill-opacity=\"0.5\" stroke=\"{}\" stroke-width=\"2\" />",
-            d,
-            escape_xml(&color),
-            escape_xml(&color)
-        ));
-
-        let legend_offset = MAX_RADIUS * 0.8;
-        let legend_x = legend_offset;
-        let legend_y = -legend_offset + series_idx as f32 * (theme.font_size + 6.0);
-        svg.push_str(&format!(
-            "<rect x=\"{:.3}\" y=\"{:.3}\" width=\"{}\" height=\"{}\" fill=\"{}\" fill-opacity=\"0.5\" stroke=\"{}\" />",
-            legend_x,
-            legend_y,
-            LEGEND_BOX_SIZE,
-            LEGEND_BOX_SIZE,
-            escape_xml(&color),
-            escape_xml(&color)
-        ));
-        svg.push_str(&format!(
-            "<text x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"start\" dominant-baseline=\"hanging\" font-family=\"{}\" font-size=\"12\" fill=\"{}\">{}</text>",
-            legend_x + LEGEND_BOX_SIZE + LEGEND_GAP,
-            legend_y,
-            normalize_font_family(&theme.font_family),
-            AXIS_COLOR,
-            escape_xml(name)
-        ));
-    }
-
-    svg.push_str(&format!(
-        "<text x=\"0\" y=\"{:.3}\" text-anchor=\"middle\" dominant-baseline=\"hanging\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\"></text>",
-        -(MAX_RADIUS + 50.0),
-        normalize_font_family(&theme.font_family),
-        theme.font_size,
-        AXIS_COLOR
-    ));
-
-    svg.push_str("</g>");
     svg
 }
 

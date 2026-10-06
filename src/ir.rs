@@ -138,6 +138,45 @@ pub struct PacketData {
 }
 
 #[derive(Debug, Clone)]
+pub struct RadarAxis {
+    pub name: String,
+    pub label: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RadarCurve {
+    pub label: String,
+    pub values: Vec<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RadarData {
+    pub title: Option<String>,
+    pub axes: Vec<RadarAxis>,
+    pub curves: Vec<RadarCurve>,
+    pub show_legend: bool,
+    pub ticks: usize,
+    pub min: f64,
+    pub max: Option<f64>,
+    pub polygon: bool,
+}
+
+impl Default for RadarData {
+    fn default() -> Self {
+        Self {
+            title: None,
+            axes: Vec::new(),
+            curves: Vec::new(),
+            show_legend: true,
+            ticks: 5,
+            min: 0.0,
+            max: None,
+            polygon: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct QuadrantPoint {
     pub label: String,
     pub x: f32,
@@ -715,6 +754,7 @@ pub struct Graph {
     pub timeline: TimelineData,
     pub block: Option<BlockDiagram>,
     pub packet: PacketData,
+    pub radar: RadarData,
     pub venn: VennData,
     pub look: DiagramLook,
     pub tree_view: TreeViewData,
@@ -973,6 +1013,7 @@ impl Graph {
             timeline: TimelineData::default(),
             block: None,
             packet: PacketData::default(),
+            radar: RadarData::default(),
             venn: VennData::default(),
             look: DiagramLook::default(),
             tree_view: TreeViewData::default(),

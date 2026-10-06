@@ -4687,3 +4687,78 @@ The release build passed, and all 422 Rust SVG/PNG pairs regenerated successfull
 - Also re-read and visually inspected the two affected example fixtures, `examples-basic-pie-chart-netflix` and `examples-basic-pie-chart-voldemort`. Both match the existing JS goldens in geometry, labels, and styling, with no visible regression.
 - No test suite was run, per the svg-parity skill. `git diff --check` passed.
 - Saved all four side-by-side review images as `<fixture>-parity.png` in the ignored comparison-output folder. Existing JS goldens were used; the gallery contains the regenerated Rust artifacts.
+
+## radar-basic-radar-diagram + radar-radar-diagram-with-all-options — Pass 1 findings — 2026-10-06T22:16:26+00:00
+
+### Pass 1 — radar charts
+
+**Visual appearance**
+
+- Both Rust series use `M L L L L Z` polygons; JS uses five cubic curves (`M C C C C C Z`). The resulting silhouettes look substantially different.
+- Rust uses a 680×680 canvas around a center at (350,350), leaving uneven margins. JS uses 700×700.
+- Axis labels point inward and crowd the chart boundary. JS places them outward, with a 19 px radial clearance rather than Rust’s shifted 15 px offset.
+- Legends sit 22.5 px too far left and down, with 22 px row spacing instead of 20 px.
+
+**Structural differences**
+
+- “Full Options Example” is missing.
+- Legend labels show `hero["Hero"]` and `villain["Villain"]` instead of “Hero” and “Villain.”
+- The configured maximum of 100 is ignored: Rust scales to 90, making the data shapes 11.1% too large.
+- The second series is a lighter yellow than JS.
+
+**Visual defects**
+
+- “Speed” and “Agility” crowd the outer circle and axis endpoints; the lower labels sit too close to the boundary.
+- These are recognizable radar charts, but they do not look like the same pictures. There are eight issue categories to address in this pass.
+
+Validated both SVG pairs, reference .mmd files, Cargo.toml and the sibling Mermaid checkout. Read raw SVGs and inspected side-by-side browser renders. Fixtures: `radar-basic-radar-diagram` and `radar-radar-diagram-with-all-options`.
+
+- Aspect ratio remains 1 in both engines; this is a silhouette and labeling defect rather than a gross topology or aspect-ratio change. The outer radius is 300 in both, but radius/canvas width is 0.441 in Rust versus 0.429 in JS.
+- JS axis-label radius/radius is 319/300=1.063; Rust uses 315/300=1.05 then moves nonvertical labels 6 px toward the center and reverses the horizontal anchor. “Speed” uses relative x=293.583 with end anchoring instead of x=303.387 with start anchoring.
+- Legend marker absolute position is (590,110) in Rust versus (612.5,87.5) in JS; row step/marker size is 22/12=1.833 versus 20/12=1.667.
+- The basic curve endpoints match numerically, but each missing cubic changes both the outward bulge and overlap region. In the configured example, Hero’s top vertex has relative y=-266.667 instead of -240.
+- There are no containing state boxes or bidirectional connector labels. No invisible text was observed; #333333 on white is about 12.6:1 contrast. The reported text defect is inward anchoring against the outer chart and spokes, not overlapping text strings.
+- Mermaid’s renderer, db and styles were read from the pinned sibling checkout; the missing sparse-checkout blobs were fetched with git show.
+
+## radar-basic-radar-diagram + radar-radar-diagram-with-all-options — Changes applied — 2026-10-06T22:19:21+00:00
+
+- `src/ir.rs:141` — preserve radar axes, numeric curves, labels, title, scale, grid mode/ticks and legend visibility as dedicated data.
+- `src/parser.rs:5461` — parse those values instead of dropping them or treating aliases as visible text. Resolve named entries by axis ID and retain multiple curves per statement. Keep existing graph nodes for callers inspecting parsed series.
+- `src/layout/radar.rs:9` — carry radar data through layout and use the reference 700×700 canvas with 50 px margins around a 600×600 plot.
+- `src/layout/types.rs:577` — add the radar payload to diagram layout data.
+- `src/render/radar.rs` — match Mermaid’s closed cubic construction with tension 0.17; honor min/max clipping and polygon grids, ticks and legend visibility; use outward axis-label anchors, 19 px radial clearance, reference legend/title positions and the reference yellow color. Use existing cScale overrides when supplied.
+- `src/render.rs` — route radar data to its renderer before graph markers and use the responsive reference SVG size/overflow attributes.
+- One source fix pass, six source files edited. Read the pinned Mermaid radar renderer/db/styles, radar grammar and configuration defaults. Radar frontmatter layout/style overrides beyond the selected fixtures are outside this pass.
+
+## radar-basic-radar-diagram + radar-radar-diagram-with-all-options — Pass 2 findings — 2026-10-06T22:21:13+00:00
+
+### Pass 2 — radar charts
+
+**Visual match: yes** for the two selected examples. Curves, scale, title, legend labels, colors, and spacing now match JS, with no visible defects remaining in those comparisons.
+
+The SVGs differ in how they store styling and round coordinates; curve coordinates agree within 0.00051 px.
+
+All 422 Rust SVG/PNG pairs regenerated successfully. Only the 14 radar SVGs changed. Checking the other radar examples confirmed a remaining gap for a future pass: custom radar style overrides are still ignored.
+
+### Visual appearance
+
+- Selected fixtures: `radar-basic-radar-diagram` and `radar-radar-diagram-with-all-options`. All eight Pass 1 issue categories are addressed after one source fix pass. Read the regenerated SVGs and inspected both side-by-side browser images.
+- Both canvases now measure 700×700, with center (350,350) and radius 300. Radius/canvas width matches at 0.429. The two series follow the same five closed cubic segments, with the same outward bulges and overlap areas as JS.
+- Axis-label radius/radius matches at 319/300=1.063. Labels use outward horizontal anchors and the reference vertical baselines; the selected labels and titles fit the viewBox with the reference clearances. Legend markers start at (612.5,87.5), and row step/marker size matches at 20/12=1.667.
+- Hero’s top vertex is at relative y=-240 with maximum 100; the basic curves retain their original numeric endpoints. Title, Hero/Villain display labels, and yellow lightness match the reference.
+
+### Structural differences
+
+- Rust uses explicit SVG styles where JS uses CSS classes. Rust serializes geometric coordinates to three decimals while the golden stores full double precision. These have no visible effect in the selected comparisons.
+- Curve/polygon path coordinates and visible text were compared across all 14 affected radar fixtures: the coordinates agree within 0.00051 px and the visible text/order matches. This is additional structural evidence, not a claim that all 14 have matching styles.
+
+### Visual defects
+
+- No visible defects remain in the two selected fixtures: no label overlap, boundary crowding, overflow, clipping or invisible text. Text is #333 on white (approximately 12.6:1 contrast), matching JS.
+- Additional browser inspection covered named curve entries, labeled axes, multiple curves on one line, custom radar styles and theme color scales. Custom radar styles still differ in axis color, grid color and curve stroke width; that fixture was outside this pass. The labeled-axis fixture has the same long-label clipping in both engines when embedded as an image, inherited from the reference canvas.
+
+### Validation
+
+- `cargo build --release` passed with 34 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. All 408 non-radar SVGs are byte-for-byte unchanged from the pre-edit snapshot.
+- No test suite was run and no test files were edited, per the svg-parity skill. `git diff --check` passed.
+- Saved 14 side-by-side review images as `<fixture>-parity.png` in the ignored comparison-output folder, including the custom-style example with its remaining differences. Existing JS goldens were used; all Rust gallery images are refreshed.

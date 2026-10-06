@@ -5463,66 +5463,184 @@ fn parse_radar_diagram(input: &str) -> Result<ParseOutput> {
     graph.kind = DiagramKind::Radar;
     graph.direction = Direction::LeftRight;
     let (lines, init_config) = preprocess_input(input)?;
-    let mut axes: Vec<String> = Vec::new();
+    graph.radar.title = input
+        .trim_start()
+        .strip_prefix("---")
+        .and_then(|yaml| yaml.split_once("\n---"))
+        .and_then(|(yaml, _)| serde_yaml::from_str::<serde_json::Value>(yaml).ok())
+        .and_then(|yaml| {
+            yaml.get("title")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+        });
+    let mut curve_lines: Vec<String> = Vec::new();
 
     for raw_line in lines {
         let line = raw_line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let lower = line.to_ascii_lowercase();
-        if lower.starts_with("radar") || lower.starts_with("title") {
-            continue;
-        }
-        if lower.starts_with("axis") {
-            let rest = line.get(4..).unwrap_or("").trim();
-            axes = split_args(rest)
-                .into_iter()
-                .map(|value| strip_quotes(value.trim()))
-                .filter(|value| !value.is_empty())
-                .collect();
-            continue;
-        }
-        if lower.starts_with("curve")
-            && let Some((name, values)) = parse_radar_curve(line)
+        if let Some(title) = line.strip_prefix("title ") {
+            graph.radar.title = Some(title.trim().to_string());
+        } else if let Some(title) = line.strip_prefix("accTitle:") {
+            graph.acc_title = Some(title.trim().to_string());
+        } else if let Some(description) = line.strip_prefix("accDescr:") {
+            graph.acc_descr = Some(description.trim().to_string());
+        } else if let Some(rest) = line.strip_prefix("axis ") {
+            for axis in split_args(rest) {
+                let (name, label) = parse_radar_name(&axis);
+                graph.radar.axes.push(crate::ir::RadarAxis { name, label });
+            }
+        } else if let Some(rest) = line.strip_prefix("curve ") {
+            curve_lines.push(rest.to_string());
+        } else if curve_lines
+            .last()
+            .is_some_and(|line| !line.trim_end().ends_with('}'))
         {
-            let node_id = format!("radar_{}", graph.nodes.len());
-            let mut label_lines = Vec::new();
-            label_lines.push(name);
-            if !values.is_empty() {
-                for (idx, value) in values.iter().enumerate() {
-                    if let Some(axis) = axes.get(idx) {
-                        label_lines.push(format!("{}: {}", axis, value));
-                    } else {
-                        label_lines.push(value.to_string());
+            // Curve entries can span several source lines.
+            if let Some(curve) = curve_lines.last_mut() {
+                curve.push(' ');
+                curve.push_str(line);
+            }
+        } else {
+            for option in split_args(line) {
+                let Some((key, value)) = option.split_once(char::is_whitespace) else {
+                    continue;
+                };
+                let value = value.trim();
+                match key {
+                    "showLegend" => graph.radar.show_legend = value != "false",
+                    "graticule" => graph.radar.polygon = value == "polygon",
+                    "ticks" => {
+                        if let Ok(ticks) = value.parse::<usize>() {
+                            graph.radar.ticks = ticks.min(32);
+                        }
                     }
+                    "max" | "min" => {
+                        if let Ok(number) = value.parse::<f64>()
+                            && number.is_finite()
+                        {
+                            if key == "max" {
+                                graph.radar.max = Some(number);
+                            } else {
+                                graph.radar.min = number;
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
+        }
+    }
+
+    for line in curve_lines {
+        for (name, entries) in radar_curve_parts(&line) {
+            let (_, label) = parse_radar_name(name);
+            let entries = split_args(entries);
+            let values: Option<Vec<f64>> = entries
+                .iter()
+                .map(|value| value.parse::<f64>().ok().filter(|value| value.is_finite()))
+                .collect();
+            let values = values.or_else(|| {
+                // Named entries are reordered by axis ID, independent of the
+                // displayed axis labels and the order inside the curve.
+                let pairs: Vec<_> = entries
+                    .iter()
+                    .filter_map(|entry| {
+                        let (axis, value) =
+                            entry.split_once(|c: char| c == ':' || c.is_whitespace())?;
+                        let value = value
+                            .trim()
+                            .trim_start_matches(':')
+                            .trim()
+                            .parse::<f64>()
+                            .ok()?;
+                        value.is_finite().then_some((axis, value))
+                    })
+                    .collect();
+                graph
+                    .radar
+                    .axes
+                    .iter()
+                    .map(|axis| {
+                        pairs
+                            .iter()
+                            .find_map(|(name, value)| (*name == axis.name).then_some(*value))
+                    })
+                    .collect()
+            });
+            let Some(values) = values else { continue };
+            // Retain the existing public graph nodes for callers that inspect
+            // parsed series, while rendering from the numeric radar data.
+            let node_id = format!("radar_{}", graph.radar.curves.len());
+            let mut label_lines = vec![label.clone()];
+            label_lines.extend(
+                graph
+                    .radar
+                    .axes
+                    .iter()
+                    .zip(&values)
+                    .map(|(axis, value)| format!("{}: {}", axis.label, value)),
+            );
             graph.ensure_node(
                 &node_id,
                 Some(label_lines.join("\n")),
                 Some(crate::ir::NodeShape::Circle),
             );
+            graph
+                .radar
+                .curves
+                .push(crate::ir::RadarCurve { label, values });
         }
     }
 
     Ok(ParseOutput { graph, init_config })
 }
 
-fn parse_radar_curve(line: &str) -> Option<(String, Vec<String>)> {
-    let rest = line.get(5..).unwrap_or("").trim();
-    let (name_part, values_part) = rest.split_once('{')?;
-    let name = strip_quotes(name_part.trim());
-    let values_raw = values_part.split_once('}')?.0;
-    let values = split_args(values_raw)
-        .into_iter()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>();
-    if name.is_empty() {
-        return None;
+fn parse_radar_name(input: &str) -> (String, String) {
+    let input = input.trim();
+    if let Some((name, label)) = input.split_once('[')
+        && let Some(label) = label.trim().strip_suffix(']')
+    {
+        (name.trim().to_string(), strip_quotes(label.trim()))
+    } else {
+        let name = strip_quotes(input);
+        (name.clone(), name)
     }
-    Some((name, values))
+}
+
+fn radar_curve_parts(input: &str) -> Vec<(&str, &str)> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut open = None;
+    let mut quoted = false;
+    let mut escaped = false;
+    for (index, ch) in input.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if quoted && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+            continue;
+        }
+        if quoted {
+            continue;
+        }
+        if ch == '{' {
+            open = Some(index);
+        } else if ch == '}' {
+            if let Some(open) = open.take() {
+                parts.push((
+                    input[start..open].trim().trim_start_matches(',').trim(),
+                    &input[open + 1..index],
+                ));
+            }
+            start = index + 1;
+        }
+    }
+    parts
 }
 
 fn parse_treemap_diagram(input: &str) -> Result<ParseOutput> {
