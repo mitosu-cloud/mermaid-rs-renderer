@@ -1,5 +1,36 @@
 use super::*;
 
+fn measure_kanban_label(text: &str, max_width: f32, theme: &Theme) -> TextBlock {
+    let mut lines = Vec::new();
+    let mut width = 0.0_f32;
+    for line in text.lines() {
+        for wrapped in
+            crate::text_metrics::wrap_text(line, max_width, theme.font_size, &theme.font_family)
+        {
+            let measured = crate::text_metrics::measure_text_width_with_kerning(
+                &wrapped,
+                theme.font_size,
+                &theme.font_family,
+            )
+            .unwrap_or_else(|| {
+                crate::text_metrics::get_computed_text_length(
+                    &wrapped,
+                    theme.font_size,
+                    &theme.font_family,
+                )
+            });
+            width = width.max(measured);
+            lines.push(TextLine::plain(wrapped));
+        }
+    }
+    let height = lines.len() as f32 * theme.font_size * 1.5;
+    TextBlock {
+        lines,
+        width,
+        height,
+    }
+}
+
 pub(super) fn compute_kanban_layout(
     graph: &Graph,
     theme: &Theme,
@@ -10,105 +41,69 @@ pub(super) fn compute_kanban_layout(
         return compute_flowchart_layout(graph, theme, config, stage_metrics);
     }
 
-    let mut nodes = build_graph_node_layouts(graph, theme, config);
-    if graph.kind == crate::ir::DiagramKind::Requirement {
-        for node in nodes.values_mut() {
-            if node.style.fill.is_none() {
-                node.style.fill = Some(config.requirement.fill.clone());
-            }
-            if node.style.stroke.is_none() {
-                node.style.stroke = Some(config.requirement.box_stroke.clone());
-            }
-            if node.style.stroke_width.is_none() {
-                node.style.stroke_width = Some(config.requirement.box_stroke_width);
-            }
-            if node.style.text_color.is_none() {
-                node.style.text_color = Some(config.requirement.label_color.clone());
-            }
+    const COLUMN_WIDTH: f32 = 200.0;
+    const CARD_WIDTH: f32 = 185.0;
+    const CARD_GAP: f32 = 5.0;
+    const COLUMN_TOP: f32 = -300.0;
+    let column_labels: Vec<_> = graph
+        .subgraphs
+        .iter()
+        .map(|column| measure_kanban_label(&column.label, COLUMN_WIDTH, theme))
+        .collect();
+    let header_height = column_labels
+        .iter()
+        .map(|label| label.height)
+        .fold(25.0_f32, f32::max);
+    let mut nodes = BTreeMap::new();
+    let mut columns = Vec::new();
+    let mut max_height = 50.0_f32;
+
+    for (index, (column, label_block)) in graph.subgraphs.iter().zip(column_labels).enumerate() {
+        let center_x = COLUMN_WIDTH * (index + 1) as f32 + index as f32 * CARD_GAP;
+        let top = COLUMN_TOP + header_height;
+        let mut y = top;
+        for id in &column.nodes {
+            let Some(node) = graph.nodes.get(id) else {
+                continue;
+            };
+            // Mermaid reserves a fixed-width card and wraps its title against
+            // the 175 px label limit rather than sizing the card to its text.
+            let label = measure_kanban_label(&node.label, CARD_WIDTH - 10.0, theme);
+            let height = label.height + 20.0;
+            let style = resolve_node_style(id, graph);
+            let mut item = build_node_layout(node, label, CARD_WIDTH, height, style, graph);
+            item.x = center_x - CARD_WIDTH / 2.0;
+            item.y = y;
+            nodes.insert(id.clone(), item);
+            y += height + CARD_GAP;
         }
+        // The reference includes the trailing card gap in its column height.
+        let height = (y - top + 30.0).max(50.0) + header_height - 25.0;
+        max_height = max_height.max(height);
+        columns.push(SubgraphLayout {
+            label: column.label.clone(),
+            label_block,
+            nodes: column.nodes.clone(),
+            x: center_x - COLUMN_WIDTH / 2.0,
+            y: COLUMN_TOP,
+            width: COLUMN_WIDTH,
+            height,
+            style: crate::ir::NodeStyle::default(),
+            icon: column.icon.clone(),
+        });
     }
 
-    let node_gap = (theme.font_size * 0.45).max(4.0);
-    let column_gap = (theme.font_size * 0.3).max(3.0);
-    let origin_x = 6.0;
-    let origin_y = 6.0;
-    let mut column_x = origin_x;
-    let mut assigned: HashSet<String> = HashSet::new();
-
-    for sub in &graph.subgraphs {
-        let column_nodes: Vec<String> = sub
-            .nodes
-            .iter()
-            .filter(|id| nodes.contains_key(*id))
-            .cloned()
-            .collect();
-        if column_nodes.is_empty() {
-            continue;
-        }
-        assigned.extend(column_nodes.iter().cloned());
-
-        let label_empty = sub.label.trim().is_empty();
-        let mut label_block = measure_label(&sub.label, theme, config);
-        if label_empty {
-            label_block.width = 0.0;
-            label_block.height = 0.0;
-        }
-        let (pad_x, _pad_y, top_padding) =
-            subgraph_padding_from_label(graph, sub, theme, &label_block);
-
-        let max_node_width = column_nodes
-            .iter()
-            .filter_map(|id| nodes.get(id).map(|n| n.width))
-            .fold(0.0_f32, f32::max);
-        let inner_width = max_node_width.max(label_block.width);
-        let column_width = inner_width + pad_x * 2.0;
-
-        let mut y_cursor = origin_y + top_padding;
-        let last_idx = column_nodes.len().saturating_sub(1);
-        for (idx, node_id) in column_nodes.iter().enumerate() {
-            if let Some(node) = nodes.get_mut(node_id) {
-                let x = column_x + pad_x + (inner_width - node.width) / 2.0;
-                node.x = x;
-                node.y = y_cursor;
-                y_cursor += node.height;
-                if idx < last_idx {
-                    y_cursor += node_gap;
-                }
-            }
-        }
-
-        column_x += column_width + column_gap;
-    }
-
-    let mut free_x = column_x;
-    for node in nodes.values_mut() {
-        if assigned.contains(&node.id) {
-            continue;
-        }
-        node.x = free_x;
-        node.y = origin_y;
-        free_x += node.width + column_gap;
-    }
-
-    let mut edges: Vec<EdgeLayout> = Vec::new();
-    let mut subgraphs = build_subgraph_layouts(graph, &nodes, theme, config);
-    normalize_layout(&mut nodes, edges.as_mut_slice(), &mut subgraphs);
-
-    let (max_x, max_y) = bounds_without_padding(&nodes, &subgraphs);
-    let width = max_x + 6.0;
-    let height = max_y + 6.0;
-
+    let count = columns.len();
     Layout {
         kind: graph.kind,
         nodes,
-        edges,
-        subgraphs,
-        width,
-        height,
+        edges: Vec::new(),
+        subgraphs: columns,
+        width: (count as f32 * COLUMN_WIDTH + count.saturating_sub(1) as f32 * CARD_GAP + 20.0)
+            .max(1.0),
+        height: max_height + 20.0,
         acc_title: None,
         acc_descr: None,
-        diagram: DiagramData::Graph {
-            state_notes: Vec::new(),
-        },
+        diagram: DiagramData::Kanban,
     }
 }

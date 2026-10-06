@@ -15,6 +15,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::Path;
 
+mod kanban;
 mod packet;
 mod radar;
 mod railroad;
@@ -73,6 +74,17 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             width = width.max(1.0);
             height = height.max(1.0);
             (width, height, 0.0, 0.0, width, height)
+        } else if matches!(layout.diagram, DiagramData::Kanban) {
+            // Kanban places its first 200 px column at (100, -300), with
+            // 10 px gallery padding on each side of the content bounds.
+            (
+                layout.width,
+                layout.height,
+                90.0,
+                -310.0,
+                layout.width,
+                layout.height,
+            )
         } else if let DiagramData::C4(c4) = &layout.diagram {
             let width = layout.width.max(1.0);
             let height = layout.height.max(1.0);
@@ -219,6 +231,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             width_attr = "100%".to_string();
             height_attr.clear();
             style_attr = format!(" style=\"max-width: {viewbox_width}px;{preferred_ratio_style}\"");
+        } else if matches!(layout.diagram, DiagramData::Kanban) {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {viewbox_width}px; background-color: white;{preferred_ratio_style}\""
+            );
         } else if matches!(layout.diagram, DiagramData::Radar(_)) {
             width_attr = "100%".to_string();
             height_attr.clear();
@@ -310,6 +328,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
             theme.background
         ));
+    }
+
+    if matches!(layout.diagram, DiagramData::Kanban) {
+        svg.push_str(&kanban::render_kanban(layout, theme, config));
+        svg.push_str("</svg>");
+        return svg;
     }
 
     if let DiagramData::Radar(ref radar) = layout.diagram {

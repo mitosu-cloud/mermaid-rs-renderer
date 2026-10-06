@@ -575,6 +575,7 @@ pub enum DiagramData {
     Pie(PieData),
     Packet(PacketLayout),
     Radar(crate::ir::RadarData),
+    Kanban,
     Quadrant(QuadrantLayout),
     Gantt(GanttLayout),
     Sankey(SankeyLayout),

@@ -4823,3 +4823,70 @@ All 422 Rust SVG/PNG pairs regenerated successfully. Only this SVG changed. I’
 - `cargo build --release` passed with 34 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Only radar-radar-diagram-with-radar-style-options-rs.svg changed; all 421 other SVGs are byte-for-byte unchanged from the pre-edit snapshot.
 - No test suite was run and no test files were edited, per the svg-parity skill. `git diff --check` passed. Existing JS goldens were used.
 - Updated the ignored side-by-side review image radar-radar-diagram-with-radar-style-options-parity.png and all Rust gallery exports.
+
+## kanban-basic-kanban-board — Pass 1 findings — 2026-10-06T23:46:24+00:00
+
+### Pass 1 — basic Kanban board
+
+**Visual appearance**
+
+- Rust’s canvas is 246.10×91.60 versus JS’s 220×99, making the board about 21% wider in aspect ratio.
+- The column is 232.10 px wide instead of 200 px; the card is 216.10 px instead of 185 px.
+- Rust uses a yellow column with a visible olive border and a lavender card. JS uses a pale green column and a white card.
+- Column corners are 10 px and card corners are square; JS uses 5 px for both.
+- Task text is centered instead of left aligned.
+
+**Structural differences**
+
+- The column, card, text positions, fills, borders, and corner radii differ.
+
+**Visual defects**
+
+- The title’s baseline sits at the card’s top border, allowing its lower strokes to overlap that border.
+- The board is recognizable, but its proportions, spacing, colors, and text placement visibly differ. There are six issue categories for this pass.
+
+Validated kanban-basic-kanban-board in the established comparison-output folder, its reference source, Cargo.toml and the sibling Mermaid checkout. Read both raw SVGs and inspected the browser-rendered pair before editing.
+
+- Checked gross topology, size class, shapes, relative spacing and label fit before structural analysis. This is a single column containing one card in both engines, but aspect ratios are 2.687 versus 2.222. There are no connectors or bidirectional labels; corner geometry differs on the rectangles themselves.
+- Rust column/card rectangles are (8,8,232.10,77.60) and (16,36,216.10,41.60). Golden absolute rectangles are (100,-300,200,79) and (107.5,-275,185,44), within viewBox (90,-310,220,99).
+- Card width/column width is 0.931 in Rust versus 0.925 in JS. Side inset/card width is 8/216.10=0.037 versus 7.5/185=0.041. Golden task text starts 10 px inside the card; Rust centers it with about 50 px per side. The task label fits in both; the defect is its anchor, not overflow.
+- Rust title baseline y=36 coincides with card top y=36; its descenders can cross the border. JS uses a 24 px title line box at y=-300 and starts the card at y=-275, leaving distinct title/card regions.
+- Column fill/stroke should be hsl(80,100%,86.2745098039%) instead of #FFFFDE/#AAAA33. Card fill should be white instead of #ECECFF. No separate clipping or invisible-text defect was observed; #333/#333333 text has strong contrast against the light backgrounds.
+- The two metadata Kanban examples share this geometry/render path and will be re-rendered for impact inspection. Their raw metadata and anonymous-label parser gaps are outside this selected basic-board pass.
+- Read Mermaid kanbanRenderer.ts, styles.ts, kanbanDb.ts, kanbanItem.ts and the kanbanSection cluster renderer from the pinned sibling checkout.
+
+## kanban-basic-kanban-board — Changes applied — 2026-10-06T23:48:17+00:00
+
+- `src/layout/kanban.rs` — replace generic graph card sizing with 200 px columns, 185 px cards, 5 px gaps and the reference header/column-height calculations. Wrap plain task text against the 175 px label limit with 24 px line boxes at the default font size.
+- `src/layout/types.rs` — mark the dedicated Kanban layout so generic graph transformations do not alter its board geometry.
+- `src/render.rs` — use the reference negative viewBox origin and responsive canvas, and dispatch Kanban before generic graph markers and shapes.
+- `src/render/kanban.rs` — render pale section-color columns and white cards with 5 px corners; use the theme border and text colors, native font baseline metrics, centered headers and task text aligned 10 px from the left edge.
+- One source fix pass, four source files edited. Metadata/footer parsing and anonymous-label parsing remain outside the selected basic-board pass.
+
+## kanban-basic-kanban-board — Pass 2 findings — 2026-10-06T23:50:59+00:00
+
+### Pass 2 — basic Kanban board
+
+**Visual appearance**
+
+- **Visual match: partial.** Board geometry and styling now match JS, but both text labels sit about 1 SVG unit lower.
+- The canvas is 220×99, the column is 200×79, and the card is 185×44. Colors, 5 px corners, title clearance, and left alignment now match.
+
+**Structural differences**
+
+- Rust uses native SVG text; JS uses HTML labels. Their baseline placement still differs slightly.
+
+**Visual defects**
+
+- One visible issue remains: text baseline placement. There is no visible overlap, overflow, clipping, or unreadable text in the basic board.
+
+All 422 Rust SVG/PNG pairs regenerated successfully. The 419 non-Kanban SVGs are unchanged. The two metadata boards still differ in metadata formatting, priority indicators, and anonymous labels; those are the next Kanban gaps.
+
+### Verification details
+
+- Re-read the updated Rust SVG and inspected all three side-by-side Kanban browser images. The selected basic board uses viewBox (90,-310,220,99), column rectangle (100,-300,200,79), and card rectangle (107.5,-275,185,44), matching JS. Both rectangles have 5 px corners. Column fill/stroke is the reference pale green HSL color; the card has white fill and #9370DB stroke.
+- Canvas aspect ratio is now 2.222 in both. Card width/column width is 185/200=0.925; side inset/card width is 7.5/185=0.041. Task text starts 10 px inside the card. The title and task label fit with the reference horizontal clearances, and the title no longer overlaps the card border. No connectors or bidirectional labels are present. #333 text remains readable against the white/light green backgrounds.
+- Native text baselines are y=-282.5 and y=-247.5. Browser inspection shows each label roughly 1 SVG unit lower than the HTML golden. The six selected Pass 1 issue categories have been improved; one residual baseline-placement category remains. This one-pass iteration does not claim complete visual agreement.
+- Impact inspection: the metadata example retains raw metadata in the title rather than a footer and lacks the orange priority indicator. Its card is 185×140 instead of 185×80; canvas is 220×195 instead of 220×135. The full board now shares the reference 1245 px width and six-column placement, but its height is 389 instead of 293; raw metadata inflates several cards, and anonymous labels still appear as [In/[Create. These existing parser/footer gaps remain outside the selected basic-board scope.
+- cargo build --release passed in 14.07 seconds with 33 warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Only the three Kanban SVGs changed; all 419 other SVGs are byte-for-byte unchanged from the pre-edit snapshot.
+- No test suite was run and no test files were edited, per the svg-parity skill. Existing JS goldens were used. Saved all three updated side-by-side review images as <fixture>-parity.png in the ignored comparison-output folder.
