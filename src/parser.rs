@@ -5122,62 +5122,76 @@ fn split_block_row_tokens(line: &str) -> Vec<&str> {
 fn parse_packet_diagram(input: &str) -> Result<ParseOutput> {
     let mut graph = Graph::new();
     graph.kind = DiagramKind::Packet;
-    graph.direction = Direction::LeftRight;
     let (lines, init_config) = preprocess_input(input)?;
-    let mut last_node: Option<String> = None;
+    // Keep the top-level title even when preprocess_input unwraps `config:`.
+    graph.packet.title = input
+        .trim_start()
+        .strip_prefix("---")
+        .and_then(|yaml| yaml.split_once("\n---"))
+        .and_then(|(yaml, _)| serde_yaml::from_str::<serde_json::Value>(yaml).ok())
+        .and_then(|yaml| {
+            yaml.get("title")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+        });
+    let mut next_bit = 0usize;
 
     for raw_line in lines {
         let line = raw_line.trim();
-        if line.is_empty() {
+        if line.is_empty() || matches!(line, "packet" | "packet-beta") {
             continue;
         }
-        let lower = line.to_ascii_lowercase();
-        if lower.starts_with("packet") || lower.starts_with("title") {
+        if let Some(title) = line.strip_prefix("title ") {
+            graph.packet.title = Some(title.trim().to_string());
             continue;
         }
-        if let Some((range, label)) = line.split_once(':') {
-            let range = range.trim();
-            let label = strip_quotes(label.trim());
-            if range.is_empty() {
-                continue;
-            }
-            let node_id = format!("packet_{}", graph.nodes.len());
-            let node_label = if label.is_empty() {
-                range.to_string()
-            } else {
-                format!("{}\n{}", range, label)
-            };
-            graph.ensure_node(
-                &node_id,
-                Some(node_label),
-                Some(crate::ir::NodeShape::Rectangle),
-            );
-            if let Some(prev) = last_node.take() {
-                graph.edges.push(crate::ir::Edge {
-                    from: prev,
-                    to: node_id.clone(),
-                    label: None,
-                    start_label: None,
-                    end_label: None,
-                    directed: false,
-                    arrow_start: false,
-                    arrow_end: false,
-                    arrow_start_kind: None,
-                    arrow_end_kind: None,
-                    start_decoration: None,
-                    end_decoration: None,
-                    sequence_arrow_end: None,
-                    sequence_arrow_start: None,
-                    style: crate::ir::EdgeStyle::Solid,
-                    markdown_label: false,
-                    id: None,
-                    curve: None,
-                    arch_port_from: None,
-                    arch_port_to: None,
-                });
-            }
-            last_node = Some(node_id);
+        if let Some(title) = line.strip_prefix("accTitle:") {
+            graph.acc_title = Some(title.trim().to_string());
+            continue;
         }
+        if let Some(description) = line.strip_prefix("accDescr:") {
+            graph.acc_descr = Some(description.trim().to_string());
+            continue;
+        }
+        let (range, label) = line
+            .split_once(':')
+            .ok_or_else(|| anyhow::anyhow!("Invalid packet field: {line}"))?;
+        let range = range.trim();
+        let (start, end) = if let Some(bits) = range.strip_prefix('+') {
+            let bits: usize = bits.trim().parse()?;
+            anyhow::ensure!(bits > 0, "Packet fields cannot have zero bits");
+            let end = next_bit
+                .checked_add(bits - 1)
+                .ok_or_else(|| anyhow::anyhow!("Packet bit range is too large"))?;
+            (next_bit, end)
+        } else if let Some((start, end)) = range.split_once('-') {
+            (start.trim().parse::<usize>()?, end.trim().parse::<usize>()?)
+        } else {
+            let bit: usize = range.parse()?;
+            (bit, bit)
+        };
+        anyhow::ensure!(
+            end >= start,
+            "Packet field {start}-{end} has a reversed range"
+        );
+        anyhow::ensure!(
+            start == next_bit,
+            "Packet field {start}-{end} is not contiguous; expected bit {next_bit}"
+        );
+        next_bit = end
+            .checked_add(1)
+            .ok_or_else(|| anyhow::anyhow!("Packet bit range is too large"))?;
+        let label = strip_quotes(label.trim());
+        let node_id = format!("packet_{}", graph.packet.fields.len());
+        graph.ensure_node(
+            &node_id,
+            Some(label.clone()),
+            Some(crate::ir::NodeShape::Rectangle),
+        );
+        graph
+            .packet
+            .fields
+            .push(crate::ir::PacketField { start, end, label });
     }
 
     Ok(ParseOutput { graph, init_config })
@@ -8922,7 +8936,9 @@ A["foo & bar"] & B --> C"#;
         let parsed = parse_mermaid(input).unwrap();
         assert_eq!(parsed.graph.kind, DiagramKind::Packet);
         assert_eq!(parsed.graph.nodes.len(), 2);
-        assert_eq!(parsed.graph.edges.len(), 1);
+        assert!(parsed.graph.edges.is_empty());
+        assert_eq!(parsed.graph.packet.fields[0].start, 0);
+        assert_eq!(parsed.graph.packet.fields[1].end, 15);
     }
 
     #[test]

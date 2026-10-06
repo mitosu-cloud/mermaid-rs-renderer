@@ -125,6 +125,19 @@ pub struct PieSlice {
 }
 
 #[derive(Debug, Clone)]
+pub struct PacketField {
+    pub start: usize,
+    pub end: usize,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PacketData {
+    pub title: Option<String>,
+    pub fields: Vec<PacketField>,
+}
+
+#[derive(Debug, Clone)]
 pub struct QuadrantPoint {
     pub label: String,
     pub x: f32,
@@ -701,6 +714,7 @@ pub struct Graph {
     pub xychart: XYChartData,
     pub timeline: TimelineData,
     pub block: Option<BlockDiagram>,
+    pub packet: PacketData,
     pub venn: VennData,
     pub look: DiagramLook,
     pub tree_view: TreeViewData,
@@ -958,6 +972,7 @@ impl Graph {
             xychart: XYChartData::default(),
             timeline: TimelineData::default(),
             block: None,
+            packet: PacketData::default(),
             venn: VennData::default(),
             look: DiagramLook::default(),
             tree_view: TreeViewData::default(),

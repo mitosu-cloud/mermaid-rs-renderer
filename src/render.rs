@@ -15,6 +15,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::Path;
 
+mod packet;
 mod railroad;
 
 fn fit_dimensions_to_preferred_ratio(
@@ -213,6 +214,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 " style=\"max-width: {:.3}px;{}\"",
                 viewbox_width, preferred_ratio_style
             );
+        } else if matches!(layout.diagram, DiagramData::Packet(_)) && config.packet.use_max_width {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(" style=\"max-width: {viewbox_width}px;{preferred_ratio_style}\"");
         } else if matches!(layout.diagram, DiagramData::Timeline(_)) {
             // Timeline: responsive width + white background (matching JS).
             width_attr = "100%".to_string();
@@ -298,6 +303,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
             theme.background
         ));
+    }
+
+    if let DiagramData::Packet(ref packet) = layout.diagram {
+        svg.push_str(&packet::render_packet(packet, theme));
+        svg.push_str("</svg>");
+        return svg;
     }
 
     if let DiagramData::C4(ref c4) = layout.diagram {

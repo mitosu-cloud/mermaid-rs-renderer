@@ -573,6 +573,7 @@ pub enum DiagramData {
     Railroad(crate::ir::RailroadData),
     Sequence(SequenceData),
     Pie(PieData),
+    Packet(PacketLayout),
     Quadrant(QuadrantLayout),
     Gantt(GanttLayout),
     Sankey(SankeyLayout),
@@ -586,6 +587,26 @@ pub enum DiagramData {
     Ishikawa(IshikawaLayout),
     Wardley(WardleyLayout),
     Error(ErrorLayout),
+}
+
+#[derive(Debug, Clone)]
+pub struct PacketFieldLayout {
+    pub start: usize,
+    pub end: usize,
+    pub label: String,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct PacketLayout {
+    pub fields: Vec<PacketFieldLayout>,
+    pub title: Option<String>,
+    pub title_x: f32,
+    pub title_y: f32,
+    pub show_bits: bool,
 }
 
 #[derive(Debug, Clone)]

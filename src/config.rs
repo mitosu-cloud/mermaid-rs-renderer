@@ -737,6 +737,32 @@ impl Default for TreemapConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct PacketConfig {
+    pub row_height: f32,
+    pub bit_width: f32,
+    pub bits_per_row: usize,
+    pub show_bits: bool,
+    pub padding_x: f32,
+    pub padding_y: f32,
+    pub use_max_width: bool,
+}
+
+impl Default for PacketConfig {
+    fn default() -> Self {
+        Self {
+            row_height: 32.0,
+            bit_width: 32.0,
+            bits_per_row: 32,
+            show_bits: true,
+            padding_x: 5.0,
+            padding_y: 5.0,
+            use_max_width: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
     pub node_spacing: f32,
     pub rank_spacing: f32,
@@ -751,6 +777,8 @@ pub struct LayoutConfig {
     pub gitgraph: GitGraphConfig,
     pub c4: C4Config,
     pub pie: PieConfig,
+    #[serde(default)]
+    pub packet: PacketConfig,
     pub treemap: TreemapConfig,
     pub flowchart: FlowchartLayoutConfig,
     pub look: crate::ir::DiagramLook,
@@ -772,6 +800,7 @@ impl Default for LayoutConfig {
             gitgraph: GitGraphConfig::default(),
             c4: C4Config::default(),
             pie: PieConfig::default(),
+            packet: PacketConfig::default(),
             treemap: TreemapConfig::default(),
             flowchart: FlowchartLayoutConfig::default(),
             look: crate::ir::DiagramLook::default(),
@@ -1454,6 +1483,7 @@ struct ConfigFile {
     preferred_aspect_ratio: Option<NumberOrString>,
     flowchart: Option<FlowchartConfig>,
     pie: Option<PieConfigFile>,
+    packet: Option<PacketConfig>,
     requirement: Option<RequirementConfigFile>,
     mindmap: Option<MindmapConfigFile>,
     #[serde(rename = "gitGraph")]
@@ -1727,6 +1757,10 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
         .filter(|ratio| ratio.is_finite() && *ratio > 0.0)
     {
         config.layout.preferred_aspect_ratio = Some(ratio);
+    }
+
+    if let Some(packet) = parsed.packet {
+        config.layout.packet = packet;
     }
 
     if let Some(flow) = parsed.flowchart {

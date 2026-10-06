@@ -510,6 +510,17 @@ sequenceDiagram
 }
 
 fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
+    if let Some(overrides) = init.get("packet").and_then(|v| v.as_object()) {
+        // Preserve config-file values for options omitted by an init directive.
+        if let Ok(mut value) = serde_json::to_value(&config.layout.packet) {
+            if let Some(options) = value.as_object_mut() {
+                options.extend(overrides.clone());
+            }
+            if let Ok(packet) = serde_json::from_value(value) {
+                config.layout.packet = packet;
+            }
+        }
+    }
     if let Some(look_str) = init.get("look").and_then(|v| v.as_str()) {
         match look_str {
             "handDrawn" => config.layout.look = crate::ir::DiagramLook::HandDrawn,

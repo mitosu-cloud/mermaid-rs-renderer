@@ -4565,3 +4565,65 @@ These ten fixture passes share one source-edit batch and release build. Composit
 - Source edit is limited to `src/render.rs`; comparison notes are append-only, and generated output is ignored by Git. Refreshed both `<fixture>-parity.png` review images.
 
 **Verification correction:** The unchanged `block-test-arch` fixture is a flowchart (`graph TB`), despite its filename prefix. The preceding description of it as an error illustration was incorrect. All 26 actual block diagrams were refreshed with the new stroke settings.
+
+## packet-tcp-packet + packet-udp-packet-with-bits-syntax — Pass 1 findings — 2026-10-06T21:59:26+00:00
+
+### Visual appearance
+
+- **Layout:** TCP is `3245×84` in Rust versus `1026×423` in JS; UDP is `911×84` versus `1026×188`. Both Rust outputs use one row.
+- **Field widths:** Rust sizes boxes by label length instead of bit count.
+- **Bit labels:** Ranges appear inside boxes; UDP’s `+16` fields never become `0–15` and `16–31`.
+- **Extra elements:** Rust adds 16 TCP connectors and 4 UDP connectors (`M…L`); JS has none.
+- **Missing elements:** Both titles and TCP’s second data row are absent.
+- **Styling:** Rust uses purple flowchart boxes and 16 px text; JS uses gray fields with 12 px labels and 10 px bit numbers.
+
+The outputs look like different diagrams. I’ll add packet-specific parsing, layout, and rendering.
+
+### Structural differences
+
+- The flowchart fallback has no numeric packet range data. TCP data spanning bits 192–255 must split into rows 192–223 and 224–255. Titles are discarded, including TCP’s YAML title.
+- Rust Source Port: (8,8), 127.12×68; JS: (1,15), 507×32. Rust measures label text into a box; JS maps each bit to 32 px and subtracts 5 px field spacing.
+
+### Visual defects
+
+- TCP aspect ratio is 15.93 times the JS ratio; UDP is 1.99 times the JS ratio. At the same display width the TCP labels are tiny and its row topology is unrecognizable.
+- JS has horizontal field gap/height 5/32=0.156 and row gap/height 15/32=0.469. Rust’s horizontal gap/height is approximately 48.34/68=0.711 for TCP and 50/68=0.735 for UDP, with no subsequent rows.
+- Source Port label/field width is approximately 0.12 in JS and 0.68 in Rust. Rust labels fit their boxes in intrinsic coordinates, but the excessive diagram width makes them illegible at gallery scale. No distinct overlap, clipping, or invisible text was observed. TCP’s short one-bit flags are naturally tight in the JS golden.
+- Seven shared issue categories: row topology, bit-proportional widths, bit annotations, spurious connectors, missing titles, cross-row splitting, and packet typography/colors.
+
+Validated both SVG pairs and sources in `tests/mermaid-js-comparison/comparison-output` / `reference`, repository Cargo.toml and the sibling Mermaid checkout. Missing sparse-checkout source blobs were fetched and read with `git show`; no Mermaid working-tree source was edited.
+
+## packet-tcp-packet + packet-udp-packet-with-bits-syntax — Changes applied — 2026-10-06T22:01:38+00:00
+
+- `src/ir.rs` — retain numeric packet fields and title independently of graph edges.
+- `src/parser.rs` — parse contiguous explicit ranges, single bits and relative +N lengths; retain frontmatter/inline titles; reject reversed, zero-length, noncontiguous and overflowing ranges. Update the existing inline parser assertion to reflect the removal of fictitious edges.
+- `src/config.rs`, `src/cli.rs` — add Mermaid packet defaults and config/init overrides for bitsPerRow, bitWidth, rowHeight, paddingX/Y, showBits and useMaxWidth.
+- `src/layout/mod.rs`, `src/layout/types.rs`, new `src/layout/packet.rs` — dispatch to a dedicated packet layout, split fields across rows, reserve space for bit annotations and the bottom title, and match the reference row limit.
+- `src/render.rs`, new `src/render/packet.rs` — render gray fields, black 12 px labels, 10 px bit numbers and 14 px titles with the JS anchors/baselines, escaping all user-visible text. Skip flowchart connectors and marker definitions for packet output.
+- Reference diagnosis read Mermaid packet renderer/parser/db/styles, grammar and schema from the sibling checkout. These fixtures share exactly one source edit pass.
+
+## packet-tcp-packet + packet-udp-packet-with-bits-syntax — Pass 2 findings — 2026-10-06T22:02:56+00:00
+
+### Visual appearance
+
+- **Visual match: yes** for TCP and UDP. Rows, field widths, bit numbers, titles, colors, and text placement now match JS.
+- TCP is exactly `1026×423`; UDP is exactly `1026×188`. All field, bit-label, and title coordinates agree with the reference SVGs.
+
+### Structural differences
+
+- Rust uses explicit attributes and a single content group where JS uses CSS classes and row groups. These differences do not change the visible result.
+
+### Visual defects
+
+- No visible defects remain in these two comparisons. All seven Pass 1 issue categories are addressed.
+
+The release build passed. All 422 SVG/PNG pairs regenerated successfully, and only the two packet SVGs changed.
+
+**Verification details**
+
+- Re-read the generated Rust SVGs and inspected both side-by-side browser renderings. Layout topology, size class, labels and bit annotations visibly match. TCP has eight rows, including both portions of its data field; UDP has three rows and resolves +16 into the expected absolute bit ranges.
+- Horizontal field gap/height is 5/32=0.156 and row gap/height is 15/32=0.469 in both engines. Labels have the same fit as the reference, including the tight one-bit TCP flag fields. No new overlap, boundary overflow, clipping, invisible text or connector paths remain. Black text on #efefef has strong contrast.
+- Compared each packet rectangle, field label, bit number and title in document order: all x/y/width/height values and visible text equal the corresponding golden values. Text anchors, font sizes, colors and middle baselines match the reference.
+- `cargo build --release` succeeded with 34 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Non-packet SVGs are byte-for-byte unchanged from the pre-edit baseline.
+- No test suite was run, per the svg-parity skill. The existing parser assertion was adjusted for the intentional removal of packet edges. `git diff --check` passed.
+- Saved the two review images as `packet-tcp-packet-parity.png` and `packet-udp-packet-with-bits-syntax-parity.png` in the ignored comparison-output folder. The full gallery reflects the refreshed artifacts.

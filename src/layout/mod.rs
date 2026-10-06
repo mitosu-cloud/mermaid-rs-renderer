@@ -14,6 +14,7 @@ pub(crate) mod label_placement;
 mod markdown;
 mod mindmap;
 mod network_simplex;
+mod packet;
 mod pie;
 mod quadrant;
 mod radar;
@@ -276,6 +277,7 @@ pub fn compute_layout_with_metrics(
             compute_kanban_layout(graph, theme, config, Some(&mut stage_metrics))
         }
         crate::ir::DiagramKind::Block => compute_block_layout(graph, theme, config),
+        crate::ir::DiagramKind::Packet => packet::compute_packet_layout(graph, config),
         crate::ir::DiagramKind::Sankey => compute_sankey_layout(graph, theme, config),
         crate::ir::DiagramKind::Architecture => compute_architecture_layout(graph, theme, config),
         crate::ir::DiagramKind::Radar => compute_radar_layout(graph, theme, config),
@@ -310,7 +312,6 @@ pub fn compute_layout_with_metrics(
         | crate::ir::DiagramKind::State
         | crate::ir::DiagramKind::Er
         | crate::ir::DiagramKind::Requirement
-        | crate::ir::DiagramKind::Packet
         | crate::ir::DiagramKind::Flowchart => {
             compute_flowchart_layout(graph, theme, config, Some(&mut stage_metrics))
         }
