@@ -736,6 +736,84 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
             config.theme.cscale_colors = cscale;
         }
     }
+    // Pie theme lengths may carry CSS px units, including in YAML init data.
+    let pie_number = |value: &serde_json::Value| -> Option<f32> {
+        match value {
+            serde_json::Value::Number(number) => number.as_f64().map(|v| v as f32),
+            serde_json::Value::String(text) => crate::config::parse_css_number(text),
+            _ => None,
+        }
+        .filter(|number| number.is_finite())
+    };
+    if let Some(vars) = init.get("themeVariables") {
+        for (name, target) in [
+            ("pieTitleTextSize", &mut config.theme.pie_title_text_size),
+            (
+                "pieSectionTextSize",
+                &mut config.theme.pie_section_text_size,
+            ),
+            ("pieLegendTextSize", &mut config.theme.pie_legend_text_size),
+            ("pieStrokeWidth", &mut config.theme.pie_stroke_width),
+            (
+                "pieOuterStrokeWidth",
+                &mut config.theme.pie_outer_stroke_width,
+            ),
+            ("pieOpacity", &mut config.theme.pie_opacity),
+        ] {
+            if let Some(value) = vars.get(name).and_then(pie_number) {
+                *target = value;
+            }
+        }
+        for (name, target) in [
+            ("pieTitleTextColor", &mut config.theme.pie_title_text_color),
+            (
+                "pieSectionTextColor",
+                &mut config.theme.pie_section_text_color,
+            ),
+            (
+                "pieLegendTextColor",
+                &mut config.theme.pie_legend_text_color,
+            ),
+            ("pieStrokeColor", &mut config.theme.pie_stroke_color),
+            (
+                "pieOuterStrokeColor",
+                &mut config.theme.pie_outer_stroke_color,
+            ),
+        ] {
+            if let Some(value) = vars.get(name).and_then(|value| value.as_str()) {
+                *target = value.to_string();
+            }
+        }
+        for (index, color) in config.theme.pie_colors.iter_mut().enumerate() {
+            if let Some(value) = vars
+                .get(format!("pie{}", index + 1))
+                .and_then(|v| v.as_str())
+            {
+                *color = value.to_string();
+            }
+        }
+    }
+    if let Some(pie) = init.get("pie") {
+        for (name, target) in [
+            ("textPosition", &mut config.layout.pie.text_position),
+            ("height", &mut config.layout.pie.height),
+            ("margin", &mut config.layout.pie.margin),
+            ("legendRectSize", &mut config.layout.pie.legend_rect_size),
+            ("legendSpacing", &mut config.layout.pie.legend_spacing),
+            (
+                "legendHorizontalMultiplier",
+                &mut config.layout.pie.legend_horizontal_multiplier,
+            ),
+            ("minPercent", &mut config.layout.pie.min_percent),
+        ] {
+            if let Some(value) = pie.get(name).and_then(pie_number) {
+                *target = value;
+            }
+        }
+        if let Some(value) = pie.get("useMaxWidth").and_then(|v| v.as_bool()) {
+            config.layout.pie.use_max_width = value;
+        }
+    }
     if let Some(ratio) = init
         .get("preferredAspectRatio")
         .and_then(parse_aspect_ratio_json)

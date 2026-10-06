@@ -3795,8 +3795,20 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
         total = pie.slices.iter().map(|s| s.value.max(0.0)).sum();
     }
 
-    let slice_stroke = theme.background.as_str();
-    let slice_stroke_width = theme.pie_stroke_width.max(1.2);
+    let slice_stroke = theme.pie_stroke_color.as_str();
+    let slice_stroke_width = theme.pie_stroke_width.max(0.0);
+
+    if theme.pie_outer_stroke_width > 0.0 {
+        let outer_radius = radius + theme.pie_outer_stroke_width / 2.0;
+        svg.push_str(&format!(
+            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.3}\"/>",
+            cx,
+            cy,
+            outer_radius,
+            escape_xml(&theme.pie_outer_stroke_color),
+            theme.pie_outer_stroke_width
+        ));
+    }
 
     for slice in &pie.slices {
         let span = (slice.end_angle - slice.start_angle).abs();
@@ -3824,18 +3836,6 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
             escape_xml(slice_stroke),
             slice_stroke_width,
             theme.pie_opacity
-        ));
-    }
-
-    if theme.pie_outer_stroke_width > 0.0 {
-        let outer_radius = radius + theme.pie_outer_stroke_width / 2.0;
-        svg.push_str(&format!(
-            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{:.3}\"/>",
-            cx,
-            cy,
-            outer_radius,
-            escape_xml(&theme.pie_outer_stroke_color),
-            theme.pie_outer_stroke_width
         ));
     }
 
@@ -4012,7 +4012,7 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
             ));
         }
         svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"{}\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
+            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"{}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",
             label_x,
             label.y,
             anchor,
@@ -4034,10 +4034,10 @@ fn render_pie(pie: &PieData, theme: &Theme, config: &LayoutConfig) -> String {
             item.marker_size,
             escape_xml(&item.color),
             escape_xml(&item.color),
-            theme.pie_stroke_width
+            1.0
         ));
         let label_x = rect_x + item.marker_size + pie_cfg.legend_spacing;
-        let label_y = rect_y + item.marker_size / 2.0;
+        let label_y = rect_y + item.marker_size - pie_cfg.legend_spacing;
         svg.push_str(&text_block_svg_with_font_size(
             label_x,
             label_y,

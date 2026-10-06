@@ -101,7 +101,23 @@ impl Theme {
         let primary_color = "#ECECFF".to_string();
         let secondary_color = "#FFFFDE".to_string();
         let tertiary_color = "#ECECFF".to_string();
-        let pie_colors = default_pie_colors(&primary_color, &secondary_color, &tertiary_color);
+        // The default Mermaid pie palette derives its tertiary hue separately
+        // from the generic node fills, then darkens it for the third slice.
+        let pie_tertiary = adjust_color(&primary_color, -160.0, 0.0, 0.0);
+        let pie_colors = [
+            primary_color.clone(),
+            secondary_color.clone(),
+            adjust_color(&pie_tertiary, 0.0, 0.0, -40.0),
+            adjust_color(&primary_color, 0.0, 0.0, -10.0),
+            adjust_color(&secondary_color, 0.0, 0.0, -30.0),
+            adjust_color(&pie_tertiary, 0.0, 0.0, -20.0),
+            adjust_color(&primary_color, 60.0, 0.0, -20.0),
+            adjust_color(&primary_color, -60.0, 0.0, -40.0),
+            adjust_color(&primary_color, 120.0, 0.0, -40.0),
+            adjust_color(&primary_color, 60.0, 0.0, -40.0),
+            adjust_color(&primary_color, -90.0, 0.0, -40.0),
+            adjust_color(&primary_color, 120.0, 0.0, -30.0),
+        ];
         Self {
             font_family: MERMAID_FONT_FAMILY.to_string(),
             font_size: 16.0,
@@ -137,11 +153,11 @@ impl Theme {
             git_tag_label_border: MERMAID_GIT_TAG_LABEL_BORDER.to_string(),
             pie_colors,
             pie_title_text_size: 25.0,
-            pie_title_text_color: MERMAID_TEXT_COLOR.to_string(),
+            pie_title_text_color: "black".to_string(),
             pie_section_text_size: 17.0,
             pie_section_text_color: MERMAID_TEXT_COLOR.to_string(),
             pie_legend_text_size: 17.0,
-            pie_legend_text_color: MERMAID_TEXT_COLOR.to_string(),
+            pie_legend_text_color: "black".to_string(),
             pie_stroke_color: "#000000".to_string(),
             pie_stroke_width: 2.0,
             pie_outer_stroke_width: 2.0,

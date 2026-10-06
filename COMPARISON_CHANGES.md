@@ -4627,3 +4627,63 @@ The release build passed. All 422 SVG/PNG pairs regenerated successfully, and on
 - `cargo build --release` succeeded with 34 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Non-packet SVGs are byte-for-byte unchanged from the pre-edit baseline.
 - No test suite was run, per the svg-parity skill. The existing parser assertion was adjusted for the intentional removal of packet edges. `git diff --check` passed.
 - Saved the two review images as `packet-tcp-packet-parity.png` and `packet-udp-packet-with-bits-syntax-parity.png` in the ignored comparison-output folder. The full gallery reflects the refreshed artifacts.
+
+## pie-basic-pie-chart + pie-pie-chart-with-showdata-and-configuration — Pass 1 findings — 2026-10-06T22:05:58+00:00
+
+### Visual appearance
+
+- Rust starts slices at 3 o’clock; JS starts at 12 o’clock. Rust also sorts by value, reversing the configured chart’s first two slices.
+- The third slice and legend swatch reuse lavender instead of JS’s green.
+- Rust uses a 360 px canvas and 152 px radius; JS uses 450 px and 185 px.
+- Legend markers, spacing, and text baselines differ. Slice dividers are white instead of black.
+- The configured chart ignores `textPosition: 0.5` and the `5px` outer border.
+
+Both charts are recognizably pies, but their sectors and styling visibly differ. I’ll address these together in one pass.
+
+### Structural differences
+
+- Basic JS viewBox 546.96875×450, RS 418.14×360; configured JS 654.734375×450, RS 524.985×360. Aspect ratios differ by approximately 4% and 0.2%; the visible mismatch comes from geometry and sector orientation rather than a large aspect-ratio change.
+- Circle center is (225,225) in JS versus (180,180) in Rust. Legend starts at x=441 versus x=348.8. Legend-to-circle gap/radius is 31/185=0.168 in JS versus 16.8/152=0.111 in Rust.
+- JS legend markers are 18×18 with a 22 px row step; RS markers are 14×14 with 21.25 px steps. JS places legend text 14 px below each marker’s top; Rust uses 7 px. Title and legend text should be black; Rust uses #333.
+- Sector paths both use true circular A arcs: JS M A L Z; RS M L A Z. The discrepancy is the 90-degree rotation and sector ordering, not missing curvature. There are no connecting edges or bidirectional edge labels.
+- Basic JS 79% centroid is approximately (308.573,335.757); RS is (89,248.67). Configured JS puts 40% on the right and 46% at lower left; Rust puts 46% at the bottom and 40% at upper left.
+
+### Visual defects
+
+- Duplicate lavender sectors make the basic Dogs/Rats legend ambiguous. The configured chart swaps the Calcium/Potassium colors relative to JS.
+- Basic title descenders are crowded against the top of the outer circle (RS top y=26 with title baseline y=25; JS top y=38 with baseline y=25).
+- Legend and percentage labels fit, with no separate clipping or invisible-text defect observed. There is no containing-region boundary around the legend. The configured percentages should sit at half-radius rather than three-quarter-radius.
+- Eight issue categories: sector rotation/order; palette/category colors; canvas/radius; legend geometry; slice strokes; text color/baselines and title clearance; ignored textPosition; ignored CSS-unit outer stroke width.
+
+Validated Cargo.toml, both SVG pairs and reference sources, and the sibling Mermaid checkout. Read raw SVGs and viewed the rendered pairs before editing. Read Mermaid pieRenderer.ts, pieDb.ts and theme-default.js from the sparse checkout with git show.
+
+## pie-basic-pie-chart + pie-pie-chart-with-showdata-and-configuration — Changes applied — 2026-10-06T22:08:17+00:00
+
+- `src/layout/pie.rs` — preserve input order, start angles at twelve o’clock, normalize visible arc angles, keep category colors stable, and measure legend text with native font kerning. Use Mermaid’s circle, legend and canvas geometry.
+- `src/config.rs` — use 450 px chart height, 40 px margin, 18 px legend squares, 4 px legend spacing, and multiplier 12. Accept CSS px suffixes in numeric theme configuration.
+- `src/theme.rs` — derive the default Mermaid pie palette from the golden hue/lightness adjustments and set black title/legend text. Other diagram node colors are unchanged.
+- `src/cli.rs` — merge pie settings and pie theme variables from init/frontmatter, including textPosition and pieOuterStrokeWidth.
+- `src/render.rs` — use the configured slice stroke, paint the outer ring before the translucent wedges, match percentage/legend baselines, and use 1 px legend swatch strokes.
+- One source fix pass, five source files edited.
+
+## pie-basic-pie-chart + pie-pie-chart-with-showdata-and-configuration — Pass 2 findings — 2026-10-06T22:11:26+00:00
+
+### Pass 2 — pie charts
+
+**Visual match: yes** for both selected charts. Slice order, colors, circle size, legends, labels, and the configured border now match JS. No visible defects remain.
+
+Rust uses explicit SVG attributes where JS uses CSS and groups; small coordinate rounding differences do not visibly affect the result. The two other pie examples also match on inspection.
+
+The release build passed, and all 422 Rust SVG/PNG pairs regenerated successfully. I’m recording the findings and committing this iteration.
+
+### Verification details
+
+- All eight Pass 1 issue categories are addressed in the two selected fixtures. Re-read the SVGs and visually inspected both browser-rendered comparisons after the single source fix pass.
+- Basic viewBox matches exactly at 546.96875×450; configured Rust width 654.7344 differs from JS 654.734375 only by float serialization. Both use center (225,225), sector radius 185, and 18 px legend markers with 22 px row steps.
+- The legend-to-circle gap/radius now matches at 31/185=0.168. Legend text starts at x=463 with a baseline 14 px below each marker top. Text fits inside the canvas; there is no label overflow, clipping, overlap, or invisible text. The title has the reference clearance above the circle.
+- Both engines use actual circular arc commands. Rust serializes sector coordinates to two decimals, while JS uses translated paths and three decimal coordinates. These differences and tiny HSL float differences are not visibly apparent. There are no diagram connectors to compare.
+- The configured labels sit at half-radius, in source order, and the outer stroke is 5 px with ring radius 187.5. Basic labels use three-quarter-radius and a 2 px outer stroke with radius 186.
+- `cargo build --release` passed with 34 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded. Only four pie SVGs changed; all 418 non-pie SVGs are byte-for-byte unchanged from the pre-edit baseline.
+- Also re-read and visually inspected the two affected example fixtures, `examples-basic-pie-chart-netflix` and `examples-basic-pie-chart-voldemort`. Both match the existing JS goldens in geometry, labels, and styling, with no visible regression.
+- No test suite was run, per the svg-parity skill. `git diff --check` passed.
+- Saved all four side-by-side review images as `<fixture>-parity.png` in the ignored comparison-output folder. Existing JS goldens were used; the gallery contains the regenerated Rust artifacts.

@@ -654,11 +654,11 @@ impl Default for PieConfig {
             render_mode: PieRenderMode::Chart,
             use_max_width: true,
             text_position: 0.75,
-            height: 360.0,
-            margin: 28.0,
-            legend_rect_size: 14.0,
-            legend_spacing: 3.0,
-            legend_horizontal_multiplier: 10.0,
+            height: 450.0,
+            margin: 40.0,
+            legend_rect_size: 18.0,
+            legend_spacing: 4.0,
+            legend_horizontal_multiplier: 12.0,
             min_percent: 1.0,
             error_message: "Syntax error in text".to_string(),
             error_version: "11.12.2".to_string(),
@@ -1072,11 +1072,22 @@ enum NumberOrString {
     String(String),
 }
 
+pub(crate) fn parse_css_number(value: &str) -> Option<f32> {
+    let value = value.trim();
+    value
+        .strip_suffix("px")
+        .unwrap_or(value)
+        .trim()
+        .parse::<f32>()
+        .ok()
+        .filter(|number| number.is_finite())
+}
+
 impl NumberOrString {
     fn as_f32(&self) -> Option<f32> {
         match self {
             NumberOrString::Number(val) => Some(*val),
-            NumberOrString::String(val) => val.trim().parse::<f32>().ok(),
+            NumberOrString::String(val) => parse_css_number(val),
         }
     }
 
