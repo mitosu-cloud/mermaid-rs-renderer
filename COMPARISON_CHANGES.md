@@ -4507,3 +4507,61 @@ These ten fixture passes share one source-edit batch and release build. Composit
 - All ten target canvas dimensions match JS to floating-point precision. The previous ten shape fixtures retain their prior canvas dimensions.
 - Saved ten side-by-side screenshots as `<fixture>-parity.png` in the ignored comparison-output folder. The gallery reflects the refreshed SVG files.
 - `git diff --check` passed. The unrelated framework Info.plist change is excluded from this batch.
+
+## block-class-styling + block-individual-block-styling — Pass 1 findings — 2026-10-06T21:44:38+00:00
+
+### Visual appearance
+
+- **Class styling:** Rust rounds A’s 4 px border corners and B’s dashed border ends.
+- **Individual styling:** Rust rounds Stop’s dash ends, making the dashes longer and the gaps smaller.
+- These look like the same diagrams, but the border differences are clear side by side.
+
+### Structural differences
+
+- Rust explicitly sets `stroke-linejoin="round"` and `stroke-linecap="round"`. The JS shapes use SVG’s default miter joins and butt caps.
+
+### Visual defects
+
+- Three visible stroke defects across the two fixtures. I’ll correct the block-shape stroke settings in this pass.
+
+**Inspection measurements**
+
+- Folder: `tests/mermaid-js-comparison/comparison-output`. All four SVG files, both reference sources and the sibling Mermaid checkout were verified before logging.
+- Class: JS `-5 -25 150.3125 50`, RS `0 0 150.3125 50`; size/aspect ratio agree. A and B are side by side in both. Gap/height = 57.4375/40 = 1.436; label/box widths = A 9.4375/41.4375 = 0.228 and B 9.0625/41.4375 = 0.219. Both labels have ample margin.
+- Individual: JS `-5 -25 179.046875 50`, RS `0 0 179.04688 50`; size/aspect ratio agree within float precision. Gap/height = 67.015625/40 = 1.675; Start label/box = 35.015625/51.015625 = 0.686; Stop = 31.546875/51.015625 = 0.618. Both labels have more than 10% of label width in margin on each side.
+- Each fixture has one horizontal connector: JS commands `M L C C L`, RS `M C`; all points are collinear, so both draw the same straight geometry. There are no bidirectional labels or composite regions in these fixtures.
+- Class A corners occur at normalized RS (5,5), (46.44,5), (46.44,45), (5,45). Rounded joins visibly remove the square outer border corners. B begins at (103.88,5); its 2 px stroke adds approximately 1 px to each dash end, changing visible 5/5 dash-gap lengths to 7/3 along straight segments. Individual Stop begins at (123.03,5) and has the same cap defect, with its intended rx=ry=5 shape radius preserved.
+- Raw SVG and browser side-by-side images were inspected before editing. No unexpected overlap, clipping, crossing, or label overflow was observed. Existing label colors match JS: white B/Stop on #bbf has contrast approximately 1.80:1; Start #333 on #636 approximately 1.49:1. Their low contrast is present in the golden styles too, not introduced by Rust.
+
+## block-class-styling + block-individual-block-styling — Changes applied — 2026-10-06T21:44:52+00:00
+
+- `src/render.rs:7451` — select miter joins and butt caps for block node shapes, matching the default SVG settings used by Mermaid’s block renderer. This restores square thick corners and the intended 5 px dash / 5 px gap. Rounded rectangles keep their explicit 5 px geometry radius.
+- Diagnosis checked `../mermaid/packages/mermaid/src/diagrams/block/renderHelpers.ts`, block `styles.ts`, and the shared `drawRect.ts` / polygon shape implementations. Other diagram kinds retain the existing join/cap settings.
+- One source fix pass; one source file edited.
+
+## block-class-styling + block-individual-block-styling — Pass 2 findings — 2026-10-06T21:46:17+00:00
+
+### Visual appearance
+
+- Both fixtures now look essentially the same as JS: square border corners and flat dash ends match.
+- Small text baseline/rasterization differences remain visible at high zoom.
+
+### Structural differences
+
+- Native SVG text differs from JS’s HTML labels; the targeted stroke settings now match.
+
+### Visual defects
+
+- All three stroke defects are gone. **Visual match: yes** for both fixtures.
+- All 422 SVG/PNG pairs rendered successfully. No canvas dimensions changed, and non-block SVGs are byte-for-byte unchanged.
+
+**Verification details**
+
+- Re-read the regenerated Rust SVGs and viewed both side-by-side browser images. All three Pass 1 stroke defects are corrected. One shared minor text baseline/rasterization difference remains across the two fixtures; the result is an essential visual match, not pixel identity.
+- Class canvas remains 150.3125 × 50; individual canvas remains 179.04688 × 50. Both retain horizontal topology, the collinear connector geometry and their measured gap/height and label/box ratios from Pass 1. Labels fit without overflow or newly introduced low contrast.
+- Both rectangular A/B nodes explicitly emit miter joins and butt caps. Start/Stop also emit those stroke settings while keeping rx=ry=5. Rounded geometry and square dash ends coexist as in JS.
+- Release build succeeded with 34 existing warnings. All 422 SVG and 422 PNG renders succeeded. 26 block SVGs changed; no non-block SVG changed, and no canvas viewBox changed. The 27th block fixture is an error illustration unaffected by node stroke rendering.
+- No test suite was run, per the svg-parity skill. `git diff --check` passed.
+- Source edit is limited to `src/render.rs`; comparison notes are append-only, and generated output is ignored by Git. Refreshed both `<fixture>-parity.png` review images.
+
+**Verification correction:** The unchanged `block-test-arch` fixture is a flowchart (`graph TB`), despite its filename prefix. The preceding description of it as an error illustration was incorrect. All 26 actual block diagrams were refreshed with the new stroke settings.

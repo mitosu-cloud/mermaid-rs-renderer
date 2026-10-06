@@ -7448,12 +7448,18 @@ fn shape_svg_inner(
         .as_ref()
         .map(|value| format!(" stroke-dasharray=\"{}\"", value))
         .unwrap_or_default();
-    let join = " stroke-linejoin=\"round\" stroke-linecap=\"round\"";
+    let is_block = kind == crate::ir::DiagramKind::Block;
+    // Mermaid's block shapes use SVG's default miter joins and butt caps.
+    // Round caps extend each dash and visibly shrink the gaps between dashes.
+    let join = if is_block {
+        " stroke-linejoin=\"miter\" stroke-linecap=\"butt\""
+    } else {
+        " stroke-linejoin=\"round\" stroke-linecap=\"round\""
+    };
     let x = node.x;
     let y = node.y;
     let w = node.width;
     let h = node.height;
-    let is_block = kind == crate::ir::DiagramKind::Block;
     if is_block && let Some(points) = crate::block_shapes::polygon_points(node) {
         let points = points
             .into_iter()
