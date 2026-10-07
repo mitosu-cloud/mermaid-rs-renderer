@@ -6514,15 +6514,12 @@ fn render_er_node(
             node.y,
             node.width,
             node.height,
-            node.style
-                .fill
-                .as_deref()
-                .unwrap_or(&theme.cluster_background),
+            node.style.fill.as_deref().unwrap_or(&theme.primary_color),
             node.style
                 .stroke
                 .as_deref()
                 .unwrap_or(&theme.primary_border_color),
-            node.style.stroke_width.unwrap_or(1.3)
+            node.style.stroke_width.unwrap_or(1.0)
         );
         let label = TextBlock {
             lines: vec![crate::layout::TextLine::plain(title.clone())],

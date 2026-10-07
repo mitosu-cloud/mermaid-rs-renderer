@@ -6398,3 +6398,43 @@ Each successful pass rebuilt the release binary and regenerated all 422 Rust SVG
 Selected ER alias-table and flowchart special-character examples now look essentially the same as their references. Broader family gaps remain: ER default entity fills and diagonal/multiple-edge routing; git fast text-width estimates; other flowchart shapes and complex layouts. Individual Pass 2 reports give the visual limits of each pass.
 
 Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output/batch11-parity-review.html and batch11-parity-review.png.
+
+## batch12-01-er-entity-style — Pass 1 findings — 2026-10-07T06:03:40+00:00
+
+### Iteration 1/10 — Pass 1
+
+#### Visual appearance
+
+- In `entityRelationshipDiagram-relationships-with-aliases`, Rust is 356 × 285 versus JS’s 351.5 × 285.
+- The three entities occupy similar positions, but Rust fills them yellow; JS uses lavender.
+- Rust’s connections are diagonal while JS curves outward from vertical segments. Labels fit, but the diagrams still look different.
+
+#### Structural differences
+
+- Attribute-free entities use the cluster background and 1.3-pixel borders instead of the entity background and 1-pixel borders.
+
+#### Visual defects
+
+- Two gap groups: entity styling and connection geometry. This pass targets styling.
+
+## batch12-01-er-entity-style — Changes applied — 2026-10-07T06:03:40+00:00
+
+- `src/render.rs` — Attribute-free ER entities use the primary entity fill and 1px default borders, preserving explicit styles.
+
+## batch12-01-er-entity-style — Pass 2 findings — 2026-10-07T06:06:39+00:00
+
+### Iteration 1/10 — Pass 2
+
+#### Visual appearance
+
+- Entity fills and borders now resemble JS. Rust remains 356 × 285 versus JS’s 351.5 × 285.
+- The arrangement is similar, but Rust’s diagonal connections and inward labels differ from JS’s outward curves. The rank gap is about 1.2 entity heights in both; labels fit.
+
+#### Structural differences
+
+- Connection ports, paths, and label anchors still differ.
+
+#### Visual defects
+
+- One remaining gap group: connection geometry.
+- **Visual match: partial.** Build and all 422 renders succeeded; JS references were unchanged.
