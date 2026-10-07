@@ -5451,3 +5451,45 @@ Verification:
 - Saved selected and family previews beside the ignored generated comparison output. Tests were not run, per the skill.
 
 Review outcome: mindmap-icons improved from five visible gap groups to two; four source files edited in one pass.
+
+## batch10-01-mindmap-icons — Pass 1 findings — 2026-10-07T04:56:06+00:00
+
+### Iteration 1/10 — `mindmap-icons`, Pass 1
+
+#### Visual appearance
+
+- Rust is 92.18 × 326 versus JS’s 92.19 × 335.79. The vertical order agrees, but Rust lacks JS’s sideways offsets.
+- All three Rust connectors use vertical `M/C`; JS uses diagonal `M/L/C/C/L`. Root–A’s gap / node height is 1.47 versus 1.57.
+- Labels fit, but Rust’s glyphs sit about 1 px too high inside their containers.
+- The pictures are recognizably similar. Placement and text alignment still differ.
+
+#### Structural differences
+
+- Rust uses a fixed baseline offset instead of the browser’s font ascent and descent.
+
+#### Visual defects
+
+- Two gaps: force-based placement/spacing and text alignment. This pass targets text alignment.
+
+## batch10-01-mindmap-icons — Changes applied — 2026-10-07T04:56:06+00:00
+
+- `src/render.rs:1820` — Use measured CSS line-box baselines for mindmap labels, reusing font ascent/descent logic from block labels. Scope the change to mindmaps; retain line spacing and container sizes.
+
+## batch10-01-mindmap-icons — Pass 2 findings — 2026-10-07T04:57:19+00:00
+
+### Iteration 1/10 — Pass 2
+
+#### Visual appearance
+
+- The canvas, vertical topology and connector geometry remain 92.18 × 326; spacing still differs from JS.
+- Text alignment is improved: the previous 1 px upward offset is now a roughly 0.4–0.5 px downward offset.
+- Labels retain their margins. **Visual match: partial.**
+
+#### Structural differences
+
+- Mindmap labels now use measured font baselines. No node dimensions changed.
+
+#### Visual defects
+
+- Two residual gaps remain: placement/spacing and a smaller text offset.
+- Build passed; all 422 Rust SVG/PNG pairs regenerated. Fourteen mindmap SVGs changed; JS goldens are unchanged.

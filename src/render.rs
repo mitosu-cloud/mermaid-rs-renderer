@@ -1816,7 +1816,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         node.style.text_color.as_deref(),
                         false,
                     )
-                } else if layout.kind == crate::ir::DiagramKind::Block {
+                } else if matches!(
+                    layout.kind,
+                    crate::ir::DiagramKind::Block | crate::ir::DiagramKind::Mindmap
+                ) {
                     let baseline_offset =
                         text_metrics::centered_baseline_offset(theme.font_size, &theme.font_family)
                             .unwrap_or(theme.font_size * 0.35);
