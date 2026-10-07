@@ -1,5 +1,7 @@
 use super::*;
 
+mod cose;
+
 #[derive(Clone)]
 struct MindmapPalette {
     section_fills: Vec<String>,
@@ -450,7 +452,8 @@ pub(super) fn compute_mindmap_layout(
 
     let placed_chain = root_id.is_some()
         && config.mindmap.layout_algorithm == "cose-bilkent"
-        && place_mindmap_chain(&info_map, &mut nodes, vertical_gap);
+        && (cose::place(graph, &mut nodes)
+            || place_mindmap_chain(&info_map, &mut nodes, vertical_gap));
     if !placed_chain && let Some(root_id) = root_id.as_ref() {
         mindmap_subtree_height(
             root_id,

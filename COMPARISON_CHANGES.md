@@ -5537,3 +5537,50 @@ Review outcome: mindmap-icons improved from five visible gap groups to two; four
 
 - Three gap groups reduced to two: placement/spacing and the small text offset.
 - Build passed; all 422 pairs regenerated. Only the hexagon SVG changed; JS goldens are unchanged.
+
+## batch10-03-mindmap-basic — Pass 1 findings — 2026-10-07T05:02:29+00:00
+
+### Iteration 3/10 — `mindmap-basic-mindmap`, Pass 1
+
+#### Visual appearance
+
+- Rust is 298.19 × 138; JS is 242.64 × 210.33. Rust’s aspect ratio is 87% wider.
+- Rust places Root left and B/C right. JS places Root bottom-right, B left and C top-right around A.
+- All three connectors are collinear, but their directions differ (`M/C…` versus `M/L/C/C/L`).
+- Root–A’s clear box gap / node height is 1.57 horizontally in Rust versus 1.24 vertically in JS.
+- Labels fit, with the small baseline offset noted earlier. These still look like different layouts.
+
+#### Structural differences
+
+- Rust’s section placement does not follow Mermaid’s radial seed and force relaxation.
+
+#### Visual defects
+
+- Two gap groups: layout geometry and the small text offset. This pass targets layout geometry.
+
+## batch10-03-mindmap-basic — Changes applied — 2026-10-07T05:03:12+00:00
+
+- `src/layout/mindmap/cose.rs` — Add a deterministic force layout for flat connected mindmap trees: stable BFS/edge ordering, the installed reference's center selection, radial seeding, rectangle clipping/separation, 0.45 springs, 4500 repulsion, cached 100 px neighbors, proof cooling and convergence checks. Retain upstream MIT notices. No JavaScript runtime or new dependency is needed.
+- `src/layout/mindmap.rs:453` — Use the force solver for cose-bilkent mindmaps; retain existing placement as fallback and preserve explicit tidy-tree behavior for a separate iteration.
+
+## batch10-03-mindmap-basic — Pass 2 findings — 2026-10-07T05:04:37+00:00
+
+### Iteration 3/10 — Pass 2
+
+#### Visual appearance
+
+- Rust is now 241.95 × 209.95 versus JS’s 242.64 × 210.33, with Root bottom-right, B left and C top-right.
+- Connector directions now follow the reference. Root–A’s clear gap / node height is 1.24 in both; B remains about 4 px higher.
+- Labels fit, with the small baseline difference still visible. **Visual match: partial.**
+
+#### Structural differences
+
+- Basic-diagram positions retain small differences. The comprehensive example now has the expected branching pattern, with some branch spacing differences.
+- The global `tidy-tree` setting is still ignored; I’ll address that next.
+
+#### Visual defects
+
+- The major layout mismatch is improved. Two smaller gap groups remain in the selected diagram: placement and text alignment.
+- Build passed; all 422 pairs regenerated. Path fixtures now closely reproduce JS’s sideways offsets and spacing.
+
+Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical and JS goldens are unchanged. Mindmap icons canvas 92.17969 × 335.79352 versus JS 92.1875 × 335.79361; Markdown 162.0846 × 306.54163 versus JS 162.08469 × 306.54169; hexagon 179.27087 × 258.5315 versus JS 179.27866 × 258.53151. Re-read generated selected SVG and inspected the complete mindmap browser overview. No selected overlaps, clipping, crossings or invisible labels. The global tidy-tree selection was already ignored before this pass; it continues through the default force route and remains visually different. No source follow-up was made after build/review.
