@@ -7635,7 +7635,7 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::Trapezoid | crate::ir::NodeShape::TrapezoidAlt => {
-            let offset = w * 0.18;
+            let offset = if kind == crate::ir::DiagramKind::Flowchart { h / 2.0 } else { w * 0.18 };
             let (p1, p2, p3, p4) = if node.shape == crate::ir::NodeShape::Trapezoid {
                 (
                     (x + offset, y),

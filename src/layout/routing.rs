@@ -664,7 +664,7 @@ pub(super) fn shape_polygon_points(node: &NodeLayout) -> Option<Vec<(f32, f32)>>
             Some(points)
         }
         crate::ir::NodeShape::Trapezoid | crate::ir::NodeShape::TrapezoidAlt => {
-            let offset = w * 0.18;
+            let offset = h / 2.0;
             let points = if node.shape == crate::ir::NodeShape::Trapezoid {
                 vec![
                     (x + offset, y),

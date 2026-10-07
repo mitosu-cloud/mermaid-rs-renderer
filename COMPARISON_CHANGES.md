@@ -7009,3 +7009,43 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining visible gap groups. Visual match: yes.**
 - Build and all 422 renders passed.
+
+## batch13-05-flow-trapezoids — Pass 1 findings — 2026-10-07T06:40:59+00:00
+
+### Iteration 5/10 — Pass 1
+
+#### Visual appearance
+
+- Rust’s trapezoids have shallower sides: approximately 48.6px corner offsets versus JS’s 19.5px and 27px.
+- The ordinary canvas is 285.89 × 60 versus JS’s 254.91 × 55. The inverted canvas is 285.89 × 60 versus JS’s 284.91 × 70.
+- Labels fit, but the inverted Rust shape lacks JS’s vertical clearance. Neither fixture has connections; the silhouettes visibly differ.
+
+#### Structural differences
+
+- Rust gives both shapes identical padding and width-based slopes. JS doubles padding for the inverted shape and uses height-based slopes.
+
+#### Visual defects
+
+- **1 gap group:** trapezoid dimensions and side geometry.
+
+## batch13-05-flow-trapezoids — Changes applied — 2026-10-07T06:40:59+00:00
+
+- `src/layout/mod.rs` — Apply JS’s single padding extent for ordinary trapezoids and double extent for inverted trapezoids; include the full height in shape width.
+- `src/render.rs`, `src/layout/routing.rs` — Use h/2 slopes for drawing and connection intersections.
+
+## batch13-05-flow-trapezoids — Pass 2 findings — 2026-10-07T06:42:09+00:00
+
+### Iteration 5/10 — Pass 2
+
+#### Visual appearance
+
+- Both trapezoids now match JS’s dimensions, slopes, and label clearance, including the taller inverted shape.
+
+#### Structural differences
+
+- No material outline or size difference remains.
+
+#### Visual defects
+
+- **0 remaining visible gap groups. Visual match: yes.**
+- Build and all 422 renders passed.

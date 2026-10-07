@@ -8221,6 +8221,14 @@ fn shape_size(
         let height = label.height + config.node_padding_y * 1.5;
         return (label.width + config.node_padding_x * 0.75 + height, height);
     }
+    if kind == crate::ir::DiagramKind::Flowchart
+        && matches!(shape, crate::ir::NodeShape::Trapezoid | crate::ir::NodeShape::TrapezoidAlt)
+    {
+        // invertedTrapezoid.ts doubles the padding used by trapezoid.ts.
+        let scale = if shape == crate::ir::NodeShape::TrapezoidAlt { 2.0 } else { 1.0 };
+        let height = label.height + config.node_padding_y * 1.5 * scale;
+        return (label.width + config.node_padding_x * 0.75 * scale + height, height);
+    }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Stadium {
         // stadium.ts adds one padding extent vertically and h/4 to width.
         let height = label.height + config.node_padding_y * 1.5;
