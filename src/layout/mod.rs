@@ -8186,6 +8186,22 @@ fn shape_size(
             label.height + config.node_padding_y * 3.0,
         );
     }
+    if kind == crate::ir::DiagramKind::Flowchart
+        && matches!(
+            shape,
+            crate::ir::NodeShape::Circle | crate::ir::NodeShape::DoubleCircle
+        )
+    {
+        // circle.ts uses halfPadding on each side; doubleCircle.ts uses
+        // the full 15px padding. Both derive diameter from label width.
+        let scale = if shape == crate::ir::NodeShape::DoubleCircle {
+            1.5
+        } else {
+            0.75
+        };
+        let diameter = (label.width + config.node_padding_x * scale).max(1.0);
+        return (diameter, diameter);
+    }
     if kind == crate::ir::DiagramKind::Block
         && let Some(size) = crate::block_shapes::natural_size(shape, label)
     {

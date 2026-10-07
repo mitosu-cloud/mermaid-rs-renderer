@@ -6717,3 +6717,43 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - Zero remaining gap groups in this fixture.
 - **Visual match: yes.** All 422 renders succeeded with JS unchanged.
+
+## batch12-09-flow-circles — Pass 1 findings — 2026-10-07T06:20:41+00:00
+
+### Iteration 9/10 — Pass 1
+
+#### Visual appearance
+
+- In `flowchart-circle-node`, Rust is 255.5 × 255.5 versus JS’s 230.5 × 230.5. Rust leaves noticeably more space around the label.
+- The double-circle example is also too large: 255.5 versus JS’s 245.5. Its rings are closer together.
+- Both are single centered nodes without connections. Text fits, but the circle-to-label proportions differ.
+
+#### Structural differences
+
+- Rust applies generic box padding to circles and uses a 4-pixel double-circle ring gap; JS uses circle-specific padding and a 5-pixel gap.
+
+#### Visual defects
+
+- One gap group: circle family geometry.
+
+## batch12-09-flow-circles — Changes applied — 2026-10-07T06:20:41+00:00
+
+- `src/layout/mod.rs`, `src/render.rs` — Derive flowchart circle diameters from label width and JS’s circle-specific padding, and use the 5px double-circle ring gap.
+
+## batch12-09-flow-circles — Pass 2 findings — 2026-10-07T06:21:41+00:00
+
+### Iteration 9/10 — Pass 2
+
+#### Visual appearance
+
+- Circle canvases now match JS: 230.5 square for the circle and 245.5 square for the double circle.
+- Label proportions and the 5-pixel ring gap closely match. Text stays inside the shapes.
+
+#### Structural differences
+
+- No visible discrepancy remains in the selected examples.
+
+#### Visual defects
+
+- Zero remaining gap groups in these fixtures.
+- **Visual match: yes.** All 422 renders succeeded with JS unchanged.

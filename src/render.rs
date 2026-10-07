@@ -7456,7 +7456,11 @@ fn shape_svg_inner(
                 cx, cy, r, circle_fill, circle_stroke, stroke_width
             );
             if node.shape == crate::ir::NodeShape::DoubleCircle {
-                let r2 = r - if is_block { 5.0 } else { 4.0 };
+                let r2 = r - if is_block || kind == crate::ir::DiagramKind::Flowchart {
+                    5.0
+                } else {
+                    4.0
+                };
                 if r2 > 0.0 {
                     let inner_fill = if label_empty || is_state_end {
                         theme.background.as_str()
