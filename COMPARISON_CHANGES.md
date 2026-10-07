@@ -5672,3 +5672,46 @@ Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical 
 
 - Three gap groups decreased to two. **Visual match: partial**.
 - All 422 Rust pairs regenerated successfully; only the three edgeless flowchart SVGs changed. JS references stayed unchanged.
+
+## batch10-06-flowchart-invisible — Pass 1 findings — 2026-10-07T05:14:15+00:00
+
+### Iteration 6/10 — `flowchart-invisible-link`, Pass 1
+
+#### Visual appearance
+
+- Rust draws one box labeled “A~~~B”; JS draws separate A and B boxes vertically, with an invisible connection controlling their placement.
+- Canvas sizes are 104.06 × 60 versus 85.44 × 174. JS’s gap/box-height ratio is 50/54 = 0.93.
+- Both labels fit their boxes, but these are visibly different diagrams.
+
+#### Structural differences
+
+- Rust treats the tilde connection as node text instead of a layout edge.
+
+#### Visual defects
+
+- Two gap groups: missing connection semantics/nodes, and box/text proportions. This pass implements the invisible connection.
+
+## batch10-06-flowchart-invisible — Changes applied — 2026-10-07T05:14:15+00:00
+
+- `src/parser.rs` — parse three or more tildes as a flowchart link, including chained links.
+- `src/ir.rs` — represent invisible links explicitly while retaining them in the layout graph.
+- `src/render.rs` — omit invisible links from SVG painting.
+
+## batch10-06-flowchart-invisible — Pass 2 findings — 2026-10-07T05:15:04+00:00
+
+### Iteration 6/10 — `flowchart-invisible-link`, Pass 2
+
+#### Visual appearance
+
+- Rust now renders separate A and B boxes vertically, with no visible connecting line.
+- The 50 px gap matches JS. Rust’s boxes remain 44 px high versus 54 px, so the gap/height ratio is 1.14 versus 0.93.
+- Canvas sizes are 66.43 × 154 versus 85.44 × 174. Labels fit; the arrangement agrees but proportions differ.
+
+#### Structural differences
+
+- The invisible link now participates in layout and is omitted from painting.
+
+#### Visual defects
+
+- Two gap groups decreased to one: box/text proportions and alignment. **Visual match: partial**.
+- All 422 Rust pairs regenerated successfully; only this SVG changed. JS references stayed unchanged.

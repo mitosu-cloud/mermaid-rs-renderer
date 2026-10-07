@@ -1275,6 +1275,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             _ => 2.0,
         };
         for (edge_idx, edge) in layout.edges.iter().enumerate() {
+            if edge.style == crate::ir::EdgeStyle::Invisible {
+                continue;
+            }
             let edge_curve = edge.curve.unwrap_or(config.flowchart.curve);
             let render_points = class_symbol_render_points(edge, layout.kind);
             let d = {
@@ -1298,7 +1301,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let mut stroke = theme.line_color.clone();
             let edge_id = edge_dom_id(edge_idx);
             let (mut dash, mut stroke_width) = match edge.style {
-                crate::ir::EdgeStyle::Solid => (String::new(), base_edge_width),
+                crate::ir::EdgeStyle::Solid | crate::ir::EdgeStyle::Invisible => {
+                    (String::new(), base_edge_width)
+                }
                 crate::ir::EdgeStyle::Dotted => {
                     ("stroke-dasharray=\"2\"".to_string(), base_edge_width)
                 }

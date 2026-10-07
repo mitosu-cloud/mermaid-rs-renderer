@@ -44,12 +44,13 @@ static COMPACT_DOTTED_LABEL_ARROW_RE: Lazy<Regex> = Lazy::new(|| {
 });
 static ARROW_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r"^(?P<left>.+?)\s*(?P<arrow><[-.=ox]*[-=]+[-.=ox]*>|<[-.=ox]*[-=]+|[-.=ox]*[-=]+>|[-.=ox]*[-=]+)\s*(?P<right>.+)$",
+        r"^(?P<left>.+?)\s*(?P<arrow>~{3,}|<[-.=ox]*[-=]+[-.=ox]*>|<[-.=ox]*[-=]+|[-.=ox]*[-=]+>|[-.=ox]*[-=]+)\s*(?P<right>.+)$",
     )
     .unwrap()
 });
 static ARROW_TOKEN_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"<[-.=ox]*[-=]+[-.=ox]*>|<[-.=ox]*[-=]+|[-.=ox]*[-=]+>|[-.=ox]*[-=]+").unwrap()
+    Regex::new(r"~{3,}|<[-.=ox]*[-=]+[-.=ox]*>|<[-.=ox]*[-=]+|[-.=ox]*[-=]+>|[-.=ox]*[-=]+")
+        .unwrap()
 });
 
 #[derive(Debug, Default)]
@@ -7447,7 +7448,9 @@ fn parse_edge_meta(arrow: &str) -> EdgeMeta {
     let arrow_start = trimmed.starts_with('<');
     let arrow_end = trimmed.ends_with('>');
 
-    let style = if trimmed.contains('=') {
+    let style = if trimmed.starts_with('~') {
+        crate::ir::EdgeStyle::Invisible
+    } else if trimmed.contains('=') {
         crate::ir::EdgeStyle::Thick
     } else if trimmed.contains('.') {
         crate::ir::EdgeStyle::Dotted

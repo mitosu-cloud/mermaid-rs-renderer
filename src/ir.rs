@@ -492,6 +492,8 @@ pub enum EdgeStyle {
     Solid,
     Dotted,
     Thick,
+    /// Participates in layout but has no visible stroke or label.
+    Invisible,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
