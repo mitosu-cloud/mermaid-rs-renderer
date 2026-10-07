@@ -6888,3 +6888,42 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining visible gap groups. Visual match: yes.**
 - Build passed; all 422 Rust SVG/PNG pairs regenerated successfully.
+
+## batch13-02-flow-diamond — Pass 1 findings — 2026-10-07T06:36:49+00:00
+
+### Iteration 2/10 — Pass 1
+
+#### Visual appearance
+
+- Rust’s diamond canvas is 244 × 244 versus JS’s 294 × 294. Its label occupies 88% of the shape width versus 72% in JS, making the text visibly crowded.
+- The square aspect ratio and two-line label arrangement agree. This fixture has no connections.
+- The diagrams are recognizable, but the diamond-to-label proportions differ.
+
+#### Structural differences
+
+- Rust sizes the diamond from a scaled maximum dimension; JS adds the padded label width and height.
+
+#### Visual defects
+
+- **1 gap group:** undersized diamond and reduced label clearance.
+
+## batch13-02-flow-diamond — Changes applied — 2026-10-07T06:36:50+00:00
+
+- `src/layout/mod.rs:8206` — Derive flowchart diamond diagonals from the sum of label dimensions and Mermaid’s two padding extents. Preserve state and other diagram sizing.
+
+## batch13-02-flow-diamond — Pass 2 findings — 2026-10-07T06:37:47+00:00
+
+### Iteration 2/10 — Pass 2
+
+#### Visual appearance
+
+- The diamond is now 278 × 278 inside a 294 × 294 canvas. Its label has the same relative clearance as JS.
+
+#### Structural differences
+
+- JS shifts the polygon and canvas by 0.5px horizontally; the difference is negligible in the rendered comparison.
+
+#### Visual defects
+
+- **0 remaining visible gap groups. Visual match: yes.**
+- Build and all 422 renders passed.
