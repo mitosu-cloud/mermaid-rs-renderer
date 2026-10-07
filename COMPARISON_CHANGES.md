@@ -5493,3 +5493,47 @@ Review outcome: mindmap-icons improved from five visible gap groups to two; four
 
 - Two residual gaps remain: placement/spacing and a smaller text offset.
 - Build passed; all 422 Rust SVG/PNG pairs regenerated. Fourteen mindmap SVGs changed; JS goldens are unchanged.
+
+## batch10-02-mindmap-hexagon — Pass 1 findings — 2026-10-07T04:58:09+00:00
+
+### Iteration 2/10 — `mindmap-hexagon-shape`, Pass 1
+
+#### Visual appearance
+
+- Rust is 168.26 × 252 versus JS’s 179.28 × 258.53. Both are vertical chains, but JS offsets the middle node by 9.01 px.
+- Rust’s hexagons have long pointed shoulders: 37.06 px corner cuts versus JS’s 11 px. The label box nearly reaches the sloping sides.
+- Both connectors are collinear (`M/C` versus `M/L/C/C/L`). Rust’s gap / node height is 1.14 versus JS’s 1.21.
+- The shape silhouettes visibly differ; this pass targets their geometry.
+
+#### Structural differences
+
+- Rust sizes and cuts hexagons using width; Mermaid uses a cut of height / 4.
+
+#### Visual defects
+
+- Three gaps: hexagon geometry/fit, force placement/spacing, and the small text offset.
+
+## batch10-02-mindmap-hexagon — Changes applied — 2026-10-07T04:58:09+00:00
+
+- `src/layout/mindmap.rs:98` — Match Mermaid's hexagon width: measured label + horizontal padding + half the padded height.
+- `src/render.rs:7678` — Use height / 4 shoulder cuts for mindmap hexagons, preserving other families' existing geometry. Reference: sibling Mermaid hexagon.ts.
+
+## batch10-02-mindmap-hexagon — Pass 2 findings — 2026-10-07T04:59:19+00:00
+
+### Iteration 2/10 — Pass 2
+
+#### Visual appearance
+
+- Rust’s canvas is now 170.26 × 252 versus JS’s 179.28 × 258.53.
+- Hexagons now have the expected 11 px shoulders and adequate label margins. The middle-node offset and shorter gaps remain.
+- Connectors remain vertical `M/C` versus JS’s diagonal `M/L/C/C/L`; text retains its small baseline difference.
+- **Visual match: partial.**
+
+#### Structural differences
+
+- Hexagon dimensions now agree within 0.01 px: about 150.26 × 44.
+
+#### Visual defects
+
+- Three gap groups reduced to two: placement/spacing and the small text offset.
+- Build passed; all 422 pairs regenerated. Only the hexagon SVG changed; JS goldens are unchanged.

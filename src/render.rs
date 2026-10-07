@@ -7673,8 +7673,13 @@ fn shape_svg_inner(
             svg
         }
         crate::ir::NodeShape::Hexagon => {
-            let x1 = x + w * 0.25;
-            let x2 = x + w * 0.75;
+            let cut = if kind == crate::ir::DiagramKind::Mindmap {
+                h / 4.0
+            } else {
+                w * 0.25
+            };
+            let x1 = x + cut;
+            let x2 = x + w - cut;
             let y_mid = y + h / 2.0;
             let points = format!(
                 "{:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2} {:.2},{:.2}",

@@ -89,8 +89,8 @@ fn mindmap_node_size(
         }
         crate::ir::NodeShape::Hexagon => {
             let pad_x = mindmap.rect_padding * mindmap.hexagon_padding_multiplier;
-            let pad_y = mindmap.rect_padding;
-            (label.width + pad_x * 2.0, label.height + pad_y * 2.0)
+            let height = label.height + mindmap.rect_padding * 2.0;
+            (label.width + pad_x + height / 2.0, height)
         }
         _ => {
             let pad = mindmap.rect_padding;
