@@ -6273,3 +6273,43 @@ warning: unused variable: `has_title`
 #### Visual defects
 
 - Two groups: graph geometry and label geometry. This pass targets graph geometry.
+
+## batch11-08-git-geometry — Changes applied — 2026-10-07T05:49:31+00:00
+
+- `src/config.rs` — Align git defaults with Mermaid’s 40px commit step plus 10px layout offset, 30px starting position, 50+40px branch separation, radius-10 bullets/merge ring, radius-6 merge center, and 20px/10px connector arcs.
+
+## batch11-08-git-geometry — Pass 2 findings — 2026-10-07T05:50:53+00:00
+
+### Iteration 8/10 — Pass 2
+
+#### Visual appearance
+
+- Commit positions, bullet sizes, merge rings, and connector arcs now closely match JS.
+- Rust is 211.93 × 504.76 versus JS’s 215.77 × 504.61. Branch headers remain too tall, and commit-label offsets differ.
+
+#### Structural differences
+
+- Default graph geometry now follows Mermaid’s constants.
+
+#### Visual defects
+
+- One label-geometry group remains.
+- **Visual match: partial.** Build and all 422 renders succeeded.
+
+## batch11-09-git-labels — Pass 1 findings — 2026-10-07T05:50:53+00:00
+
+### Iteration 9/10 — Pass 1
+
+#### Visual appearance
+
+- In the same git example, Rust’s branch header is 27.64 pixels tall versus JS’s 23.
+- Commit labels sit about three pixels lower relative to their bullets. Background widths also differ beyond the expected differences from generated hashes.
+- Topology and connector shapes match; labels fit but their placement makes the picture visibly different.
+
+#### Structural differences
+
+- Rust measures SVG text as full line boxes and uses different label padding and offsets.
+
+#### Visual defects
+
+- One gap group: git branch and commit label geometry.
