@@ -2048,10 +2048,12 @@ fn compute_flowchart_layout(
         }
     }
 
-    let edge_margin_cap = if graph.kind == crate::ir::DiagramKind::State {
-        Some(EDGE_BBOX_MARGIN_CAP)
-    } else {
-        None
+    let edge_margin_cap = match graph.kind {
+        crate::ir::DiagramKind::State => Some(EDGE_BBOX_MARGIN_CAP),
+        // ER uses D3 basis curves, whose control points stay within the
+        // waypoint bounds. Mermaid adds only the outer 8px viewport padding.
+        crate::ir::DiagramKind::Er => Some(0.0),
+        _ => None,
     };
     let (mut max_x, mut max_y) =
         bounds_with_edges_capped(&nodes, &subgraphs, &edges, edge_margin_cap);
@@ -4910,7 +4912,8 @@ fn bounds_with_edges_capped(
         // protective margin. The 20% formula is preserved for callers that
         // pass `margin_cap=None` (preserves flowchart/etc. behavior). State
         // diagrams pass an explicit cap to prevent the 20% formula from
-        // accumulating excessive viewBox padding on tall layouts.
+        // accumulating excessive viewBox padding on tall layouts. ER basis
+        // curves pass a zero cap because they stay within their waypoints.
         let margin_x_raw = (edge_max_x - edge_min_x) * 0.20 + 8.0;
         let margin_y_raw = (edge_max_y - edge_min_y) * 0.20 + 8.0;
         let margin_x = match margin_cap {

@@ -7305,3 +7305,45 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining material gap groups. Visual match: yes.**
 - Build passed; all 422 Rust SVG/PNG pairs regenerated successfully. JS references are unchanged.
+
+## entityRelationshipDiagram-styling-relationships-with-classdef — Pass 1 findings — 2026-10-07T14:37:15+00:00
+
+### Pass 1 — styled ER relationships
+
+#### Visual appearance
+
+- Rust’s canvas is **504.656 × 459**, versus **485.688 × 459** in JS. The extra 18.969px on the right makes the diagram appear about 3.8% smaller when both previews use the same width.
+- The arrangement and curves agree: PERSON above CAR and HOUSE, with both relationships using `M L C C L`. The PERSON-to-CAR gap is 101/171 = **0.591** of the table height; the CAR-to-HOUSE gap is 140px in both.
+- Labels fit inside their boxes. Rust text sits approximately 0.5px lower.
+- These look like the same diagram, but the excess canvas space changes the displayed scale.
+
+#### Structural differences
+
+- Rust adds a curve allowance to the canvas bounds, producing a **26.969px** right margin instead of JS’s **8px**.
+
+#### Visual defects
+
+- **1 material gap group:** excess canvas width. No clipping, text overflow, or unexpected crossings observed.
+
+## entityRelationshipDiagram-styling-relationships-with-classdef — Changes applied — 2026-10-07T14:38:14+00:00
+
+- `src/layout/mod.rs:2050` — Set the ER edge margin cap to zero: its D3 basis control points are convex combinations of route waypoints, so the curve needs no extra 20% bounds allowance. Keep the outer 8px viewport padding, node bounds, and label bounds. This follows Mermaid’s `erRenderer-unified.ts` and `setupViewPortForSVG.ts` canvas calculation.
+- `src/layout/mod.rs:4915` — Document the ER-specific margin choice.
+
+## entityRelationshipDiagram-styling-relationships-with-classdef — Pass 2 findings — 2026-10-07T14:40:52+00:00
+
+### Pass 2 — styled ER relationships
+
+#### Visual appearance
+
+- Both canvases now measure **485.688 × 459**, with an 8px right margin. The displayed scale now agrees.
+- The arrangement, `M L C C L` curves, spacing ratios, and label fit remain aligned with the reference. The existing approximately 0.5px text baseline difference remains.
+- **Visual match: yes** — the selected pair now looks essentially the same.
+
+#### Structural differences
+
+- The canvas bounds discrepancy is gone.
+
+#### Visual defects
+
+- **0 material gap groups** in this example. No clipping or overflow observed.
