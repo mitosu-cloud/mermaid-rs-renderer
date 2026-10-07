@@ -6313,3 +6313,44 @@ warning: unused variable: `has_title`
 #### Visual defects
 
 - One gap group: git branch and commit label geometry.
+
+## batch11-09-git-labels — Changes applied — 2026-10-07T05:50:57+00:00
+
+- `src/layout/gitgraph.rs` — Measure SVG labels with kerning and pixel-rounded glyph heights, separating glyph bounds from multiline baseline spacing.
+- `src/config.rs` — Match branch/commit label padding, background offsets, rotation translations, vertical label offsets, and diagram margin.
+
+## batch11-09-git-labels — Pass 2 findings — 2026-10-07T05:52:46+00:00
+
+### Iteration 9/10 — Pass 2
+
+#### Visual appearance
+
+- Branch headers are now close to JS’s height, with a clear gap above the first bullet. Commit-label offsets follow the reference.
+- Rust’s width estimates still differ in the default fast-metrics mode, affecting backgrounds and the canvas: 222.88 × 510.89 versus 215.77 × 504.61.
+
+#### Structural differences
+
+- SVG glyph bounds now determine label height; branch and commit offsets have been aligned.
+
+#### Visual defects
+
+- One residual group: text-width estimates.
+- **Visual match: partial.** Build and all 422 renders succeeded.
+
+## batch11-10-flow-label-geometry — Pass 1 findings — 2026-10-07T05:52:46+00:00
+
+### Iteration 10/10 — Pass 1
+
+#### Visual appearance
+
+- `flowchart-special-characters-in-nodes` is 642.37 × 84 in Rust versus 742.13 × 94 in JS.
+- Both show three boxes in one row, but Rust’s middle box is much narrower. Its first and third labels occupy too much of their boxes.
+- Text wraps into the same two lines, but the container proportions differ.
+
+#### Structural differences
+
+- Rust estimates label widths and sizes wrapped labels from their longest line. JS retains a 200-pixel wrapping box and adds more rectangle padding.
+
+#### Visual defects
+
+- One gap group: flowchart label and rectangle geometry.

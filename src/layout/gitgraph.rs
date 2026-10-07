@@ -543,10 +543,20 @@ fn measure_gitgraph_text(
     let lines = split_lines(text);
     let max_width = lines
         .iter()
-        .map(|line| text_width(line, font_size, font_family, fast_metrics))
-        .fold(0.0, f32::max);
+        .map(|line| {
+            if fast_metrics {
+                text_width(line, font_size, font_family, true)
+            } else {
+                crate::text_metrics::measure_text_width_with_kerning(line, font_size, font_family)
+                    .map(|width| (width * 64.0).ceil() / 64.0)
+                    .unwrap_or_else(|| text_width(line, font_size, font_family, false))
+            }
+        })
+        .fold(0.0_f32, f32::max);
     let width = max_width * width_scale;
-    let height = lines.len() as f32 * font_size * line_height;
+    let glyph_height =
+        crate::text_metrics::svg_text_height(font_size, font_family).unwrap_or(font_size * 1.2);
+    let height = glyph_height + lines.len().saturating_sub(1) as f32 * font_size * line_height;
     (width, height)
 }
 
