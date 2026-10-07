@@ -6478,3 +6478,81 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - Two remaining gap groups: layer placement and connection geometry.
 - **Visual match: no.** Table painting improved; all 422 renders succeeded with JS unchanged.
+
+## batch12-03-er-layer-placement — Pass 1 findings — 2026-10-07T06:08:49+00:00
+
+### Iteration 3/10 — Pass 1
+
+#### Visual appearance
+
+- The class-styled ER example still has CAR on the right instead of the left, and HOUSE aligns with CAR’s top rather than its center.
+- Both canvases are 485.7 × 459. Table text fits, but diagonal connections and displaced labels reinforce the different arrangement.
+
+#### Structural differences
+
+- Rust’s placement step can reverse the established layer order and aligns unequal entity heights at their tops.
+
+#### Visual defects
+
+- Two gap groups: layer placement and connection geometry. This pass targets layer placement.
+
+## batch12-03-er-layer-placement — Changes applied — 2026-10-07T06:08:50+00:00
+
+- `src/layout/mod.rs` — Center unequal entities on each ER rank and use the existing Brandes–Köpf placement to preserve layer order and balance branches.
+
+## batch12-03-er-layer-placement — Pass 2 findings — 2026-10-07T06:09:38+00:00
+
+### Iteration 3/10 — Pass 2
+
+#### Visual appearance
+
+- HOUSE now shares CAR’s vertical center, but the coordinate solver placed both at the same horizontal center.
+- Rust shrank to 363.5 × 459 versus JS’s 485.7 × 459. HOUSE covers CAR’s attribute text, so the layout is worse.
+
+#### Structural differences
+
+- The existing coordinate solver failed to maintain separation between sibling entities.
+
+#### Visual defects
+
+- Three gap groups: sibling overlap, layer placement, and connection geometry.
+- **Visual match: no.** The build and 422 renders succeeded, but this change is not ready to commit. I’ll address the solver defect in the next authorized pass.
+
+## batch12-04-er-coordinate-constraints — Pass 1 findings — 2026-10-07T06:10:12+00:00
+
+### Iteration 4/10 — Pass 1
+
+#### Visual appearance
+
+- In the same ER example, HOUSE overlaps CAR at horizontal center 240.7. JS separates their centers by 304.8 pixels.
+- Rust’s canvas is 25% narrower, attribute text is obscured, and the two relationships cluster together. The pictures do not match.
+
+#### Structural differences
+
+- The solver averages mirrored coordinates without restoring their direction and uses a block leader’s width for some separation constraints.
+
+#### Visual defects
+
+- Three gap groups: sibling overlap, layer placement, and connection geometry. This pass targets coordinate constraints.
+
+## batch12-04-er-coordinate-constraints — Changes applied — 2026-10-07T06:10:12+00:00
+
+- `src/layout/brandes_kopf.rs` — Restore right-sweep coordinates before balancing, express median positions in sweep order, use the actual neighboring widths, and select the narrowest alignment including entity extents.
+
+## batch12-04-er-coordinate-constraints — Pass 2 findings — 2026-10-07T06:11:16+00:00
+
+### Iteration 4/10 — Pass 2
+
+#### Visual appearance
+
+- Sibling overlap is gone. CAR is now left of HOUSE, and their centers align vertically as in JS.
+- Both canvases are again 485.7 × 459, with matching table sizes and readable text. Connections still run diagonally instead of curving outward.
+
+#### Structural differences
+
+- Connection ports and label anchors still differ.
+
+#### Visual defects
+
+- One remaining gap group: connection geometry.
+- **Visual match: partial.** All 422 renders succeeded; JS references were unchanged.

@@ -76,7 +76,7 @@ pub(super) fn compute_x_coordinates(g: &LayeredGraph, node_sep: f32) -> HashMap<
 
     // Balance: shift each alignment so that the smallest-width one's
     // bounds align with the others.
-    let aligned = balance_alignments(&[xs_ul, xs_ur, xs_dl, xs_dr]);
+    let aligned = balance_alignments(&[xs_ul, xs_ur, xs_dl, xs_dr], &g.widths);
 
     // Median per node.
     let mut out: HashMap<String, f32> = HashMap::new();
@@ -316,9 +316,14 @@ fn vertical_alignment(
             let mut nbr_positions: Vec<(usize, String)> = nbrs
                 .iter()
                 .filter_map(|n| {
-                    pos_map[neighbor_r as usize]
-                        .get(n.as_str())
-                        .map(|&p| (p, n.clone()))
+                    pos_map[neighbor_r as usize].get(n.as_str()).map(|&p| {
+                        let order = if matches!(hd, HorizontalDir::Right) {
+                            g.layers[neighbor_r as usize].len() - 1 - p
+                        } else {
+                            p
+                        };
+                        (order, n.clone())
+                    })
                 })
                 .collect();
             nbr_positions.sort_by_key(|(p, _)| *p);
@@ -332,10 +337,7 @@ fn vertical_alignment(
                 medians.push(&nbr_positions[m / 2 - 1]);
                 medians.push(&nbr_positions[m / 2]);
             }
-            // For "Right" horizontal direction, prefer medians in reverse order
-            if matches!(hd, HorizontalDir::Right) {
-                medians.reverse();
-            }
+            // Positions are already expressed in the sweep's direction.
             for (npos, u) in &medians {
                 if align.get(v) == Some(v) && (*npos as i64) > r_offset {
                     // Check Type 1 conflict
@@ -411,7 +413,14 @@ fn horizontal_compaction(
         let s = sink.get(&r).cloned().unwrap_or_else(|| r.clone());
         let sh = shift.get(&s).copied().unwrap_or(0.0);
         let final_x = if sh == f32::INFINITY { rx } else { rx + sh };
-        x_final.insert(v.clone(), final_x);
+        x_final.insert(
+            v.clone(),
+            if matches!(hd, HorizontalDir::Right) {
+                -final_x
+            } else {
+                final_x
+            },
+        );
     }
     x_final
 }
@@ -481,13 +490,13 @@ fn place_block(
                 let pred_x = x.get(&pred_root).copied().unwrap_or(0.0);
                 let cur_shift = shift.get(&pred_sink).copied().unwrap_or(f32::INFINITY);
                 let cur_v_x = x.get(v).copied().unwrap_or(0.0);
-                let sep = compute_separation(v, pred, &g.widths, node_sep);
+                let sep = compute_separation(&w, pred, &g.widths, node_sep);
                 let new_shift = (cur_v_x - pred_x - sep).min(cur_shift);
                 shift.insert(pred_sink, new_shift);
             } else {
                 let pred_x = x.get(&pred_root).copied().unwrap_or(0.0);
                 let cur_v_x = x.get(v).copied().unwrap_or(0.0);
-                let sep = compute_separation(v, pred, &g.widths, node_sep);
+                let sep = compute_separation(&w, pred, &g.widths, node_sep);
                 let new_x = cur_v_x.max(pred_x + sep);
                 x.insert(v.to_string(), new_x);
             }
@@ -509,7 +518,10 @@ fn compute_separation(a: &str, b: &str, widths: &HashMap<String, f32>, node_sep:
 
 /// Balance the 4 alignments: align them so the smallest-width one is the
 /// canonical, then for each node take the median of the 4 X values.
-fn balance_alignments(xs: &[HashMap<String, f32>]) -> Vec<HashMap<String, f32>> {
+fn balance_alignments(
+    xs: &[HashMap<String, f32>],
+    node_widths: &HashMap<String, f32>,
+) -> Vec<HashMap<String, f32>> {
     if xs.is_empty() {
         return Vec::new();
     }
@@ -520,8 +532,14 @@ fn balance_alignments(xs: &[HashMap<String, f32>]) -> Vec<HashMap<String, f32>> 
             if m.is_empty() {
                 return 0.0;
             }
-            let min = m.values().cloned().fold(f32::INFINITY, f32::min);
-            let max = m.values().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let min = m
+                .iter()
+                .map(|(id, x)| x - node_widths.get(id).copied().unwrap_or(0.0) / 2.0)
+                .fold(f32::INFINITY, f32::min);
+            let max = m
+                .iter()
+                .map(|(id, x)| x + node_widths.get(id).copied().unwrap_or(0.0) / 2.0)
+                .fold(f32::NEG_INFINITY, f32::max);
             max - min
         })
         .collect();
@@ -546,11 +564,10 @@ fn balance_alignments(xs: &[HashMap<String, f32>]) -> Vec<HashMap<String, f32>> 
             // For alignments with the same horizontal direction as canonical,
             // align by min; for opposite direction, align by max.
             // Heuristic: alignments 0,2 = Left; 1,3 = Right.
-            let canonical_is_left = min_idx % 2 == 0;
             let this_is_left = i % 2 == 0;
             let m_min = m.values().cloned().fold(f32::INFINITY, f32::min);
             let m_max = m.values().cloned().fold(f32::NEG_INFINITY, f32::max);
-            let delta = if this_is_left == canonical_is_left {
+            let delta = if this_is_left {
                 canonical_min - m_min
             } else {
                 canonical_max - m_max

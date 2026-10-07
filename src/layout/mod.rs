@@ -2445,6 +2445,18 @@ fn assign_positions_manual(
                 }
             }
         }
+        if graph.kind == crate::ir::DiagramKind::Er {
+            // Dagre places the centers of unequal-height entities on one rank.
+            for node_id in bucket {
+                if let Some(node) = nodes.get_mut(node_id) {
+                    if is_horizontal(graph.direction) {
+                        node.x += (max_main - node.width) / 2.0;
+                    } else {
+                        node.y += (max_main - node.height) / 2.0;
+                    }
+                }
+            }
+        }
         if max_main > 0.0 {
             // Use reduced spacing for label-only ranks to avoid excessive width.
             let gap = if is_label_rank {
@@ -2483,6 +2495,47 @@ fn assign_positions_manual(
             };
             main_cursor += max_main + gap + label_extent;
         }
+    }
+
+    if graph.kind == crate::ir::DiagramKind::Er {
+        // Keep the crossing-reduced layer order while balancing coordinates,
+        // using the same four alignments as Dagre's Brandes-Köpf placement.
+        let layered = brandes_kopf::LayeredGraph {
+            layers: rank_nodes,
+            widths: nodes
+                .iter()
+                .map(|(id, node)| {
+                    (
+                        id.clone(),
+                        if is_horizontal(graph.direction) {
+                            node.height
+                        } else {
+                            node.width
+                        },
+                    )
+                })
+                .collect(),
+            virtual_nodes: nodes
+                .iter()
+                .filter(|(_, node)| node.hidden)
+                .map(|(id, _)| id.clone())
+                .collect(),
+            edges: expanded_edges
+                .iter()
+                .map(|edge| (edge.from.clone(), edge.to.clone()))
+                .collect(),
+        };
+        let coordinates = brandes_kopf::compute_x_coordinates(&layered, config.node_spacing);
+        for (id, center) in coordinates {
+            if let Some(node) = nodes.get_mut(&id) {
+                if is_horizontal(graph.direction) {
+                    node.y = center - node.height / 2.0;
+                } else {
+                    node.x = center - node.width / 2.0;
+                }
+            }
+        }
+        return;
     }
 
     let mut incoming: HashMap<String, Vec<String>> = HashMap::new();
