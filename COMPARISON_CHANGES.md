@@ -5848,3 +5848,47 @@ Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical 
 
 - Four gap groups decreased to three: table appearance, proportions, and annotations. **Visual match: partial**.
 - Build and all 422 Rust pairs succeeded; only the alias SVG changed. JS references stayed unchanged.
+
+## batch10-10-gitgraph-direction — Pass 1 findings — 2026-10-07T05:21:24+00:00
+
+### Iteration 10/10 — `gitgraph-top-to-bottom-orientation`, Pass 1
+
+#### Visual appearance
+
+- Rust draws a horizontal history on a 492.78 × 169.04 canvas. JS draws two vertical branch columns on a 215.77 × 504.61 canvas.
+- Rust’s commits are spaced 42 px with 8 px radii; JS uses 50 px and 10 px. Branch-turn arcs are 16 px versus 20 px.
+- Labels fit, but their placement and measurements differ. Generated commit hashes also differ.
+- These are visibly different layouts.
+
+#### Structural differences
+
+- The parser skips `TB:` in the header. The bottom-to-top fixture has the same problem.
+- Rust already supports vertical positions and curved branch connections.
+
+#### Visual defects
+
+- Three gap groups: orientation, geometry proportions, and label placement/measurement. This pass enables the header direction.
+
+## batch10-10-gitgraph-direction — Changes applied — 2026-10-07T05:21:24+00:00
+
+- `src/parser.rs` — retain LR/TB/BT direction tokens from gitGraph headers, including the trailing-colon syntax, so the existing direction-aware layout is used.
+
+## batch10-10-gitgraph-direction — Pass 2 findings — 2026-10-07T05:22:45+00:00
+
+### Iteration 10/10 — `gitgraph-top-to-bottom-orientation`, Pass 2
+
+#### Visual appearance
+
+- Rust now draws vertical branch columns with the correct branching and merge pattern. Bottom-to-top also runs in the correct direction.
+- Rust’s top-to-bottom canvas is 193.93 × 432.76 versus JS’s 215.77 × 504.61. Commit spacing, radii, and turn arcs remain smaller.
+- Rust’s top branch-label box overlaps the first commit by about 3.6 px; JS leaves a gap. Rotated label offsets and measurements also differ.
+- The diagrams are recognizable, with visible geometry and label differences.
+
+#### Structural differences
+
+- Header directions now reach the existing vertical layout and painter.
+
+#### Visual defects
+
+- Three gap groups decreased to two: geometry proportions/label-box overlap, and label placement/measurement. **Visual match: partial**.
+- Build and all 422 Rust pairs succeeded; only the two orientation SVGs changed. JS references stayed unchanged.

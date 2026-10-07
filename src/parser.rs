@@ -3826,6 +3826,15 @@ fn parse_gitgraph_diagram(input: &str) -> Result<ParseOutput> {
         }
         let lower = line.to_ascii_lowercase();
         if lower.starts_with("gitgraph") {
+            let token = line
+                .get(8..)
+                .unwrap_or("")
+                .trim()
+                .trim_end_matches(':')
+                .trim();
+            if let Some(direction) = parse_gitgraph_direction(token) {
+                graph.direction = direction;
+            }
             continue;
         }
         if let Some(direction) = parse_gitgraph_direction(line) {
