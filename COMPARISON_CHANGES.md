@@ -7089,3 +7089,43 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining visible gap groups. Visual match: yes.**
 - Build and all 422 renders passed.
+
+## batch13-07-flow-cylinder — Pass 1 findings — 2026-10-07T06:43:39+00:00
+
+### Iteration 7/10 — Pass 1
+
+#### Visual appearance
+
+- Rust’s cylinder is nearly square; JS’s is tall and narrow. Canvas aspect ratios are 0.98 versus 0.60, a 62% difference.
+- Rust leaves the top cap white and centers “A” vertically. JS fills the cap lavender and places the label 10px below center.
+- The label fits in both, with width-to-shape ratios of 19% versus 39%. There are no connections. These look noticeably different.
+
+#### Structural differences
+
+- Rust uses generic padding, height-based cap radii, and two separate paths. JS uses width-based radii and one filled arc path.
+
+#### Visual defects
+
+- **3 gap groups:** cylinder proportions, unfilled cap, and label position.
+
+## batch13-07-flow-cylinder — Changes applied — 2026-10-07T06:43:39+00:00
+
+- `src/layout/mod.rs` — Use Mermaid cylinder width padding and the three-radius contribution to total height.
+- `src/render.rs` — Share the exact filled cylinder arc construction already used for blocks; place flowchart cylinder labels padding/1.5 below center.
+
+## batch13-07-flow-cylinder — Pass 2 findings — 2026-10-07T06:44:52+00:00
+
+### Iteration 7/10 — Pass 2
+
+#### Visual appearance
+
+- The tall cylinder proportions and filled cap now match JS. Both canvases are 40.44 × 67.26, and the label sits below center.
+
+#### Structural differences
+
+- Arc coordinates are rounded in Rust; its text baseline is about 0.5px lower. These are small differences at the diagram’s native size.
+
+#### Visual defects
+
+- **0 remaining material gap groups. Visual match: yes.**
+- Build and all 422 renders passed.

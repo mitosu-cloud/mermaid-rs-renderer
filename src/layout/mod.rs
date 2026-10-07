@@ -8236,6 +8236,13 @@ fn shape_size(
             label.height + config.node_padding_y * 1.5,
         );
     }
+    if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Cylinder {
+        // cylinder.ts includes the full cap height above and below its body.
+        let width = label.width + config.node_padding_x * 0.75;
+        let height = label.height + config.node_padding_y * 1.5
+            + 3.0 * crate::block_shapes::cylinder_radius(width);
+        return (width, height);
+    }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Stadium {
         // stadium.ts adds one padding extent vertically and h/4 to width.
         let height = label.height + config.node_padding_y * 1.5;

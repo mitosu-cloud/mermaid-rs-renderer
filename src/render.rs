@@ -1737,6 +1737,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             {
                 center_y += crate::block_shapes::PADDING / 1.5;
             }
+            if layout.kind == crate::ir::DiagramKind::Flowchart
+                && node.shape == crate::ir::NodeShape::Cylinder
+            {
+                center_y += config.node_padding_y;
+            }
             let hide_label = node
                 .label
                 .lines
@@ -7522,7 +7527,7 @@ fn shape_svg_inner(
         ),
         crate::ir::NodeShape::Cylinder => {
             let stroke_width = node.style.stroke_width.unwrap_or(1.0);
-            if is_block {
+            if is_block || kind == crate::ir::DiagramKind::Flowchart {
                 let rx = w / 2.0;
                 let ry = crate::block_shapes::cylinder_radius(w);
                 let top = y + ry;
