@@ -8204,30 +8204,45 @@ fn shape_size(
     }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Diamond {
         // question.ts adds the padded label width and height for both diagonals.
-        let size = label.width + label.height
-            + config.node_padding_x * 0.75
-            + config.node_padding_y * 1.5;
+        let size =
+            label.width + label.height + config.node_padding_x * 0.75 + config.node_padding_y * 1.5;
         return (size, size);
     }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Hexagon {
         // hexagon.ts reserves h/4 at each pointed end.
         let height = label.height + config.node_padding_y * 1.5;
-        return (label.width + config.node_padding_x * 0.75 + height / 2.0, height);
+        return (
+            label.width + config.node_padding_x * 0.75 + height / 2.0,
+            height,
+        );
     }
     if kind == crate::ir::DiagramKind::Flowchart
-        && matches!(shape, crate::ir::NodeShape::Parallelogram | crate::ir::NodeShape::ParallelogramAlt)
+        && matches!(
+            shape,
+            crate::ir::NodeShape::Parallelogram | crate::ir::NodeShape::ParallelogramAlt
+        )
     {
         // leanLeft/leanRight.ts extend each padded label box by half h per end.
         let height = label.height + config.node_padding_y * 1.5;
         return (label.width + config.node_padding_x * 0.75 + height, height);
     }
     if kind == crate::ir::DiagramKind::Flowchart
-        && matches!(shape, crate::ir::NodeShape::Trapezoid | crate::ir::NodeShape::TrapezoidAlt)
+        && matches!(
+            shape,
+            crate::ir::NodeShape::Trapezoid | crate::ir::NodeShape::TrapezoidAlt
+        )
     {
         // invertedTrapezoid.ts doubles the padding used by trapezoid.ts.
-        let scale = if shape == crate::ir::NodeShape::TrapezoidAlt { 2.0 } else { 1.0 };
+        let scale = if shape == crate::ir::NodeShape::TrapezoidAlt {
+            2.0
+        } else {
+            1.0
+        };
         let height = label.height + config.node_padding_y * 1.5 * scale;
-        return (label.width + config.node_padding_x * 0.75 * scale + height, height);
+        return (
+            label.width + config.node_padding_x * 0.75 * scale + height,
+            height,
+        );
     }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Subroutine {
         // subroutine.ts adds two 8px frames around the padded label box.
@@ -8239,14 +8254,18 @@ fn shape_size(
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Cylinder {
         // cylinder.ts includes the full cap height above and below its body.
         let width = label.width + config.node_padding_x * 0.75;
-        let height = label.height + config.node_padding_y * 1.5
+        let height = label.height
+            + config.node_padding_y * 1.5
             + 3.0 * crate::block_shapes::cylinder_radius(width);
         return (width, height);
     }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Asymmetric {
         // rectLeftInvArrow.ts adds an h/4 notch to the padded label box.
         let height = label.height + config.node_padding_y * 1.5;
-        return (label.width + config.node_padding_x * 0.75 + height / 4.0, height);
+        return (
+            label.width + config.node_padding_x * 0.75 + height / 4.0,
+            height,
+        );
     }
     if kind == crate::ir::DiagramKind::Flowchart
         && shape == crate::ir::NodeShape::HorizontalCylinder
@@ -8254,7 +8273,18 @@ fn shape_size(
         // tiltedCylinder.ts uses half padding and three horizontal cap radii.
         let height = label.height + config.node_padding_y * 0.75;
         let radius = (height / 2.0) / (2.5 + height / 50.0);
-        return (label.width + config.node_padding_x * 0.375 + 3.0 * radius, height);
+        return (
+            label.width + config.node_padding_x * 0.375 + 3.0 * radius,
+            height,
+        );
+    }
+    if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::LinedCylinder {
+        // linedCylinder.ts doubles padding and adds three cap radii vertically.
+        let width = label.width + config.node_padding_x * 1.5;
+        let height = label.height
+            + config.node_padding_y * 3.0
+            + 3.0 * crate::block_shapes::cylinder_radius(width);
+        return (width, height);
     }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Stadium {
         // stadium.ts adds one padding extent vertically and h/4 to width.

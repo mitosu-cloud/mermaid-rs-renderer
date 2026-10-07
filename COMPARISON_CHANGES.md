@@ -7208,3 +7208,59 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining material gap groups. Visual match: yes.**
 - Build and all 422 renders passed.
+
+## batch13-10-flow-lined-cylinder — Pass 1 findings — 2026-10-07T06:48:59+00:00
+
+### Iteration 10/10 — Pass 1
+
+#### Visual appearance
+
+- Rust’s lined cylinder is squat: 65.44 × 60 versus JS’s 55.44 × 87.99. Its canvas aspect ratio is 73% wider.
+- Rust draws extra full ellipses through the body and bottom; JS uses a top lid, one lower divider arc, and a rounded bottom.
+- Rust’s “A” sits close to the upper divider. JS shifts it below center. Label widths fit in both; there are no connections. These look noticeably different.
+
+#### Structural differences
+
+- Rust stacks ellipses and a rectangle. JS uses a single cylinder path with an extra arc offset by 10% of body height.
+
+#### Visual defects
+
+- **3 gap groups:** proportions, cap/divider topology, and label position.
+
+## batch13-10-flow-lined-cylinder — Changes applied — 2026-10-07T06:48:59+00:00
+
+- `src/layout/mod.rs` — Use Mermaid’s doubled padding and three cap radii for lined cylinder bounds.
+- `src/render.rs` — Replace the flowchart ellipse stack with Mermaid’s single cylinder path and divider arc; move the label down by one cap radius.
+- Format the source changes from this batch.
+
+## batch13-10-flow-lined-cylinder — Pass 2 findings — 2026-10-07T06:50:38+00:00
+
+### Iteration 10/10 — Pass 2
+
+#### Visual appearance
+
+- The lined cylinder now matches JS’s tall proportions, filled lid, single divider arc, and label position. Both canvases are 55.44 × 87.99.
+
+#### Structural differences
+
+- Tiny coordinate rounding and the existing approximately 0.5px text baseline difference remain.
+
+#### Visual defects
+
+- **0 remaining material gap groups. Visual match: yes.**
+- All 10 release builds and all 10 regeneration runs passed. The batch changed 62 Rust SVGs; all 422 Rust SVG/PNG pairs are refreshed, and JS references are unchanged.
+
+## batch13 — Batch summary — 2026-10-07T06:50:38+00:00
+
+### Batch 13 summary
+
+- Ten requested iterations: git line weights; flowchart diamonds; hexagons; both parallelogram orientations; both trapezoid orientations; subroutine frames; vertical cylinders; asymmetric boxes; horizontal cylinders; lined cylinders.
+- Four source files changed: `src/config.rs`, `src/layout/mod.rs`, `src/layout/routing.rs`, `src/render.rs`.
+- Pass 1 identified 16 gap groups across the ten iterations. Pass 2 found zero remaining material gap groups in the selected comparisons.
+- Visual match: yes for the selected examples at diagram scale. Small text baseline differences (approximately 0.5px), coordinate rounding, and the diamond’s 0.5px horizontal adjustment remain. This is not a claim that the entire comparison corpus matches JS.
+- All ten release builds and all ten full Rust SVG/PNG regeneration runs succeeded. Each run rendered 422 fixtures. Net change: 62 Rust SVGs; no JS SVG references changed.
+- Output inventory: 422 Rust SVGs, 422 Rust PNGs, and 413 existing JS SVG references. Nine fixtures already lacked JS references.
+- Ten commits cover this batch on `codex/fix-svg-comparison-parity`.
+- Review gallery: `tests/mermaid-js-comparison/comparison-output/batch13-parity-review.html`, with twelve representative comparisons. Each pair was inspected before and after its targeted change; the final gallery was visually inspected.
+- Verification followed the svg-parity skill: release builds and SVG/image comparison. No test suites were run.
+- Previously documented ER sizing, edge bounds, inline dash styling, and complex routing gaps remain outside this batch.

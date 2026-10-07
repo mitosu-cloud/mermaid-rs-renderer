@@ -1747,6 +1747,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             {
                 center_y += config.node_padding_y;
             }
+            if layout.kind == crate::ir::DiagramKind::Flowchart
+                && node.shape == crate::ir::NodeShape::LinedCylinder
+            {
+                center_y += crate::block_shapes::cylinder_radius(node.width);
+            }
             let hide_label = node
                 .label
                 .lines
@@ -7585,7 +7590,10 @@ fn shape_svg_inner(
             svg
         }
         crate::ir::NodeShape::Hexagon => {
-            let cut = if matches!(kind, crate::ir::DiagramKind::Mindmap | crate::ir::DiagramKind::Flowchart) {
+            let cut = if matches!(
+                kind,
+                crate::ir::DiagramKind::Mindmap | crate::ir::DiagramKind::Flowchart
+            ) {
                 h / 4.0
             } else {
                 w * 0.25
@@ -7617,7 +7625,11 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::Parallelogram | crate::ir::NodeShape::ParallelogramAlt => {
-            let offset = if kind == crate::ir::DiagramKind::Flowchart { h / 2.0 } else { w * 0.18 };
+            let offset = if kind == crate::ir::DiagramKind::Flowchart {
+                h / 2.0
+            } else {
+                w * 0.18
+            };
             let (p1, p2, p3, p4) = if node.shape == crate::ir::NodeShape::Parallelogram {
                 (
                     (x + offset, y),
@@ -7646,7 +7658,11 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::Trapezoid | crate::ir::NodeShape::TrapezoidAlt => {
-            let offset = if kind == crate::ir::DiagramKind::Flowchart { h / 2.0 } else { w * 0.18 };
+            let offset = if kind == crate::ir::DiagramKind::Flowchart {
+                h / 2.0
+            } else {
+                w * 0.18
+            };
             let (p1, p2, p3, p4) = if node.shape == crate::ir::NodeShape::Trapezoid {
                 (
                     (x + offset, y),
@@ -7926,6 +7942,19 @@ fn shape_svg_inner(
         crate::ir::NodeShape::LinedCylinder => {
             // Cylinder with horizontal lines on the body.
             let sw = node.style.stroke_width.unwrap_or(1.0);
+            if kind == crate::ir::DiagramKind::Flowchart {
+                let rx = w / 2.0;
+                let ry = crate::block_shapes::cylinder_radius(w);
+                let top = y + ry;
+                let body = h - 2.0 * ry;
+                let divider = top + body * 0.1;
+                let path = format!(
+                    "M{x:.5},{top:.5} a{rx:.5},{ry:.5} 0,0,0 {w:.5},0 a{rx:.5},{ry:.5} 0,0,0 -{w:.5},0 l0,{body:.5} a{rx:.5},{ry:.5} 0,0,0 {w:.5},0 l0,-{body:.5} M{x:.5},{divider:.5} a{rx:.5},{ry:.5} 0,0,0 {w:.5},0"
+                );
+                return format!(
+                    "<path d=\"{path}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+                );
+            }
             let ry = (h * 0.1).max(6.0);
             let rx = w / 2.0;
             let body_h = h - 2.0 * ry;
