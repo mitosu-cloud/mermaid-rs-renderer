@@ -6849,3 +6849,42 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 - Overall visual match: partial. ER PERSON width, extra edge bounds, and some inline dash patterns still differ. Complex ER fans/long edges/cycles retain the existing routing. Git connection strokes remain 6px versus the 8px JS reference. The selected rounded rectangle, circle family, and stadium examples visibly match JS.
 - Review gallery: `tests/mermaid-js-comparison/comparison-output/batch12-parity-review.html` (ten representative comparisons, visually inspected).
 - Verification follows the svg-parity skill: release builds and visual comparisons; no test suites were run.
+
+## batch13-01-git-line-weights — Pass 1 findings — 2026-10-07T06:35:29+00:00
+
+### Iteration 1/10 — Pass 1
+
+#### Visual appearance
+
+- Rust’s git connections are thinner: 6px versus JS’s 8px. The dashed branch line is also thinner, at 0.8px versus 1px.
+- Both canvases are 254 × 75.49. Commit spacing is 2.5 circle diameters; the two connections use the same `M L` paths. Label placement and fit show no visible discrepancy.
+- These look like the same diagram, with a visible difference in line weight.
+
+#### Structural differences
+
+- The default connection and branch stroke widths differ from JS’s effective CSS values.
+
+#### Visual defects
+
+- **1 gap group:** git line weights. No visible overlap, overflow, or clipping.
+
+## batch13-01-git-line-weights — Changes applied — 2026-10-07T06:35:29+00:00
+
+- `src/config.rs:323` — Match classic Mermaid git connection (8px) and branch (1px) stroke defaults. Explicit configuration overrides remain available.
+
+## batch13-01-git-line-weights — Pass 2 findings — 2026-10-07T06:36:41+00:00
+
+### Iteration 1/10 — Pass 2
+
+#### Visual appearance
+
+- The line weights now visibly match JS. Canvas proportions, connection paths, spacing, and label fit remain consistent.
+
+#### Structural differences
+
+- Alpha’s label background differs by 0.05px in height, with no meaningful visible effect.
+
+#### Visual defects
+
+- **0 remaining visible gap groups. Visual match: yes.**
+- Build passed; all 422 Rust SVG/PNG pairs regenerated successfully.

@@ -320,8 +320,8 @@ impl Default for GitGraphConfig {
             cherry_pick_stem_end_offset_y: -4.0,
             cherry_pick_stem_stroke_width: 0.8,
             cherry_pick_accent_color: "#fff".to_string(),
-            arrow_stroke_width: 6.0,
-            branch_stroke_width: 0.8,
+            arrow_stroke_width: 8.0,
+            branch_stroke_width: 1.0,
             branch_dasharray: "2".to_string(),
         }
     }
