@@ -510,6 +510,16 @@ sequenceDiagram
 }
 
 fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
+    if let Some(overrides) = init.get("quadrantChart").and_then(|v| v.as_object()) {
+        if let Ok(mut value) = serde_json::to_value(&config.layout.quadrant_chart) {
+            if let Some(options) = value.as_object_mut() {
+                options.extend(overrides.clone());
+            }
+            if let Ok(quadrant) = serde_json::from_value(value) {
+                config.layout.quadrant_chart = quadrant;
+            }
+        }
+    }
     if let Some(url) = init
         .get("kanban")
         .and_then(|v| v.get("ticketBaseUrl"))

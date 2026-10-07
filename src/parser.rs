@@ -4590,7 +4590,7 @@ fn parse_quadrant_diagram(input: &str) -> Result<ParseOutput> {
         if lower.starts_with("title") {
             let title = line.get(5..).unwrap_or("").trim();
             if !title.is_empty() {
-                graph.quadrant.title = Some(title.to_string());
+                graph.quadrant.title = Some(strip_quotes(title));
             }
             continue;
         }
@@ -4598,8 +4598,8 @@ fn parse_quadrant_diagram(input: &str) -> Result<ParseOutput> {
             // Format: x-axis Low Reach --> High Reach
             let rest = line.get(6..).unwrap_or("").trim();
             if let Some((left, right)) = rest.split_once("-->") {
-                graph.quadrant.x_axis_left = Some(left.trim().to_string());
-                graph.quadrant.x_axis_right = Some(right.trim().to_string());
+                graph.quadrant.x_axis_left = Some(strip_quotes(left.trim()));
+                graph.quadrant.x_axis_right = Some(strip_quotes(right.trim()));
             }
             continue;
         }
@@ -4607,15 +4607,15 @@ fn parse_quadrant_diagram(input: &str) -> Result<ParseOutput> {
             // Format: y-axis Low Engagement --> High Engagement
             let rest = line.get(6..).unwrap_or("").trim();
             if let Some((bottom, top)) = rest.split_once("-->") {
-                graph.quadrant.y_axis_bottom = Some(bottom.trim().to_string());
-                graph.quadrant.y_axis_top = Some(top.trim().to_string());
+                graph.quadrant.y_axis_bottom = Some(strip_quotes(bottom.trim()));
+                graph.quadrant.y_axis_top = Some(strip_quotes(top.trim()));
             }
             continue;
         }
         if lower.starts_with("quadrant-") {
             // Format: quadrant-1 We should expand
             if let Some(rest) = line.get(10..) {
-                let label = rest.trim().to_string();
+                let label = strip_quotes(rest.trim());
                 if lower.starts_with("quadrant-1") {
                     graph.quadrant.quadrant_labels[0] = Some(label);
                 } else if lower.starts_with("quadrant-2") {

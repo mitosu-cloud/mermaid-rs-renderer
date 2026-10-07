@@ -4,18 +4,23 @@ use crate::config::LayoutConfig;
 use crate::ir::Graph;
 use crate::theme::Theme;
 
-use super::text::measure_label;
-use super::{DiagramData, Layout, QuadrantLayout, QuadrantPointLayout, TextBlock};
+use super::{DiagramData, Layout, QuadrantLayout, QuadrantPointLayout, TextBlock, TextLine};
 
-fn quadrant_palette(_theme: &Theme) -> Vec<String> {
-    vec![
-        "#6366f1".to_string(), // indigo
-        "#f59e0b".to_string(), // amber
-        "#10b981".to_string(), // emerald
-        "#ef4444".to_string(), // red
-        "#8b5cf6".to_string(), // violet
-        "#06b6d4".to_string(), // cyan
-    ]
+fn label(text: &Option<String>, font_size: f32, theme: &Theme) -> Option<TextBlock> {
+    text.as_ref()
+        .filter(|text| !text.is_empty())
+        .map(|text| TextBlock {
+            lines: vec![TextLine::plain(text.clone())],
+            width: crate::text_metrics::measure_text_width_with_kerning(
+                text,
+                font_size,
+                &theme.font_family,
+            )
+            .unwrap_or_else(|| {
+                crate::text_metrics::get_computed_text_length(text, font_size, &theme.font_family)
+            }),
+            height: font_size,
+        })
 }
 
 pub(super) fn compute_quadrant_layout(
@@ -23,94 +28,70 @@ pub(super) fn compute_quadrant_layout(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> Layout {
-    let padding = theme.font_size * 1.6;
-    let grid_size = 360.0;
-    // Measure title
-    let title = graph
-        .quadrant
-        .title
-        .as_ref()
-        .map(|t| measure_label(t, theme, config));
-    let title_height = title.as_ref().map(|t| t.height + padding).unwrap_or(0.0);
-
-    // Measure axis labels
-    let x_left = graph
-        .quadrant
-        .x_axis_left
-        .as_ref()
-        .map(|t| measure_label(t, theme, config));
-    let x_right = graph
-        .quadrant
-        .x_axis_right
-        .as_ref()
-        .map(|t| measure_label(t, theme, config));
-    let y_bottom = graph
-        .quadrant
-        .y_axis_bottom
-        .as_ref()
-        .map(|t| measure_label(t, theme, config));
-    let y_top = graph
-        .quadrant
-        .y_axis_top
-        .as_ref()
-        .map(|t| measure_label(t, theme, config));
-
-    // Measure quadrant labels
-    let q_labels: [Option<TextBlock>; 4] = [
-        graph.quadrant.quadrant_labels[0]
-            .as_ref()
-            .map(|t| measure_label(t, theme, config)),
-        graph.quadrant.quadrant_labels[1]
-            .as_ref()
-            .map(|t| measure_label(t, theme, config)),
-        graph.quadrant.quadrant_labels[2]
-            .as_ref()
-            .map(|t| measure_label(t, theme, config)),
-        graph.quadrant.quadrant_labels[3]
-            .as_ref()
-            .map(|t| measure_label(t, theme, config)),
-    ];
-
-    let y_axis_label_width = y_bottom
-        .as_ref()
-        .map(|t| t.width)
-        .unwrap_or(0.0)
-        .max(y_top.as_ref().map(|t| t.width).unwrap_or(0.0));
-    let y_axis_width = if y_axis_label_width > 0.0 {
-        y_axis_label_width + padding
+    let options = &config.quadrant_chart;
+    let title = label(&graph.quadrant.title, options.title_font_size, theme);
+    let x_left = label(
+        &graph.quadrant.x_axis_left,
+        options.x_axis_label_font_size,
+        theme,
+    );
+    let x_right = label(
+        &graph.quadrant.x_axis_right,
+        options.x_axis_label_font_size,
+        theme,
+    );
+    let y_bottom = label(
+        &graph.quadrant.y_axis_bottom,
+        options.y_axis_label_font_size,
+        theme,
+    );
+    let y_top = label(
+        &graph.quadrant.y_axis_top,
+        options.y_axis_label_font_size,
+        theme,
+    );
+    let title_space = if title.is_some() {
+        options.title_font_size + options.title_padding * 2.0
     } else {
-        padding
+        0.0
     };
-    let x_axis_height = x_left
-        .as_ref()
-        .map(|t| t.height + padding)
-        .unwrap_or(padding);
-
-    let grid_x = y_axis_width + padding;
-    let grid_y = title_height + padding;
-
-    // Layout points
-    let palette = quadrant_palette(theme);
-    let points: Vec<QuadrantPointLayout> = graph
+    let x_space = if x_left.is_some() || x_right.is_some() {
+        options.x_axis_label_font_size + options.x_axis_label_padding * 2.0
+    } else {
+        0.0
+    };
+    let y_space = if y_bottom.is_some() || y_top.is_some() {
+        options.y_axis_label_font_size + options.y_axis_label_padding * 2.0
+    } else {
+        0.0
+    };
+    // Charts with data points always place the X-axis below the plot.
+    let axis_top = graph.quadrant.points.is_empty() && options.x_axis_position != "bottom";
+    let axis_right = options.y_axis_position == "right";
+    let width = options.chart_width.max(1.0);
+    let height = options.chart_height.max(1.0);
+    let grid_x = options.quadrant_padding + if axis_right { 0.0 } else { y_space };
+    let grid_y = options.quadrant_padding + title_space + if axis_top { x_space } else { 0.0 };
+    let grid_width = (width - options.quadrant_padding * 2.0 - y_space).max(0.0);
+    let grid_height = (height - options.quadrant_padding * 2.0 - x_space - title_space).max(0.0);
+    let points = graph
         .quadrant
         .points
         .iter()
-        .enumerate()
-        .map(|(i, p)| {
-            let px = grid_x + p.x.clamp(0.0, 1.0) * grid_size;
-            let py = grid_y + (1.0 - p.y.clamp(0.0, 1.0)) * grid_size; // Invert Y
-            QuadrantPointLayout {
-                label: measure_label(&p.label, theme, config),
-                x: px,
-                y: py,
-                color: palette[i % palette.len()].clone(),
-            }
+        .rev()
+        .map(|point| QuadrantPointLayout {
+            label: label(
+                &Some(point.label.clone()),
+                options.point_label_font_size,
+                theme,
+            )
+            .unwrap(),
+            x: grid_x + point.x * grid_width,
+            y: grid_y + (1.0 - point.y) * grid_height,
+            // The reference's invalid default HSL fill inherits the root text fill.
+            color: theme.text_color.clone(),
         })
         .collect();
-
-    let width = grid_x + grid_size + padding * 2.0;
-    let height = grid_y + grid_size + x_axis_height + padding;
-
     Layout {
         kind: graph.kind,
         nodes: BTreeMap::new(),
@@ -122,17 +103,35 @@ pub(super) fn compute_quadrant_layout(
         acc_descr: None,
         diagram: DiagramData::Quadrant(QuadrantLayout {
             title,
-            title_y: title_height / 2.0,
+            title_x: width / 2.0,
+            title_y: options.title_padding,
             x_axis_left: x_left,
             x_axis_right: x_right,
             y_axis_bottom: y_bottom,
             y_axis_top: y_top,
-            quadrant_labels: q_labels,
+            quadrant_labels: std::array::from_fn(|index| {
+                label(
+                    &graph.quadrant.quadrant_labels[index],
+                    options.quadrant_label_font_size,
+                    theme,
+                )
+            }),
             points,
             grid_x,
             grid_y,
-            grid_width: grid_size,
-            grid_height: grid_size,
+            grid_width,
+            grid_height,
+            x_axis_y: if axis_top {
+                options.x_axis_label_padding + title_space
+            } else {
+                options.x_axis_label_padding + grid_y + grid_height + options.quadrant_padding
+            },
+            y_axis_x: if axis_right {
+                options.y_axis_label_padding + grid_x + grid_width + options.quadrant_padding
+            } else {
+                options.y_axis_label_padding
+            },
+            center_quadrant_labels: graph.quadrant.points.is_empty(),
         }),
     }
 }

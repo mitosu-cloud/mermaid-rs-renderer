@@ -4956,3 +4956,75 @@ All 422 Rust SVG/PNG pairs regenerated successfully. Only the three Kanban SVGs 
 - Native SVG text baselines are snapped to 17 px within a default 24 px line box. The local HTML baseline probe reports a fractional 17.5 px baseline; image inspection motivated the native placement. Native SVG and HTML rasterization can differ slightly when scaled; this is not a claim of pixel-identical output.
 - cargo build --release passed in 10.96 seconds with 33 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Only the three Kanban SVGs changed; all 419 other SVGs are byte-for-byte unchanged from the pre-edit snapshot.
 - No test suite was run and no test files were edited, per the svg-parity skill. Existing JS goldens were used. Updated all three ignored side-by-side review images and all Rust gallery exports. Exactly one source fix pass was performed.
+
+## quadrantChart-basic-quadrant-chart — Pass 1 findings — 2026-10-07T00:29:08+00:00
+
+### Pass 1 — basic quadrant chart
+
+**Visual appearance**
+
+- Rust’s canvas is 595.34×534.40 instead of 500×500. Its plot is 360×360 instead of 464×424.
+- The title wraps across two lines at 16 px; JS uses one centered line at 20 px.
+- Y-axis labels are horizontal instead of rotated 90°.
+- Rust adds four dashed guides that JS does not draw.
+- Points use different colors and outlines instead of dark fills with no outlines.
+- Point labels are 16 px instead of 12 px and sit farther below the points.
+- Quadrant labels have different vertical placement and text colors.
+
+**Structural differences**
+
+- Canvas, plot bounds, text transforms, fonts, guide lines, and point styles differ.
+
+**Visual defects**
+
+- The chart is recognizable, but the plot occupies much less of the canvas and the labels change its appearance. Seven issue categories are selected for this pass.
+
+Validated Cargo.toml, the selected SVG pair and reference source, and the sibling Mermaid checkout. Read both SVGs directly and inspected a side-by-side browser rendering. Read quadrantBuilder.ts, quadrantRenderer.ts and quadrantDb.ts from the pinned sibling Git checkout.
+
+- Canvas aspect ratios are 1.114 in Rust versus 1.000 in JS. Plot width/canvas width is 360/595.344=0.605 versus 464/500=0.928; plot height/canvas height is 360/534.4=0.674 versus 424/500=0.848. This is a dominant visible difference despite similar quadrant topology.
+- Rust plot bounds are (184.144,99.2,360,360), golden bounds are (31,45,464,424). The title is centered over the plot at x=364.144 rather than over the canvas at x=250. Golden title is a single 20 px SVG text line at (250,10), with a hanging baseline.
+- Rust horizontal Y-axis labels consume roughly 184 px of the left canvas; JS reserves only 26 px for rotated 16 px labels. Golden X-axis text is at (147,479)/(379,479); Y-axis text transforms are (5,363)/(5,151), rotation -90. All axis labels fit their respective reference space.
+- Rust adds dashed lines at x=274.144/454.144 and y=189.2/369.2. The golden uses only four external border segments and two central solid dividers. No diagram connector edges or bidirectional edge labels are present.
+- Campaign A is (292.144,243.2) in Rust versus (170.2,214.6) in JS, with the same normalized data coordinates. Point radius is 5 in both, but Rust uses a 1 px outline and individual colored fills. JS's invalid HSL point fill falls back to the SVG's inherited #333 fill, producing dark points; its point stroke width is 0.
+- Point labels are 16 px with the first baseline approximately 19 px below their point in Rust; JS uses 12 px hanging text beginning 5 px below each point. Rust quadrant text uses the same #131300 everywhere rather than the golden #131300/#0e0e00/#090900/#040400 fills and hanging top placement.
+- Labels fit within their respective regions without separate clipping, overlap or unreadable-text defects; the title wrapping is a layout mismatch. The title-only and configured examples will be inspected for the shared layout's impact. Point-specific inline/class styling and theme-variable customization are separate known gaps outside the selected basic chart.
+
+## quadrantChart-basic-quadrant-chart — Changes applied — 2026-10-07T00:31:23+00:00
+
+- src/config.rs — add quadrantChart defaults for canvas size, fonts, padding, axis positions, point radius and border widths; load config-file options.
+- src/cli.rs — merge quadrantChart options from frontmatter/init directives while preserving omitted config-file values.
+- src/parser.rs — remove enclosing quotes from quadrant title, axis and quadrant labels, following the reference text handling.
+- src/layout/quadrant.rs — replace the fixed 360 px plot and measured horizontal gutter with Mermaid's chart-space calculations. Keep labels unwrapped, reverse point draw order, map numeric coordinates to the reference bounds, and use the golden's visible dark point default.
+- src/layout/types.rs — carry exact title/axis positions and whether empty quadrants center their labels.
+- src/render.rs — render responsive quadrant canvases, six border segments, hanging/middle text baselines, rotated Y-axis labels, 20 px titles and 12 px point labels. Remove the extra dashed guides and point outlines; retain the reference per-quadrant text fills.
+- One source pass, six source files edited. Read the pinned Mermaid quadrant builder, renderer, database and default theme derivations. Point-specific style parsing and quadrant theme-variable overrides remain outside this basic-layout pass.
+
+## quadrantChart-basic-quadrant-chart — Pass 2 findings — 2026-10-07T00:32:59+00:00
+
+### Pass 2 — basic quadrant chart
+
+**Visual appearance**
+
+- **Visual match: yes.** The canvas, plot bounds, title, rotated axes, borders, points, and label placement now look like JS.
+- The title-only example also matches.
+
+**Structural differences**
+
+- Rust writes explicit SVG attributes where JS uses grouped elements and CSS. Point coordinates differ only by rounding.
+
+**Visual defects**
+
+- No visible defects remain in the selected basic chart; all seven reported gaps are addressed.
+- Two separate gaps remain: the configured example’s red text override is ignored, and styled-point syntax drops all six points.
+
+All 422 Rust SVG/PNG pairs regenerated successfully. Only the four quadrant SVGs changed; the other 418 are unchanged.
+
+### Verification details
+
+- Re-read the regenerated basic-chart SVG and inspected browser renderings of all four affected fixtures. The selected chart is 500×500 with plot (31,45,464,424); normalized plot/canvas ratios are 0.928 horizontally and 0.848 vertically, matching JS. The four 232×212 quadrants have the reference fills and per-quadrant text colors.
+- Title is a single unwrapped 20 px hanging text line at (250,10). X-axis labels are at (147,479)/(379,479). Y-axis labels use hanging baselines and transforms (5,363)/(5,151), rotation -90. Quadrant labels start 5 px below the top of each quadrant, with the golden hanging baselines. Labels fit with the same reference clearances.
+- Six border segment endpoints and widths match JS: four external segments at width 2 and two internal dividers at width 1. No extra dashed guides or connector edges remain. All six point centers match within 0.001 px, radius is 5, fill is the golden's visible #333 fallback, and stroke width is 0. Point labels use 12 px hanging text starting 5 px below each point. The reference also lets Campaign B's label cross the central divider; this is shared placement rather than a Rust-only overflow.
+- The title-only chart matches its 500×500 canvas, plot (5,45,490,450), single title and border geometry. The configured chart now honors 400×400 sizing and has the reference axis positions, centered quadrant labels and unquoted heart label; its Plan label still lacks the requested red theme override.
+- The styled-point fixture still has no parsed points because inline properties and class attachments are unsupported. Consequently the new layout correctly applies its empty-chart rules (X-axis at top and quadrant labels centered), while JS has data points with the X-axis at bottom and quadrant labels at top. This fixture remains visibly different and is outside the selected basic-chart pass.
+- cargo build --release passed in 11.05 seconds with 33 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Only the four quadrant SVGs changed; all 418 other SVGs are byte-for-byte unchanged from the pre-edit snapshot.
+- No test suite was run and no test files were edited, per the svg-parity skill. Existing JS goldens were used. Updated four ignored side-by-side review images and all Rust gallery exports. Exactly one source fix pass was performed. git diff --check passed.

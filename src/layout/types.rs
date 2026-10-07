@@ -705,6 +705,7 @@ pub struct C4RelLayout {
 #[derive(Debug, Clone)]
 pub struct QuadrantLayout {
     pub title: Option<TextBlock>,
+    pub title_x: f32,
     pub title_y: f32,
     pub x_axis_left: Option<TextBlock>,
     pub x_axis_right: Option<TextBlock>,
@@ -716,6 +717,9 @@ pub struct QuadrantLayout {
     pub grid_y: f32,
     pub grid_width: f32,
     pub grid_height: f32,
+    pub x_axis_y: f32,
+    pub y_axis_x: f32,
+    pub center_quadrant_labels: bool,
 }
 
 #[derive(Debug, Clone)]

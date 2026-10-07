@@ -769,6 +769,56 @@ pub struct KanbanConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct QuadrantChartConfig {
+    pub chart_width: f32,
+    pub chart_height: f32,
+    pub title_padding: f32,
+    pub title_font_size: f32,
+    pub quadrant_padding: f32,
+    pub x_axis_label_padding: f32,
+    pub y_axis_label_padding: f32,
+    pub x_axis_label_font_size: f32,
+    pub y_axis_label_font_size: f32,
+    pub quadrant_label_font_size: f32,
+    pub quadrant_text_top_padding: f32,
+    pub point_text_padding: f32,
+    pub point_label_font_size: f32,
+    pub point_radius: f32,
+    pub x_axis_position: String,
+    pub y_axis_position: String,
+    pub quadrant_internal_border_stroke_width: f32,
+    pub quadrant_external_border_stroke_width: f32,
+    pub use_max_width: bool,
+}
+
+impl Default for QuadrantChartConfig {
+    fn default() -> Self {
+        Self {
+            chart_width: 500.0,
+            chart_height: 500.0,
+            title_padding: 10.0,
+            title_font_size: 20.0,
+            quadrant_padding: 5.0,
+            x_axis_label_padding: 5.0,
+            y_axis_label_padding: 5.0,
+            x_axis_label_font_size: 16.0,
+            y_axis_label_font_size: 16.0,
+            quadrant_label_font_size: 16.0,
+            quadrant_text_top_padding: 5.0,
+            point_text_padding: 5.0,
+            point_label_font_size: 12.0,
+            point_radius: 5.0,
+            x_axis_position: "top".to_string(),
+            y_axis_position: "left".to_string(),
+            quadrant_internal_border_stroke_width: 1.0,
+            quadrant_external_border_stroke_width: 2.0,
+            use_max_width: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
     pub node_spacing: f32,
     pub rank_spacing: f32,
@@ -787,6 +837,8 @@ pub struct LayoutConfig {
     pub packet: PacketConfig,
     #[serde(default)]
     pub kanban: KanbanConfig,
+    #[serde(default)]
+    pub quadrant_chart: QuadrantChartConfig,
     pub treemap: TreemapConfig,
     pub flowchart: FlowchartLayoutConfig,
     pub look: crate::ir::DiagramLook,
@@ -810,6 +862,7 @@ impl Default for LayoutConfig {
             pie: PieConfig::default(),
             packet: PacketConfig::default(),
             kanban: KanbanConfig::default(),
+            quadrant_chart: QuadrantChartConfig::default(),
             treemap: TreemapConfig::default(),
             flowchart: FlowchartLayoutConfig::default(),
             look: crate::ir::DiagramLook::default(),
@@ -1506,6 +1559,7 @@ struct ConfigFile {
     pie: Option<PieConfigFile>,
     packet: Option<PacketConfig>,
     kanban: Option<KanbanConfig>,
+    quadrant_chart: Option<QuadrantChartConfig>,
     requirement: Option<RequirementConfigFile>,
     mindmap: Option<MindmapConfigFile>,
     #[serde(rename = "gitGraph")]
@@ -1790,6 +1844,10 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
 
     if let Some(kanban) = parsed.kanban {
         config.layout.kanban = kanban;
+    }
+
+    if let Some(quadrant) = parsed.quadrant_chart {
+        config.layout.quadrant_chart = quadrant;
     }
 
     if let Some(flow) = parsed.flowchart {

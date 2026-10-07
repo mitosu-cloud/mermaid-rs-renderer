@@ -237,6 +237,14 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             style_attr = format!(
                 " style=\"max-width: {viewbox_width}px; background-color: white;{preferred_ratio_style}\""
             );
+        } else if matches!(layout.diagram, DiagramData::Quadrant(_))
+            && config.quadrant_chart.use_max_width
+        {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {viewbox_width}px; background-color: white;{preferred_ratio_style}\""
+            );
         } else if matches!(layout.diagram, DiagramData::Radar(_)) {
             width_attr = "100%".to_string();
             height_attr.clear();
@@ -332,6 +340,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
 
     if let DiagramData::Kanban(ref cards) = layout.diagram {
         svg.push_str(&kanban::render_kanban(layout, cards, theme, config));
+        svg.push_str("</svg>");
+        return svg;
+    }
+
+    if let DiagramData::Quadrant(ref quadrant) = layout.diagram {
+        svg.push_str(&render_quadrant(quadrant, theme, config));
         svg.push_str("</svg>");
         return svg;
     }
@@ -460,12 +474,6 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
 
     if let DiagramData::Pie(ref pie) = layout.diagram {
         svg.push_str(&render_pie(pie, theme, config));
-        svg.push_str("</svg>");
-        return svg;
-    }
-
-    if let DiagramData::Quadrant(ref quadrant) = layout.diagram {
-        svg.push_str(&render_quadrant(quadrant, theme, config));
         svg.push_str("</svg>");
         return svg;
     }
@@ -3911,191 +3919,177 @@ fn pie_slice_path(cx: f32, cy: f32, radius: f32, start_angle: f32, end_angle: f3
     )
 }
 
+fn quadrant_text(
+    label: &TextBlock,
+    x: f32,
+    y: f32,
+    font_size: f32,
+    color: &str,
+    rotation: i32,
+    anchor: &str,
+    baseline: &str,
+    theme: &Theme,
+) -> String {
+    let text = label
+        .lines
+        .iter()
+        .map(|line| line.text())
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "<text x=\"0\" y=\"0\" fill=\"{}\" font-family=\"{}\" font-size=\"{font_size}\" dominant-baseline=\"{baseline}\" text-anchor=\"{anchor}\" transform=\"translate({x:.3}, {y:.3}) rotate({rotation})\">{}</text>",
+        escape_xml(color),
+        normalize_font_family(&theme.font_family),
+        escape_xml(&text),
+    )
+}
+
 fn render_quadrant(
     layout: &crate::layout::QuadrantLayout,
     theme: &Theme,
     config: &LayoutConfig,
 ) -> String {
     let mut svg = String::new();
-    let grid_x = layout.grid_x;
-    let grid_y = layout.grid_y;
+    let options = &config.quadrant_chart;
+    let x = layout.grid_x;
+    let y = layout.grid_y;
     let w = layout.grid_width;
     let h = layout.grid_height;
-    let half_w = w / 2.0;
-    let half_h = h / 2.0;
-
-    // Quadrant background colors
-    let q_colors = ["#ECECFF", "#f1f1ff", "#f6f6ff", "#fbfbff"];
-
-    // Draw 4 quadrant backgrounds
-    // Q1 top-right, Q2 top-left, Q3 bottom-left, Q4 bottom-right
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        grid_x + half_w,
-        grid_y,
-        half_w,
-        half_h,
-        q_colors[0]
-    ));
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        grid_x, grid_y, half_w, half_h, q_colors[1]
-    ));
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        grid_x,
-        grid_y + half_h,
-        half_w,
-        half_h,
-        q_colors[2]
-    ));
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        grid_x + half_w,
-        grid_y + half_h,
-        half_w,
-        half_h,
-        q_colors[3]
-    ));
-
-    // Draw border
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"none\" stroke=\"#c7c7f1\" stroke-width=\"2\"/>",
-        grid_x, grid_y, w, h
-    ));
-    // Grid lines: quarter, center, three-quarter (6 lines total).
-    let grid_color = "#c7c7f1";
-    let minor_color = "#ddddf5";
-    let quarter_w = w / 4.0;
-    let quarter_h = h / 4.0;
-    // Vertical minor lines (1/4 and 3/4)
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
-        grid_x + quarter_w, grid_y, grid_x + quarter_w, grid_y + h
-    ));
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
-        grid_x + 3.0 * quarter_w, grid_y, grid_x + 3.0 * quarter_w, grid_y + h
-    ));
-    // Horizontal minor lines (1/4 and 3/4)
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
-        grid_x, grid_y + quarter_h, grid_x + w, grid_y + quarter_h
-    ));
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{minor_color}\" stroke-width=\"0.5\" stroke-dasharray=\"4,4\"/>",
-        grid_x, grid_y + 3.0 * quarter_h, grid_x + w, grid_y + 3.0 * quarter_h
-    ));
-    // Center lines (major)
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\"/>",
-        grid_x + half_w, grid_y, grid_x + half_w, grid_y + h
-    ));
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\"/>",
-        grid_x, grid_y + half_h, grid_x + w, grid_y + half_h
-    ));
-
-    // Title
-    if let Some(ref title) = layout.title {
-        svg.push_str(&text_block_svg(
-            grid_x + half_w,
-            layout.title_y,
-            title,
-            theme,
-            config,
-            false,
-            Some(theme.primary_text_color.as_str()),
+    let hw = w / 2.0;
+    let hh = h / 2.0;
+    let fills = ["#ECECFF", "#f1f1ff", "#f6f6ff", "#fbfbff"];
+    let text_fills = ["#131300", "#0e0e00", "#090900", "#040400"];
+    let origins = [(x + hw, y), (x, y), (x, y + hh), (x + hw, y + hh)];
+    for (index, &(qx, qy)) in origins.iter().enumerate() {
+        svg.push_str(&format!(
+            "<rect x=\"{qx:.3}\" y=\"{qy:.3}\" width=\"{hw:.3}\" height=\"{hh:.3}\" fill=\"{}\"/>",
+            fills[index]
         ));
-    }
-
-    // Quadrant labels
-    let label_positions = [
-        (grid_x + half_w + half_w / 2.0, grid_y + 15.0), // Q1 top-right
-        (grid_x + half_w / 2.0, grid_y + 15.0),          // Q2 top-left
-        (grid_x + half_w / 2.0, grid_y + half_h + 15.0), // Q3 bottom-left
-        (grid_x + half_w + half_w / 2.0, grid_y + half_h + 15.0), // Q4 bottom-right
-    ];
-    for (i, label_opt) in layout.quadrant_labels.iter().enumerate() {
-        if let Some(label) = label_opt {
-            let (lx, ly) = label_positions[i];
-            svg.push_str(&text_block_svg(
-                lx,
-                ly,
+        if let Some(label) = &layout.quadrant_labels[index] {
+            let (label_y, baseline) = if layout.center_quadrant_labels {
+                (qy + hh / 2.0, "middle")
+            } else {
+                (qy + options.quadrant_text_top_padding, "hanging")
+            };
+            svg.push_str(&quadrant_text(
                 label,
+                qx + hw / 2.0,
+                label_y,
+                options.quadrant_label_font_size,
+                text_fills[index],
+                0,
+                "middle",
+                baseline,
                 theme,
-                config,
-                false,
-                Some("#131300"),
             ));
         }
     }
 
-    // Axis labels
-    if let Some(ref x_left) = layout.x_axis_left {
-        svg.push_str(&text_block_svg(
-            grid_x + half_w / 2.0,
-            grid_y + h + 20.0,
-            x_left,
-            theme,
-            config,
-            false,
-            Some("#131300"),
-        ));
-    }
-    if let Some(ref x_right) = layout.x_axis_right {
-        svg.push_str(&text_block_svg(
-            grid_x + half_w + half_w / 2.0,
-            grid_y + h + 20.0,
-            x_right,
-            theme,
-            config,
-            false,
-            Some("#131300"),
-        ));
-    }
-    if let Some(ref y_bottom) = layout.y_axis_bottom {
-        let axis_x = grid_x - theme.font_size * 2.2;
-        let axis_y = grid_y + half_h + half_h / 2.0;
+    // The reference uses six independent border segments with adjusted corners.
+    let outer = options.quadrant_external_border_stroke_width;
+    let inner = options.quadrant_internal_border_stroke_width;
+    let half_outer = outer / 2.0;
+    for (x1, y1, x2, y2, stroke_width) in [
+        (x - half_outer, y, x + w + half_outer, y, outer),
+        (x + w, y + half_outer, x + w, y + h - half_outer, outer),
+        (x - half_outer, y + h, x + w + half_outer, y + h, outer),
+        (x, y + half_outer, x, y + h - half_outer, outer),
+        (x + hw, y + half_outer, x + hw, y + h - half_outer, inner),
+        (x + half_outer, y + hh, x + w - half_outer, y + hh, inner),
+    ] {
         svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"#131300\"><tspan>{}</tspan></text>",
-            axis_x,
-            axis_y,
-            normalize_font_family(&theme.font_family),
-            theme.font_size,
-            y_bottom.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
+            "<line x1=\"{x1:.3}\" y1=\"{y1:.3}\" x2=\"{x2:.3}\" y2=\"{y2:.3}\" stroke=\"#c7c7f1\" stroke-width=\"{stroke_width}\"/>"
         ));
     }
-    if let Some(ref y_top) = layout.y_axis_top {
-        let axis_x = grid_x - theme.font_size * 2.2;
-        let axis_y = grid_y + half_h / 2.0;
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"#131300\"><tspan>{}</tspan></text>",
-            axis_x,
-            axis_y,
-            normalize_font_family(&theme.font_family),
-            theme.font_size,
-            y_top.lines.first().map(|s| s.text()).as_deref().unwrap_or("")
-        ));
-    }
-
-    // Data points
     for point in &layout.points {
         svg.push_str(&format!(
-            "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"5\" fill=\"{}\" stroke=\"{}\" stroke-width=\"1\"/>",
-            point.x, point.y, point.color, point.color
-        ));
-        svg.push_str(&text_block_svg(
+            "<circle cx=\"{:.3}\" cy=\"{:.3}\" r=\"{}\" fill=\"{}\" stroke-width=\"0\"/>",
             point.x,
-            point.y + 15.0,
+            point.y,
+            options.point_radius,
+            escape_xml(&point.color),
+        ));
+        svg.push_str(&quadrant_text(
             &point.label,
+            point.x,
+            point.y + options.point_text_padding,
+            options.point_label_font_size,
+            "#131300",
+            0,
+            "middle",
+            "hanging",
             theme,
-            config,
-            false,
-            Some("#131300"),
         ));
     }
-
+    let centered_x = layout.x_axis_right.is_some();
+    let x_anchor = if centered_x { "middle" } else { "start" };
+    if let Some(label) = &layout.x_axis_left {
+        svg.push_str(&quadrant_text(
+            label,
+            x + if centered_x { hw / 2.0 } else { 0.0 },
+            layout.x_axis_y,
+            options.x_axis_label_font_size,
+            "#131300",
+            0,
+            x_anchor,
+            "hanging",
+            theme,
+        ));
+    }
+    if let Some(label) = &layout.x_axis_right {
+        svg.push_str(&quadrant_text(
+            label,
+            x + hw + if centered_x { hw / 2.0 } else { 0.0 },
+            layout.x_axis_y,
+            options.x_axis_label_font_size,
+            "#131300",
+            0,
+            x_anchor,
+            "hanging",
+            theme,
+        ));
+    }
+    let centered_y = layout.y_axis_top.is_some();
+    let y_anchor = if centered_y { "middle" } else { "start" };
+    if let Some(label) = &layout.y_axis_bottom {
+        svg.push_str(&quadrant_text(
+            label,
+            layout.y_axis_x,
+            y + h - if centered_y { hh / 2.0 } else { 0.0 },
+            options.y_axis_label_font_size,
+            "#131300",
+            -90,
+            y_anchor,
+            "hanging",
+            theme,
+        ));
+    }
+    if let Some(label) = &layout.y_axis_top {
+        svg.push_str(&quadrant_text(
+            label,
+            layout.y_axis_x,
+            y + hh - if centered_y { hh / 2.0 } else { 0.0 },
+            options.y_axis_label_font_size,
+            "#131300",
+            -90,
+            y_anchor,
+            "hanging",
+            theme,
+        ));
+    }
+    if let Some(title) = &layout.title {
+        svg.push_str(&quadrant_text(
+            title,
+            layout.title_x,
+            layout.title_y,
+            options.title_font_size,
+            "#131300",
+            0,
+            "middle",
+            "hanging",
+            theme,
+        ));
+    }
     svg
 }
 
