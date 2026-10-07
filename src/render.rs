@@ -7510,7 +7510,7 @@ fn shape_svg_inner(
                     .default_corner_radius
                     .max(0.0)
                     .min(w.min(h) / 2.0)
-            } else if is_block {
+            } else if is_block || kind == crate::ir::DiagramKind::Flowchart {
                 5.0
             } else {
                 10.0

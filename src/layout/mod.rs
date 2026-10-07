@@ -8179,6 +8179,13 @@ fn shape_size(
             label.height + config.node_padding_y * 3.0,
         );
     }
+    if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::RoundRect {
+        // roundedRect.ts uses the 15px flowchart padding on every side.
+        return (
+            label.width + config.node_padding_x * 1.5,
+            label.height + config.node_padding_y * 3.0,
+        );
+    }
     if kind == crate::ir::DiagramKind::Block
         && let Some(size) = crate::block_shapes::natural_size(shape, label)
     {

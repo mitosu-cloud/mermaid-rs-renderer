@@ -6677,3 +6677,43 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - One remaining gap group: connection weight.
 - **Visual match: partial.** All 422 renders succeeded with JS unchanged.
+
+## batch12-08-flow-rounded-rect — Pass 1 findings — 2026-10-07T06:18:47+00:00
+
+### Iteration 8/10 — Pass 1
+
+#### Visual appearance
+
+- In `flowchart-node-with-round-edges`, Rust is 263.4 × 62.2 versus JS’s 230.9 × 70.
+- Rust’s box is wider, flatter, and has more rounded corners. Text fits, but its horizontal margin is roughly twice JS’s.
+- This single-node example has no connections; the box proportions visibly differ.
+
+#### Structural differences
+
+- Rust scales rounded rectangles and uses a 10-pixel corner radius. JS uses label padding and a 5-pixel radius.
+
+#### Visual defects
+
+- One gap group: rounded rectangle geometry.
+
+## batch12-08-flow-rounded-rect — Changes applied — 2026-10-07T06:18:47+00:00
+
+- `src/layout/mod.rs`, `src/render.rs` — Size flowchart rounded rectangles from the label plus 15px padding per side, removing proportional inflation, and use JS’s default 5px corner radius.
+
+## batch12-08-flow-rounded-rect — Pass 2 findings — 2026-10-07T06:20:07+00:00
+
+### Iteration 8/10 — Pass 2
+
+#### Visual appearance
+
+- Rust now has the same 230.9 × 70 canvas, 214.9 × 54 box, and 5-pixel corners as JS.
+- Text placement and margins closely match. There are no connections in this fixture.
+
+#### Structural differences
+
+- No visible discrepancy remains in the selected example.
+
+#### Visual defects
+
+- Zero remaining gap groups in this fixture.
+- **Visual match: yes.** All 422 renders succeeded with JS unchanged.
