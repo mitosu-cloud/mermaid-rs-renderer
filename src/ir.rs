@@ -434,6 +434,13 @@ pub struct NodeLink {
     pub target: Option<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct KanbanTaskMetadata {
+    pub ticket: String,
+    pub assigned: String,
+    pub priority: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Edge {
     pub from: String,
@@ -755,6 +762,7 @@ pub struct Graph {
     pub block: Option<BlockDiagram>,
     pub packet: PacketData,
     pub radar: RadarData,
+    pub kanban_tasks: BTreeMap<String, KanbanTaskMetadata>,
     pub venn: VennData,
     pub look: DiagramLook,
     pub tree_view: TreeViewData,
@@ -1014,6 +1022,7 @@ impl Graph {
             block: None,
             packet: PacketData::default(),
             radar: RadarData::default(),
+            kanban_tasks: BTreeMap::new(),
             venn: VennData::default(),
             look: DiagramLook::default(),
             tree_view: TreeViewData::default(),

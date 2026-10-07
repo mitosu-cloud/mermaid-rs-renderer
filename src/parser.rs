@@ -5205,23 +5205,72 @@ fn parse_kanban_diagram(input: &str) -> Result<ParseOutput> {
     let mut current_section: Option<usize> = None;
     let mut base_indent: Option<usize> = None;
 
-    for raw_line in lines {
-        let trimmed = raw_line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let lower = trimmed.to_ascii_lowercase();
-        if lower.starts_with("kanban") {
+    let mut lines = lines.into_iter();
+    while let Some(mut raw_line) = lines.next() {
+        if raw_line.trim().is_empty() || raw_line.trim().to_ascii_lowercase().starts_with("kanban")
+        {
             continue;
         }
         let indent = count_indent(&raw_line);
+        if raw_line.contains("@{") && !raw_line.trim_end().ends_with('}') {
+            for next in lines.by_ref() {
+                raw_line.push('\n');
+                raw_line.push_str(next.trim());
+                if next.trim_end().ends_with('}') {
+                    break;
+                }
+            }
+        }
+        let trimmed = raw_line.trim();
+        let (entry, metadata) = if let Some((left, right)) = trimmed.split_once("@{") {
+            let body = right
+                .trim()
+                .strip_suffix('}')
+                .ok_or_else(|| anyhow::anyhow!("Unclosed Kanban metadata: {trimmed}"))?
+                .trim();
+            let yaml = if body.contains('\n') {
+                body.to_string()
+            } else {
+                format!("{{{body}}}")
+            };
+            (
+                left.trim(),
+                Some(serde_yaml::from_str::<serde_json::Value>(&yaml)?),
+            )
+        } else {
+            (trimmed, None)
+        };
+        // Anonymous [labels] need an internal id before the shared node parser
+        // can recognize the entire bracketed label, including spaces.
+        let token = if entry.starts_with('[') {
+            format!(
+                "__kanban_{}{}",
+                graph.nodes.len() + graph.subgraphs.len(),
+                entry
+            )
+        } else {
+            entry.to_string()
+        };
+        let (mut id, label, _shape, _classes, _md) = parse_node_token(&token);
+        let metadata_text = |key: &str| -> String {
+            match metadata.as_ref().and_then(|value| value.get(key)) {
+                Some(serde_json::Value::String(value)) => value.clone(),
+                Some(serde_json::Value::Number(value)) => value.to_string(),
+                Some(serde_json::Value::Bool(true)) => "true".to_string(),
+                _ => String::new(),
+            }
+        };
+        let override_label = metadata_text("label");
+        let node_label = if override_label.is_empty() {
+            label.unwrap_or_else(|| id.clone())
+        } else {
+            override_label
+        };
         let base = *base_indent.get_or_insert(indent);
         if indent <= base {
-            let (id, label, _shape, _classes, _node_md) = parse_node_token(trimmed);
-            let col_label = label.unwrap_or_else(|| id.clone());
             graph.subgraphs.push(Subgraph {
                 id: Some(id),
-                label: col_label,
+                label: node_label,
                 nodes: Vec::new(),
                 direction: None,
                 icon: None,
@@ -5230,24 +5279,26 @@ fn parse_kanban_diagram(input: &str) -> Result<ParseOutput> {
             current_section = Some(graph.subgraphs.len() - 1);
             continue;
         }
-
-        let (task_part, meta) = if let Some((left, right)) = trimmed.split_once("@{") {
-            let meta = right.trim_end_matches('}').trim();
-            (left.trim(), Some(meta.to_string()))
-        } else {
-            (trimmed, None)
-        };
-        let (mut id, label, _shape, _classes, _md) = parse_node_token(task_part);
-        if graph.nodes.contains_key(&id) {
-            id = format!("{}_{}", id, graph.nodes.len());
-        }
-        let mut node_label = label.unwrap_or_else(|| id.clone());
-        if let Some(meta) = meta
-            && !meta.is_empty()
-        {
-            node_label.push_str(&format!("\n{}", meta));
+        let original_id = id.clone();
+        let mut suffix = graph.nodes.len();
+        while graph.nodes.contains_key(&id) {
+            id = format!("{original_id}_{suffix}");
+            suffix += 1;
         }
         graph.ensure_node(&id, Some(node_label), Some(crate::ir::NodeShape::Rectangle));
+        let priority = metadata_text("priority");
+        graph.kanban_tasks.insert(
+            id.clone(),
+            crate::ir::KanbanTaskMetadata {
+                ticket: metadata_text("ticket"),
+                assigned: metadata_text("assigned"),
+                priority: (!priority.is_empty()).then_some(priority),
+            },
+        );
+        let icon = metadata_text("icon");
+        if !icon.is_empty() {
+            graph.nodes.get_mut(&id).unwrap().icon = Some(icon);
+        }
         if let Some(idx) = current_section
             && let Some(subgraph) = graph.subgraphs.get_mut(idx)
         {

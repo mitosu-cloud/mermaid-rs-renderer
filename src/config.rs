@@ -762,6 +762,12 @@ impl Default for PacketConfig {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct KanbanConfig {
+    pub ticket_base_url: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LayoutConfig {
     pub node_spacing: f32,
@@ -779,6 +785,8 @@ pub struct LayoutConfig {
     pub pie: PieConfig,
     #[serde(default)]
     pub packet: PacketConfig,
+    #[serde(default)]
+    pub kanban: KanbanConfig,
     pub treemap: TreemapConfig,
     pub flowchart: FlowchartLayoutConfig,
     pub look: crate::ir::DiagramLook,
@@ -801,6 +809,7 @@ impl Default for LayoutConfig {
             c4: C4Config::default(),
             pie: PieConfig::default(),
             packet: PacketConfig::default(),
+            kanban: KanbanConfig::default(),
             treemap: TreemapConfig::default(),
             flowchart: FlowchartLayoutConfig::default(),
             look: crate::ir::DiagramLook::default(),
@@ -1496,6 +1505,7 @@ struct ConfigFile {
     flowchart: Option<FlowchartConfig>,
     pie: Option<PieConfigFile>,
     packet: Option<PacketConfig>,
+    kanban: Option<KanbanConfig>,
     requirement: Option<RequirementConfigFile>,
     mindmap: Option<MindmapConfigFile>,
     #[serde(rename = "gitGraph")]
@@ -1776,6 +1786,10 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
 
     if let Some(packet) = parsed.packet {
         config.layout.packet = packet;
+    }
+
+    if let Some(kanban) = parsed.kanban {
+        config.layout.kanban = kanban;
     }
 
     if let Some(flow) = parsed.flowchart {

@@ -55,6 +55,7 @@ pub(super) fn compute_kanban_layout(
         .map(|label| label.height)
         .fold(25.0_f32, f32::max);
     let mut nodes = BTreeMap::new();
+    let mut cards = BTreeMap::new();
     let mut columns = Vec::new();
     let mut max_height = 50.0_f32;
 
@@ -69,7 +70,25 @@ pub(super) fn compute_kanban_layout(
             // Mermaid reserves a fixed-width card and wraps its title against
             // the 175 px label limit rather than sizing the card to its text.
             let label = measure_kanban_label(&node.label, CARD_WIDTH - 10.0, theme);
-            let height = label.height + 20.0;
+            let metadata = graph.kanban_tasks.get(id).cloned().unwrap_or_default();
+            let ticket = measure_kanban_label(&metadata.ticket, CARD_WIDTH - 10.0, theme);
+            let assigned = measure_kanban_label(&metadata.assigned, CARD_WIDTH - 10.0, theme);
+            let height = label.height + 20.0 + ticket.height.max(assigned.height) / 2.0;
+            let ticket_url = config
+                .kanban
+                .ticket_base_url
+                .as_ref()
+                .filter(|url| !url.is_empty() && !metadata.ticket.is_empty())
+                .map(|url| url.replace("#TICKET#", &metadata.ticket));
+            cards.insert(
+                id.clone(),
+                KanbanCardLayout {
+                    ticket,
+                    assigned,
+                    priority: metadata.priority,
+                    ticket_url,
+                },
+            );
             let style = resolve_node_style(id, graph);
             let mut item = build_node_layout(node, label, CARD_WIDTH, height, style, graph);
             item.x = center_x - CARD_WIDTH / 2.0;
@@ -104,6 +123,6 @@ pub(super) fn compute_kanban_layout(
         height: max_height + 20.0,
         acc_title: None,
         acc_descr: None,
-        diagram: DiagramData::Kanban,
+        diagram: DiagramData::Kanban(cards),
     }
 }

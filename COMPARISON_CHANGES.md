@@ -4890,3 +4890,69 @@ All 422 Rust SVG/PNG pairs regenerated successfully. The 419 non-Kanban SVGs are
 - Impact inspection: the metadata example retains raw metadata in the title rather than a footer and lacks the orange priority indicator. Its card is 185×140 instead of 185×80; canvas is 220×195 instead of 220×135. The full board now shares the reference 1245 px width and six-column placement, but its height is 389 instead of 293; raw metadata inflates several cards, and anonymous labels still appear as [In/[Create. These existing parser/footer gaps remain outside the selected basic-board scope.
 - cargo build --release passed in 14.07 seconds with 33 warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Only the three Kanban SVGs changed; all 419 other SVGs are byte-for-byte unchanged from the pre-edit snapshot.
 - No test suite was run and no test files were edited, per the svg-parity skill. Existing JS goldens were used. Saved all three updated side-by-side review images as <fixture>-parity.png in the ignored comparison-output folder.
+
+## kanban-task-with-metadata — Pass 1 findings — 2026-10-07T00:13:03+00:00
+
+### Pass 1 — Kanban task with metadata
+
+**Visual appearance**
+
+- Rust prints the metadata syntax as extra task lines. JS places `MC-2037` at the lower left and `knsv` at the lower right.
+- Rust’s card is 185×140 instead of 185×80; its canvas is 220×195 instead of 220×135.
+- The orange priority indicator is missing.
+- The task title starts about 7 SVG units too low.
+
+**Structural differences**
+
+- Ticket, assignee, and priority are stored in Rust’s label text instead of separate fields.
+
+**Visual defects**
+
+- The raw metadata makes the card visibly taller and changes its layout. These four issue categories prevent a visual match.
+
+Validated Cargo.toml, both selected SVGs, the reference source, and the sibling Mermaid checkout. Read both SVGs directly and inspected the existing side-by-side browser rendering before editing. Read Mermaid kanbanItem.ts, kanbanDb.ts and kanbanRenderer.ts through the sibling Git checkout.
+
+- Both layouts have a single column containing a single card, but the canvas aspect ratio is 1.128 in Rust versus 1.630 in JS. The card is 75 percent too tall and the canvas is 44.4 percent too tall. Card height/column height is 140/175=0.800 versus 80/115=0.696. Widths and horizontal insets already agree (185/200=0.925 and 7.5/185=0.041).
+- Golden column rectangle is (100,-300,200,115), card rectangle is (107.5,-275,185,80). Rust column/card heights are 175/140. Golden task title occupies a 175×48 line box starting at (117.5,-271). Ticket line box starts at (117.5,-223), assignee line box at (251.375,-223). Rust places its first title baseline at y=-247.5 and then adds 24 px for each literal metadata line.
+- Golden priority indicator is an orange 4 px line from (109.5,-273) to (109.5,-197). Rust has no indicator. There are no connector edges or bidirectional labels in this fixture; all connectors checks are inapplicable.
+- The task label fits horizontally, and there is no separate clipping, shape-boundary overlap or invisible-text issue. #333 text on white has approximately 12.6:1 contrast. The dominant defect is the wrong vertical arrangement and the presence of metadata syntax as visible text.
+- The shared Kanban path also affects the basic and full-board fixtures. Anonymous labels and ticket-link configuration in the full board will be considered while correcting metadata handling; all three will be inspected after rendering.
+
+## kanban-task-with-metadata — Changes applied — 2026-10-07T00:16:24+00:00
+
+- src/ir.rs — retain ticket, assignee and priority as dedicated Kanban metadata instead of adding syntax to the label.
+- src/parser.rs — parse YAML metadata and label overrides, preserve complete anonymous bracketed labels, and keep repeated task ids distinct. Read Mermaid kanbanDb.ts for field handling.
+- src/layout/types.rs — carry measured footer labels and optional ticket URLs in the dedicated Kanban layout.
+- src/layout/kanban.rs — measure title/footer independently and use the reference half-footer height adjustment for card height.
+- src/config.rs and src/cli.rs — accept kanban.ticketBaseUrl from config files, YAML frontmatter and init directives.
+- src/render.rs — pass the dedicated card metadata through the Kanban render path.
+- src/render/kanban.rs — place ticket/assignee at opposite footer edges, draw the reference priority colors and 4 px stripes, and underline linked tickets. Center the title/footer using Mermaid's height adjustment; snap native text baselines to whole pixels based on the browser comparison.
+- One source pass, eight source files edited. No test files or package files were changed. Read kanbanItem.ts for exact title/footer transforms, priority colors and stripe geometry. A local browser probe measured the golden HTML line box and compared native baseline placements before choosing the source changes.
+
+## kanban-task-with-metadata — Pass 2 findings — 2026-10-07T00:17:42+00:00
+
+### Pass 2 — Kanban task with metadata
+
+**Visual appearance**
+
+- **Visual match: yes.** The title, footer, orange priority stripe, and card proportions now look like JS.
+- The canvas is 220×135 and the card is 185×80. The full board also matches JS’s 1245×293 dimensions, with complete anonymous labels and underlined ticket links.
+
+**Structural differences**
+
+- Rust uses native SVG text and links; JS uses HTML labels. Small text rasterization differences remain at enlarged scales.
+
+**Visual defects**
+
+- No visible overlap, overflow, clipping, or unreadable text remains in the selected comparison. All four reported issues are addressed.
+
+All 422 Rust SVG/PNG pairs regenerated successfully. Only the three Kanban SVGs changed; the other 419 are unchanged. I’m saving the review images and committing this iteration.
+
+### Verification details
+
+- Re-read the freshly rendered Rust SVG and inspected all three side-by-side Kanban browser images. The metadata card now has the reference column rectangle (100,-300,200,115), card rectangle (107.5,-275,185,80), orange stripe from (109.5,-273) to (109.5,-197), and matching 4 px stripe width. Canvas aspect ratio is 220/135=1.630; card height/column height is 80/115=0.696 in both engines.
+- Title line box starts 4 px below the card top, wraps to two 24 px lines, and occupies 48 px. The footer follows the title at y=-223, with ticket at x=117.5 and assignee ending at x=282.5 (10 px card inset). Labels fit with the reference margins. There are no connector edges or bidirectional labels. Text remains #333 on white/light green, with no invisible text or boundary overlap.
+- The full board's six column heights are now 152, 223, 91, 152, 273 and 103, matching JS. All ten card positions and heights match the reference. Its 1245×293 viewBox matches JS; In progress and Create Documentation are complete. Ticket URLs substitute MC-2038, MC-2036 and MC-2037 into the configured base URL, with visible underlines. Orange, light-blue and red priority stripes match the reference. The basic board preserves 220×99 geometry and now has closer text alignment.
+- Native SVG text baselines are snapped to 17 px within a default 24 px line box. The local HTML baseline probe reports a fractional 17.5 px baseline; image inspection motivated the native placement. Native SVG and HTML rasterization can differ slightly when scaled; this is not a claim of pixel-identical output.
+- cargo build --release passed in 10.96 seconds with 33 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Only the three Kanban SVGs changed; all 419 other SVGs are byte-for-byte unchanged from the pre-edit snapshot.
+- No test suite was run and no test files were edited, per the svg-parity skill. Existing JS goldens were used. Updated all three ignored side-by-side review images and all Rust gallery exports. Exactly one source fix pass was performed.

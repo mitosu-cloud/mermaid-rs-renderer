@@ -510,6 +510,13 @@ sequenceDiagram
 }
 
 fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
+    if let Some(url) = init
+        .get("kanban")
+        .and_then(|v| v.get("ticketBaseUrl"))
+        .and_then(|v| v.as_str())
+    {
+        config.layout.kanban.ticket_base_url = Some(url.to_string());
+    }
     if let Some(overrides) = init.get("packet").and_then(|v| v.as_object()) {
         // Preserve config-file values for options omitted by an init directive.
         if let Ok(mut value) = serde_json::to_value(&config.layout.packet) {

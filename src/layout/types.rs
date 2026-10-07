@@ -575,7 +575,7 @@ pub enum DiagramData {
     Pie(PieData),
     Packet(PacketLayout),
     Radar(crate::ir::RadarData),
-    Kanban,
+    Kanban(BTreeMap<String, KanbanCardLayout>),
     Quadrant(QuadrantLayout),
     Gantt(GanttLayout),
     Sankey(SankeyLayout),
@@ -589,6 +589,14 @@ pub enum DiagramData {
     Ishikawa(IshikawaLayout),
     Wardley(WardleyLayout),
     Error(ErrorLayout),
+}
+
+#[derive(Debug, Clone)]
+pub struct KanbanCardLayout {
+    pub ticket: TextBlock,
+    pub assigned: TextBlock,
+    pub priority: Option<String>,
+    pub ticket_url: Option<String>,
 }
 
 #[derive(Debug, Clone)]

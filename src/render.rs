@@ -74,7 +74,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             width = width.max(1.0);
             height = height.max(1.0);
             (width, height, 0.0, 0.0, width, height)
-        } else if matches!(layout.diagram, DiagramData::Kanban) {
+        } else if matches!(layout.diagram, DiagramData::Kanban(_)) {
             // Kanban places its first 200 px column at (100, -300), with
             // 10 px gallery padding on each side of the content bounds.
             (
@@ -231,7 +231,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             width_attr = "100%".to_string();
             height_attr.clear();
             style_attr = format!(" style=\"max-width: {viewbox_width}px;{preferred_ratio_style}\"");
-        } else if matches!(layout.diagram, DiagramData::Kanban) {
+        } else if matches!(layout.diagram, DiagramData::Kanban(_)) {
             width_attr = "100%".to_string();
             height_attr.clear();
             style_attr = format!(
@@ -330,8 +330,8 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         ));
     }
 
-    if matches!(layout.diagram, DiagramData::Kanban) {
-        svg.push_str(&kanban::render_kanban(layout, theme, config));
+    if let DiagramData::Kanban(ref cards) = layout.diagram {
+        svg.push_str(&kanban::render_kanban(layout, cards, theme, config));
         svg.push_str("</svg>");
         return svg;
     }
