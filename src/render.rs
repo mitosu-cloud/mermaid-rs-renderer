@@ -6579,6 +6579,50 @@ fn render_er_node(
     config: &LayoutConfig,
 ) -> String {
     let (title, attrs) = parse_er_attributes(&node.label.lines);
+    let dash = node
+        .style
+        .stroke_dasharray
+        .as_deref()
+        .map(|value| format!(" stroke-dasharray=\"{}\"", escape_xml(value)))
+        .unwrap_or_default();
+    if attrs.is_empty() {
+        let mut svg = format!(
+            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}/>",
+            node.x,
+            node.y,
+            node.width,
+            node.height,
+            node.style
+                .fill
+                .as_deref()
+                .unwrap_or(&theme.cluster_background),
+            node.style
+                .stroke
+                .as_deref()
+                .unwrap_or(&theme.primary_border_color),
+            node.style.stroke_width.unwrap_or(1.2)
+        );
+        let label = TextBlock {
+            lines: vec![crate::layout::TextLine::plain(title)],
+            width: 0.0,
+            height: 0.0,
+        };
+        svg.push_str(&text_block_svg_anchor(
+            node.x + node.width / 2.0,
+            node.y + node.height / 2.0,
+            &label,
+            theme,
+            config,
+            "middle",
+            Some(
+                node.style
+                    .text_color
+                    .as_deref()
+                    .unwrap_or(&theme.primary_text_color),
+            ),
+        ));
+        return svg;
+    }
     let font_size = theme.font_size;
     let line_height = font_size * config.label_line_height;
     let header_height = if attrs.is_empty() {
@@ -6595,11 +6639,23 @@ fn render_er_node(
         .as_ref()
         .unwrap_or(&theme.primary_border_color);
     let body_fill = node.style.fill.as_ref().unwrap_or(&theme.background);
-    let header_fill = theme.cluster_background.as_str();
+    let header_fill = node
+        .style
+        .fill
+        .as_deref()
+        .unwrap_or(&theme.cluster_background);
     let grid_color = theme.cluster_border.as_str();
-    let header_text_color = theme.primary_text_color.as_str();
-    let name_text_color = theme.primary_text_color.as_str();
-    let type_text_color = theme.line_color.as_str();
+    let header_text_color = node
+        .style
+        .text_color
+        .as_deref()
+        .unwrap_or(&theme.primary_text_color);
+    let name_text_color = header_text_color;
+    let type_text_color = node
+        .style
+        .text_color
+        .as_deref()
+        .unwrap_or(&theme.line_color);
 
     let x = node.x;
     let y = node.y;
@@ -6609,7 +6665,7 @@ fn render_er_node(
 
     let mut svg = String::new();
     svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"/>",
+        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}/>",
         x,
         y,
         w,

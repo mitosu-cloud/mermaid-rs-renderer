@@ -2482,6 +2482,11 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
+        if line.starts_with("style ") {
+            parse_style_line(line, &mut graph);
+            continue;
+        }
+
         if let Some((
             left,
             right,

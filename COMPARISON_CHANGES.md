@@ -5715,3 +5715,48 @@ Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical 
 
 - Two gap groups decreased to one: box/text proportions and alignment. **Visual match: partial**.
 - All 422 Rust pairs regenerated successfully; only this SVG changed. JS references stayed unchanged.
+
+## batch10-07-er-inline-style — Pass 1 findings — 2026-10-07T05:16:01+00:00
+
+### Iteration 7/10 — `entityRelationshipDiagram-styling-nodes-with-inline-style`, Pass 1
+
+#### Visual appearance
+
+- Rust shows extra boxes containing style text, making a 1139.77 × 205.10 landscape diagram. JS has just two vertically connected entities on a 116 × 285 canvas.
+- JS uses pink and lavender fills, custom borders, and white text for `id2`; Rust ignores those styles.
+- Rust’s entities are about 49 px high versus 84 px. Its relationship label also has an extra bordered background.
+- Labels fit, but the pictures are substantially different.
+
+#### Structural differences
+
+- Style declarations become entities. The ER painter ignores several stored style properties.
+- Rust uses one collinear cubic for the connection; JS uses `M/L/C/C/L`. Both appear straight.
+
+#### Visual defects
+
+- Four gap groups: extra entities/layout, missing styles, entity proportions, and relationship annotations. This pass targets the first two.
+
+## batch10-07-er-inline-style — Changes applied — 2026-10-07T05:16:01+00:00
+
+- `src/parser.rs` — parse ER inline styles as metadata rather than entities.
+- `src/render.rs` — apply ER fill, border width, border dash pattern, and text color; attribute-free entities use a single square rectangle so an overlay cannot hide the custom border.
+
+## batch10-07-er-inline-style — Pass 2 findings — 2026-10-07T05:16:58+00:00
+
+### Iteration 7/10 — `entityRelationshipDiagram-styling-nodes-with-inline-style`, Pass 2
+
+#### Visual appearance
+
+- Rust now shows the two intended entities vertically, with the requested fills, border colors, widths, and white `id2` text.
+- Rust is 87.77 × 163.90 versus JS’s 116 × 285. The entities and connecting gap remain substantially smaller.
+- Rust’s `5 5` dash pattern differs from the golden’s `55` pattern. Its relationship label remains larger and bordered.
+- Labels fit. The diagram is recognizable, but proportions and annotations still visibly differ.
+
+#### Structural differences
+
+- The extra style-text entities are gone. Inline styles now reach the painter.
+
+#### Visual defects
+
+- Four gap groups decreased to three: proportions, relationship annotations, and dash appearance. **Visual match: partial**.
+- Build and all 422 Rust pairs succeeded; JS references stayed unchanged.
