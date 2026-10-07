@@ -5365,6 +5365,11 @@ fn normalize_layout_with_padding(
 
 fn resolve_node_style(node_id: &str, graph: &Graph) -> crate::ir::NodeStyle {
     let mut style = crate::ir::NodeStyle::default();
+    if graph.kind == crate::ir::DiagramKind::Er {
+        if let Some(default_style) = graph.class_defs.get("default") {
+            merge_node_style(&mut style, default_style);
+        }
+    }
 
     if let Some(classes) = graph.node_classes.get(node_id) {
         for class_name in classes {

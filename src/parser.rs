@@ -2386,7 +2386,34 @@ fn parse_er_relation_line(
     Option<crate::ir::EdgeDecoration>,
     crate::ir::EdgeStyle,
 )> {
-    let (relation_part, label) = if let Some((before, after)) = line.split_once(':') {
+    // Class annotations use triple colons. Only a single, unquoted colon
+    // separates the relationship role from its two endpoints.
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut label_at = None;
+    for (index, ch) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && quoted {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            quoted = !quoted;
+        }
+        if ch == ':'
+            && !quoted
+            && (index == 0 || line.as_bytes()[index - 1] != b':')
+            && line.as_bytes().get(index + 1) != Some(&b':')
+        {
+            label_at = Some(index);
+            break;
+        }
+    }
+    let (relation_part, label) = if let Some(index) = label_at {
+        let (before, after) = (&line[..index], &line[index + 1..]);
         let label = after.trim();
         let label = if label.is_empty() {
             None
@@ -2486,6 +2513,14 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
             parse_style_line(line, &mut graph);
             continue;
         }
+        if line.starts_with("classDef ") {
+            parse_class_def(line, &mut graph);
+            continue;
+        }
+        if line.starts_with("class ") {
+            parse_class_line(line, &mut graph);
+            continue;
+        }
 
         if let Some((
             left,
@@ -2498,8 +2533,12 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
             style,
         )) = parse_er_relation_line(line)
         {
+            let (left, left_classes) = split_inline_classes(&left);
+            let (right, right_classes) = split_inline_classes(&right);
             graph.ensure_node(&left, None, Some(crate::ir::NodeShape::RoundRect));
             graph.ensure_node(&right, None, Some(crate::ir::NodeShape::RoundRect));
+            apply_node_classes(&mut graph, &left, &left_classes);
+            apply_node_classes(&mut graph, &right, &right_classes);
             // Don't use start_label/end_label for ER diagrams - crow's foot symbols convey cardinality
             graph.edges.push(crate::ir::Edge {
                 from: left,
@@ -2528,9 +2567,11 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
 
         if let Some(open_idx) = line.find('{') {
             let name = line[..open_idx].trim();
-            let name = strip_quotes(name);
+            let (name, classes) = split_inline_classes(name);
+            let name = strip_quotes(&name);
             if !name.is_empty() {
                 graph.ensure_node(&name, None, Some(crate::ir::NodeShape::RoundRect));
+                apply_node_classes(&mut graph, &name, &classes);
                 current_entity = Some(name.clone());
                 let tail = line[open_idx + 1..].trim();
                 if let Some(close_idx) = tail.find('}') {
@@ -2546,9 +2587,11 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
-        let entity = strip_quotes(line);
+        let (entity, classes) = split_inline_classes(line);
+        let entity = strip_quotes(&entity);
         if !entity.is_empty() {
             graph.ensure_node(&entity, None, Some(crate::ir::NodeShape::RoundRect));
+            apply_node_classes(&mut graph, &entity, &classes);
         }
     }
 

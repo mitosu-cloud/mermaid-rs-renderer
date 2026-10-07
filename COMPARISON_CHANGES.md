@@ -5760,3 +5760,48 @@ Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical 
 
 - Four gap groups decreased to three: proportions, relationship annotations, and dash appearance. **Visual match: partial**.
 - Build and all 422 Rust pairs succeeded; JS references stayed unchanged.
+
+## batch10-08-er-classes — Pass 1 findings — 2026-10-07T05:18:00+00:00
+
+### Iteration 8/10 — `entityRelationshipDiagram-default-class-definition`, Pass 1
+
+#### Visual appearance
+
+- Rust produces a 1962.05 × 264.70 strip with boxes for class declarations and a missing relationship. JS is a 485.69 × 459 branching diagram.
+- JS has pink headers, alternating rows, and red/green class borders. Rust lacks these styles and reverses the attribute columns.
+- Rust’s remaining connection is straight; JS’s two branches curve outward. Rust also displays `::bar : has` as a label.
+- Labels fit, but these are visibly different diagrams.
+
+#### Structural differences
+
+- The label separator splits `:::` class syntax.
+- Class declarations become entities, and the default class is not applied.
+
+#### Visual defects
+
+- Four gap groups: class parsing/graph topology, table appearance, box/text proportions, and connection appearance. This pass targets class parsing and style assignment.
+
+## batch10-08-er-classes — Changes applied — 2026-10-07T05:18:00+00:00
+
+- `src/parser.rs` — distinguish single role separators from inline class annotations; parse ER class definitions/assignments and attach endpoint/declaration classes to the intended entity.
+- `src/layout/mod.rs` — apply the ER default class first, then explicit classes and inline styles.
+
+## batch10-08-er-classes — Pass 2 findings — 2026-10-07T05:18:53+00:00
+
+### Iteration 8/10 — `entityRelationshipDiagram-default-class-definition`, Pass 2
+
+#### Visual appearance
+
+- Rust now has PERSON connected to CAR and HOUSE, with correct role labels and assigned pink/red/green styles.
+- Canvas size improved to 418.54 × 365.50 versus JS’s 485.69 × 459.
+- CAR and HOUSE are still reversed left to right. Rust retains solid pink tables, reversed attribute columns, and straight diagonal connections.
+- Labels fit, but the table and connection appearance remain visibly different.
+
+#### Structural differences
+
+- Class declarations no longer create entities. Both relationships and default/explicit class assignments are preserved.
+
+#### Visual defects
+
+- Four visible gap groups remain: branch ordering, table appearance, proportions, and connections/annotations. **Visual match: partial**.
+- Build and all 422 Rust pairs succeeded; three ER SVGs changed. JS references stayed unchanged.
