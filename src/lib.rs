@@ -101,6 +101,7 @@ pub mod icons;
 pub mod ir;
 pub mod layout;
 pub mod layout_dump;
+mod mindmap_shapes;
 pub mod parser;
 pub mod render;
 mod text_metrics;

@@ -64,6 +64,11 @@ fn mindmap_node_size(
     config: &LayoutConfig,
 ) -> (f32, f32) {
     let mindmap = &config.mindmap;
+    if let Some(outline) =
+        crate::mindmap_shapes::outline(shape, label.width, label.height, mindmap.padding)
+    {
+        return (outline.width(), outline.height());
+    }
     match shape {
         crate::ir::NodeShape::MindmapDefault => (
             label.width + mindmap.padding * 4.0,
@@ -220,6 +225,46 @@ fn place_mindmap_children(
     }
 }
 
+// A connected chain follows COSE's vertical tree arrangement, with the root
+// at the bottom. Use measured outline heights to keep the decorative shapes
+// separated; branching trees retain the existing section placement.
+fn place_mindmap_chain(
+    root: &str,
+    info: &HashMap<String, MindmapNodeInfo>,
+    nodes: &mut BTreeMap<String, NodeLayout>,
+    gap: f32,
+) -> bool {
+    let mut chain = Vec::new();
+    let mut next = Some(root);
+    while let Some(id) = next {
+        let Some(node_info) = info.get(id) else {
+            return false;
+        };
+        if node_info.children.len() > 1 || chain.len() >= nodes.len() {
+            return false;
+        }
+        chain.push(id);
+        next = node_info.children.first().map(String::as_str);
+    }
+    if chain.len() != nodes.len() || chain.len() < 3 {
+        return false;
+    }
+    let mut center_y = 0.0;
+    let mut previous_height = None;
+    for id in chain {
+        let Some(node) = nodes.get_mut(id) else {
+            return false;
+        };
+        if let Some(height) = previous_height {
+            center_y -= (height + node.height) / 2.0 + gap;
+        }
+        node.x = -node.width / 2.0;
+        node.y = center_y - node.height / 2.0;
+        previous_height = Some(node.height);
+    }
+    true
+}
+
 pub(super) fn compute_mindmap_layout(
     graph: &Graph,
     theme: &Theme,
@@ -249,6 +294,34 @@ pub(super) fn compute_mindmap_layout(
             .get(&node.id)
             .map(|n| n.shape)
             .unwrap_or(crate::ir::NodeShape::MindmapDefault);
+        if matches!(
+            shape,
+            crate::ir::NodeShape::MindmapCloud | crate::ir::NodeShape::MindmapBang
+        ) {
+            label.width = label
+                .lines
+                .iter()
+                .map(|line| {
+                    crate::text_metrics::measure_text_width_with_kerning(
+                        &line.text(),
+                        theme.font_size,
+                        &theme.font_family,
+                    )
+                    .unwrap_or_else(|| {
+                        text_width(
+                            &line.text(),
+                            theme.font_size,
+                            &theme.font_family,
+                            config.fast_text_metrics,
+                        )
+                    })
+                })
+                .fold(0.0, f32::max)
+                * config.mindmap.text_width_scale;
+            if config.mindmap.use_max_width {
+                label.width = label.width.min(config.mindmap.max_node_width);
+            }
+        }
         let (width, height) = mindmap_node_size(shape, &label, config);
         let mut style = resolve_node_style(node.id.as_str(), graph);
         let is_root = node.level == 0;
@@ -331,7 +404,11 @@ pub(super) fn compute_mindmap_layout(
     horizontal_gap = (horizontal_gap * density_scale).max(theme.font_size * 1.1);
     vertical_gap = (vertical_gap * density_scale).max(theme.font_size * 0.9);
 
-    if let Some(root_id) = root_id.as_ref() {
+    let placed_chain = root_id.as_ref().is_some_and(|root_id| {
+        config.mindmap.layout_algorithm == "cose-bilkent"
+            && place_mindmap_chain(root_id, &info_map, &mut nodes, vertical_gap)
+    });
+    if !placed_chain && let Some(root_id) = root_id.as_ref() {
         mindmap_subtree_height(
             root_id,
             &info_map,
@@ -410,10 +487,11 @@ pub(super) fn compute_mindmap_layout(
         }
         let parent_level = info_map.get(&edge.from).map(|info| info.level).unwrap_or(0);
         let edge_depth = parent_level + 1;
-        override_style.stroke_width = Some(
-            config.mindmap.edge_depth_base_width
-                + config.mindmap.edge_depth_step * (edge_depth as f32 + 1.0),
-        );
+        let depth_width = config.mindmap.edge_depth_base_width
+            + config.mindmap.edge_depth_step * (edge_depth as f32 + 1.0);
+        // Negative CSS stroke widths are ignored by the browser, exposing
+        // Mermaid's base .edge rule rather than hiding deep connectors.
+        override_style.stroke_width = Some(if depth_width >= 0.0 { depth_width } else { 3.0 });
         edges.push(EdgeLayout {
             from: edge.from.clone(),
             to: edge.to.clone(),
@@ -444,10 +522,12 @@ pub(super) fn compute_mindmap_layout(
     let mut max_x = f32::MIN;
     let mut max_y = f32::MIN;
     for node in nodes.values() {
-        min_x = min_x.min(node.x);
-        min_y = min_y.min(node.y);
-        max_x = max_x.max(node.x + node.width);
-        max_y = max_y.max(node.y + node.height);
+        let (left, top, right, bottom) =
+            crate::mindmap_shapes::node_bounds(node, config.mindmap.padding);
+        min_x = min_x.min(left);
+        min_y = min_y.min(top);
+        max_x = max_x.max(right);
+        max_y = max_y.max(bottom);
     }
     for edge in &edges {
         for point in &edge.points {

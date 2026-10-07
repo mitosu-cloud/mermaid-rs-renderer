@@ -5258,3 +5258,67 @@ All 422 Rust SVG/PNG pairs refreshed successfully. Only the six XY-chart SVGs ch
 - Multi-series bars now overlap in the reference declaration order, preserving the exposed blue portions above the later green bars and hiding the early black line where bars cover it. Its X title/category rows are separate, with no previous overlap. Sales-revenue lines now have the reference plain M/L paths without circular markers. The simplest-line chart's inferred 1..4 X domain and -0.34..2.4 Y domain, fractional ticks and polyline agree with the reference within approximately 0.01 px.
 - Configured chart now honors 900×600 dimensions, red #ff0000 title, 12 px value labels and the plain gray line. A remaining text-measurement difference yields plot-left 82.209 / 74.969 px and bottom-axis y=568 / 570, with title center y=21.75 / 20. Its layout is substantially closer but this specific configured example is not pixel-identical. Exact browser font bounds under custom initialization remain a future comparison gap. Horizontal layouts, legends and explicit numeric X-axis parsing were not extended in this pass.
 - cargo build --release passed in 12.41 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Only six XY SVGs changed; all 416 other SVGs are byte-for-byte unchanged. Seven source files edited, one source pass, no source follow-up after review, no test suite run or test files edited. git diff --check passed.
+
+## mindmap-cloud-shape — Pass 1 findings — 2026-10-07T02:53:30+00:00
+
+### Pass 1 — Mindmap cloud and bang
+
+**Visual appearance**
+
+- Rust produces a horizontal strip; JS produces a vertical chain with the root at the bottom. Cloud aspect ratios differ by **27×**, bang by **22×**.
+- Rust draws rounded boxes instead of cloud and scalloped bang outlines.
+- Labels include IDs and shape delimiters, such as `id)I am a cloud(`.
+- Cloud center spacing is 213 px horizontally versus 134 px vertically in JS. Relative to node height, that is approximately 6.3× versus 1.6×.
+- Both renderers use cubic connector paths, but Rust connects horizontal centers; JS follows the slightly offset vertical chain. Labels fit their current containers.
+
+**Structural differences**
+
+- Decorative outlines are missing, and divider lines appear beneath the boxes.
+- The second connector is 8 px thick instead of 5 px.
+
+**Visual defects**
+
+- **Five visible gaps:** size proportions, layout topology, outlines, label content, and connector thickness.
+- No clipping, overlapping labels, or invisible text was observed. Side by side, these look like different diagrams.
+
+- Validated the selected fixtures and sibling Mermaid checkout; read both raw SVG pairs and inspected browser comparisons. Cloud viewBoxes: Rust 609.694×53.559 versus JS 155.400×369.702; bang: 630.142×53.559 versus 198.363×366.555. JS path sequences are M/L/C/C/L; Rust M/C/C/C/C, both collinear within each segment. JS middle nodes are approximately 12 px to the right of the end nodes. Labels occupy roughly 75–77% of the Rust box widths versus 63% of the cloud and 49% of the bang outline widths, with no observed overflow. White on blue and black on yellow remain high contrast. The two unrelated connectors do not cross.
+- Reference sources: pinned Mermaid mindmapDb parsing/parent/depth rules and COSE-Bilkent setup, plus installed Mermaid cloud/bang builders and COSE radial initialization/force constants. Scope: parse decorative delimiters, construct their reference arcs with accurate outline bounds, preserve raw indentation depth, and improve connected unbranching chains to vertical root-bottom layout. The full COSE-Bilkent algorithm remains beyond this focused pass; any residual lateral offsets/spacing will be reported.
+
+## mindmap-cloud-shape — Changes applied — 2026-10-07T02:57:23+00:00
+
+- src/parser.rs:2811 — recognize )label( / (label( clouds and ))label(( bangs, separating IDs and labels; retain raw relative indentation columns and find parents through the nearest lower indentation rather than dividing depth by two.
+- src/ir.rs:807 and src/lib.rs:97 — retain dedicated mindmap cloud/bang shape variants and register their outline helper.
+- src/mindmap_shapes.rs:1 — construct the reference ten-arc cloud and fourteen-arc bang, including the one-degree ellipse rotation. Calculate exact arc extrema, radii correction and actual outline bounds independently of optional PNG dependencies.
+- src/layout/mindmap.rs:61 — size decorative nodes from actual outlines and measure their labels with font kerning. Lay out connected unbranched chains of three or more nodes vertically, root at bottom, with outline-aware spacing. Keep branching placement intact. Edge thickness uses raw parent depth (11/5 px in the selected fixtures), with the reference base 3 px fallback where CSS depth widths become negative.
+- src/render.rs:112,7414 — draw decorative paths around the label center and include their actual extents in the canvas bounds so lobes cannot be clipped by the nominal label box.
+- Six source files edited in one source pass. This is a targeted chain arrangement, not an implementation of the full COSE force solver. No tests or dependency files edited.
+
+## mindmap-cloud-shape — Pass 2 findings — 2026-10-07T03:01:33+00:00
+
+### Pass 2 — Mindmap cloud and bang
+
+**Visual appearance**
+
+- **Visual match: partial.** Both examples now resemble JS: decorative shapes, clean labels, and vertical chains with the root at the bottom.
+- Rust centers all nodes; JS shifts the middle node about 12 px right. Rust’s center spacing remains 3–4 px shorter.
+- Aspect ratios now differ by about 6% for cloud and 4% for bang, versus 27× and 22× before.
+- Labels fit with comfortable margins. Connectors now have the expected 11/5 px thickness.
+
+**Structural differences**
+
+- The cloud and bang arc outlines are present; the unwanted divider lines are gone.
+- Rust’s vertical cubic paths remain collinear, while JS’s cubic paths follow the lateral offset.
+
+**Visual defects**
+
+- **One visible gap remains:** placement from Mermaid’s force layout.
+- No clipping, label overlap, or invisible text was observed in the selected examples.
+
+Build passed; all **422 Rust SVG/PNG pairs** refreshed. Twelve mindmap SVGs changed; the other 410 are unchanged.
+
+- Re-read both regenerated raw SVGs, inspected both browser comparisons and the mindmap family overview, and measured actual outlines in the browser. Rust cloud canvas 142.706×362.207 versus JS 155.400×369.702 (aspect 0.394 / 0.420); bang 185.164×357.501 versus 198.363×366.555 (0.518 / 0.541). This is now the same vertical size class and topology, with remaining proportions attributable primarily to the lateral force offset and center spacing.
+- Cloud outline bounds measure 123.000×80.834 versus JS 123.208×81.051; bang 165.458×79.265 versus 166.387×80.000. Differences under 1 px reflect configured padding 9.853 versus JS 10 and font measurement. Browser bounds agree with the Rust analytic arc extrema. Both use identical blue/yellow fills and stroke:none; a numerical stroke-width 0 / 1 difference has no visible effect.
+- Rust cloud center steps 130.834 versus JS 134.325 px, and bang 129.265 versus 133.278. Relative to outline height these are about 1.619 / 1.657 and 1.631 / 1.666. Rust middle-node x offset is zero versus JS 12.192 / 11.976 px. Rust edge paths M/C/C/C/C are collinear vertical; JS M/L/C/C/L are collinear diagonal along the offset chain, without an additional outward curve. Node fills cover the interior connector portions.
+- Labels use 16 px text, plain I am a cloud / I am a bang, with approximately 71% / 50% label-to-outline width ratios and more than 10% label-width margins on each side. The outlines have approximately 9.853 px canvas margins. No selected text overflow, overlap, connector crossing or clipping is visible; white on blue and black on yellow remain high contrast.
+- Related circle, hexagon, rounded-square and square chains now have the vertical orientation. Full force placement remains a family-wide gap. Existing hexagon proportions, branching topology, Markdown parsing and icon/decorations treated as nodes remain outside this pass. Comprehensive/basic/unclear-indentation browser images confirm remaining branching layout differences. The classes JS golden is absent, so its side-by-side preview could not load; this is independent of the successful Rust export. The family overview includes all 14 Rust mindmaps and the 13 available JS goldens.
+- cargo build --release passed in 12.00 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Twelve mindmap SVGs changed, 410 other SVGs byte-for-byte unchanged. Six source files edited in one pass; no source follow-up after build or visual review; no test suite run or test files edited. git diff --check passed.

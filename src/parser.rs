@@ -2813,7 +2813,7 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
     graph.kind = DiagramKind::Mindmap;
     graph.direction = Direction::LeftRight;
     let (lines, init_config) = preprocess_input_keep_indent(input)?;
-    let mut stack: Vec<String> = Vec::new();
+    let mut stack: Vec<(usize, String)> = Vec::new();
     let mut base_indent: Option<usize> = None;
     let mut node_index: HashMap<String, usize> = HashMap::new();
 
@@ -2829,11 +2829,8 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
 
         let indent = count_indent(&raw_line);
         let base = *base_indent.get_or_insert(indent);
-        let rel_indent = indent.saturating_sub(base);
-        let mut level = rel_indent / 2;
-        if level > stack.len() {
-            level = stack.len();
-        }
+        // Mermaid keeps indentation columns as depth, including uneven steps.
+        let level = indent.saturating_sub(base);
 
         let (raw_id, label, node_type, classes, md_label) = parse_mindmap_node_token(trimmed);
         let mut id = raw_id;
@@ -2852,9 +2849,8 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
             crate::ir::MindmapNodeType::RoundedRect => crate::ir::NodeShape::RoundRect,
             crate::ir::MindmapNodeType::Rect => crate::ir::NodeShape::Rectangle,
             crate::ir::MindmapNodeType::Hexagon => crate::ir::NodeShape::Hexagon,
-            crate::ir::MindmapNodeType::Cloud | crate::ir::MindmapNodeType::Bang => {
-                crate::ir::NodeShape::RoundRect
-            }
+            crate::ir::MindmapNodeType::Cloud => crate::ir::NodeShape::MindmapCloud,
+            crate::ir::MindmapNodeType::Bang => crate::ir::NodeShape::MindmapBang,
             crate::ir::MindmapNodeType::Default => crate::ir::NodeShape::MindmapDefault,
         };
 
@@ -2867,12 +2863,12 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
             graph.mindmap.root_id = Some(id.clone());
         }
 
-        if level > 0 && stack.len() > level {
-            stack.truncate(level);
+        while stack.last().is_some_and(|(depth, _)| *depth >= level) {
+            stack.pop();
         }
 
         let parent_id = if level > 0 {
-            stack.last().cloned()
+            stack.last().map(|(_, id)| id.clone())
         } else {
             None
         };
@@ -2941,7 +2937,7 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
             stack.clear();
         }
 
-        stack.push(id);
+        stack.push((level, id));
     }
 
     Ok(ParseOutput { graph, init_config })
@@ -2973,7 +2969,7 @@ fn parse_mindmap_node_token(
     let mut node_type = crate::ir::MindmapNodeType::Default;
     let mut md = false;
 
-    let shape_start = trimmed.find(['[', '(', '{']).unwrap_or(0);
+    let shape_start = trimmed.find(['[', '(', ')', '{']).unwrap_or(0);
     if shape_start > 0 && !trimmed[..shape_start].contains(' ') {
         id = trimmed[..shape_start].trim().to_string();
         let raw = trimmed[shape_start..].trim();
@@ -2997,6 +2993,17 @@ fn parse_mindmap_node_token(
 
 fn parse_mindmap_shape(raw: &str) -> Option<(String, crate::ir::MindmapNodeType, bool)> {
     let trimmed = raw.trim();
+    if trimmed.len() >= 4 && trimmed.starts_with("))") && trimmed.ends_with("((") {
+        let (t, md) = strip_quotes_markdown(&trimmed[2..trimmed.len() - 2]);
+        return Some((t, crate::ir::MindmapNodeType::Bang, md));
+    }
+    if trimmed.len() >= 2
+        && (trimmed.starts_with(')') || trimmed.starts_with('('))
+        && trimmed.ends_with('(')
+    {
+        let (t, md) = strip_quotes_markdown(&trimmed[1..trimmed.len() - 1]);
+        return Some((t, crate::ir::MindmapNodeType::Cloud, md));
+    }
     if trimmed.starts_with("((") && trimmed.ends_with("))") {
         let (t, md) = strip_quotes_markdown(&trimmed[2..trimmed.len() - 2]);
         return Some((t, crate::ir::MindmapNodeType::Circle, md));

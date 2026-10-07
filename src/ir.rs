@@ -804,6 +804,8 @@ pub enum NodeShape {
     Asymmetric,
     BlockArrow(BlockArrowDirection),
     MindmapDefault,
+    MindmapCloud,
+    MindmapBang,
     Note,
     Text,
     // Sequence-diagram actor types

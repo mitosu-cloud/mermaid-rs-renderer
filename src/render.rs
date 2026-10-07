@@ -116,10 +116,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let mut max_x = f32::MIN;
             let mut max_y = f32::MIN;
             for node in layout.nodes.values() {
-                min_x = min_x.min(node.x);
-                min_y = min_y.min(node.y);
-                max_x = max_x.max(node.x + node.width);
-                max_y = max_y.max(node.y + node.height);
+                let (left, top, right, bottom) =
+                    crate::mindmap_shapes::node_bounds(node, config.mindmap.padding);
+                min_x = min_x.min(left);
+                min_y = min_y.min(top);
+                max_x = max_x.max(right);
+                max_y = max_y.max(bottom);
             }
             if min_x == f32::MAX {
                 min_x = 0.0;
@@ -7410,6 +7412,20 @@ fn shape_svg_inner(
     let y = node.y;
     let w = node.width;
     let h = node.height;
+    if let Some(outline) = crate::mindmap_shapes::outline(
+        node.shape,
+        node.label.width,
+        node.label.height,
+        config.mindmap.padding,
+    ) {
+        return format!(
+            "<path d=\"{}\" transform=\"translate({:.6},{:.6})\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{}\"{dash}{join}/>",
+            outline.path,
+            x + w / 2.0,
+            y + h / 2.0,
+            node.style.stroke_width.unwrap_or(0.0)
+        );
+    }
     if is_block && let Some(points) = crate::block_shapes::polygon_points(node) {
         let points = points
             .into_iter()
