@@ -6556,3 +6556,44 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - One remaining gap group: connection geometry.
 - **Visual match: partial.** All 422 renders succeeded; JS references were unchanged.
+
+## batch12-05-er-relationship-curves — Pass 1 findings — 2026-10-07T06:12:05+00:00
+
+### Iteration 5/10 — Pass 1
+
+#### Visual appearance
+
+- In `entityRelationshipDiagram-relationships-with-aliases`, Rust is 356 × 285 versus JS’s 351.5 × 285. Entity placement and text fit are close.
+- Both Rust paths look straight despite their cubic commands. JS leaves the top boxes vertically, then curves inward.
+- Rust centers the labels at x=109.3 and 246.7; JS places them at x=58 and 295.8. The rank gap is 1.2 entity heights in both.
+
+#### Structural differences
+
+- Rust uses offset ports and a different curve interpolation instead of JS’s intermediate rank points and basis curves.
+
+#### Visual defects
+
+- Two gap groups: relationship geometry and the PERSON box width. This pass targets relationship geometry.
+
+## batch12-05-er-relationship-curves — Changes applied — 2026-10-07T06:12:05+00:00
+
+- `src/layout/mod.rs`, `src/render.rs` — Route simple adjacent-rank ER forks and joins through rank-gap points, intersect the entity rectangles from those points, anchor labels there, and render ER basis curves with D3’s interpolation. Complex fans, long edges, and cycles retain the existing routes.
+
+## batch12-05-er-relationship-curves — Pass 2 findings — 2026-10-07T06:13:16+00:00
+
+### Iteration 5/10 — Pass 2
+
+#### Visual appearance
+
+- Relationships now leave the top entities vertically and curve inward, with labels spread like JS.
+- Rust is 362 × 285 versus JS’s 351.5 × 285. Labels fit, but PERSON remains slightly wider and Rust adds horizontal margin.
+- The class-styled example also now uses the same curve geometry as JS, with extra canvas width.
+
+#### Structural differences
+
+- Entity sizing and edge bounds still differ slightly.
+
+#### Visual defects
+
+- Two remaining gap groups: entity width and canvas bounds.
+- **Visual match: partial.** All 422 renders succeeded with JS unchanged.

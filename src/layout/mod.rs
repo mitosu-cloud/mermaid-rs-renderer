@@ -1814,6 +1814,10 @@ fn compute_flowchart_layout(
         }
     }
 
+    if graph.kind == crate::ir::DiagramKind::Er {
+        route_er_adjacent_rank_edges(graph, &nodes, &mut routed_points, &mut label_anchors);
+    }
+
     let mut edges = Vec::new();
     for (idx, edge) in graph.edges.iter().enumerate() {
         let label = edge_route_labels[idx].clone();
@@ -2685,6 +2689,82 @@ fn assign_positions_manual(
         }
         for rank_idx in (0..rank_nodes.len()).rev() {
             place_rank(rank_idx, false, nodes);
+        }
+    }
+}
+
+/// Preserve Dagre's intermediate rank point for simple ER forks and joins.
+/// Complex fans, long edges, and cycles retain the obstacle-aware route.
+fn route_er_adjacent_rank_edges(
+    graph: &Graph,
+    nodes: &BTreeMap<String, NodeLayout>,
+    points: &mut [Vec<(f32, f32)>],
+    labels: &mut [Option<(f32, f32)>],
+) {
+    let ids: Vec<String> = graph.nodes.keys().cloned().collect();
+    let ranks = compute_ranks_subset(&ids, &graph.edges, &graph.node_order);
+    let horizontal = is_horizontal(graph.direction);
+    let mut bounds: HashMap<usize, (f32, f32)> = HashMap::new();
+    for id in &ids {
+        let (Some(node), Some(rank)) = (nodes.get(id), ranks.get(id)) else {
+            continue;
+        };
+        let (start, extent) = if horizontal {
+            (node.x, node.width)
+        } else {
+            (node.y, node.height)
+        };
+        let bound = bounds.entry(*rank).or_insert((start, start + extent));
+        bound.0 = bound.0.min(start);
+        bound.1 = bound.1.max(start + extent);
+    }
+    let mut incoming = HashMap::<&str, usize>::new();
+    let mut outgoing = HashMap::<&str, usize>::new();
+    for edge in &graph.edges {
+        *incoming.entry(&edge.to).or_default() += 1;
+        *outgoing.entry(&edge.from).or_default() += 1;
+    }
+    for (index, edge) in graph.edges.iter().enumerate() {
+        let (Some(from_rank), Some(to_rank)) = (ranks.get(&edge.from), ranks.get(&edge.to)) else {
+            continue;
+        };
+        if *to_rank != from_rank + 1 {
+            continue;
+        }
+        let fan_out = outgoing.get(edge.from.as_str()).copied().unwrap_or(0) > 1;
+        let fan_in = incoming.get(edge.to.as_str()).copied().unwrap_or(0) > 1;
+        if fan_out && fan_in {
+            continue;
+        }
+        let (Some(from), Some(to)) = (nodes.get(&edge.from), nodes.get(&edge.to)) else {
+            continue;
+        };
+        let fc = (from.x + from.width / 2.0, from.y + from.height / 2.0);
+        let tc = (to.x + to.width / 2.0, to.y + to.height / 2.0);
+        let main = (bounds[from_rank].1 + bounds[to_rank].0) / 2.0;
+        let cross = if fan_out {
+            if horizontal { tc.1 } else { tc.0 }
+        } else if fan_in {
+            if horizontal { fc.1 } else { fc.0 }
+        } else if horizontal {
+            (fc.1 + tc.1) / 2.0
+        } else {
+            (fc.0 + tc.0) / 2.0
+        };
+        let via = if horizontal {
+            (main, cross)
+        } else {
+            (cross, main)
+        };
+        let intersect = |node: &NodeLayout, center: (f32, f32)| {
+            let dx = via.0 - center.0;
+            let dy = via.1 - center.1;
+            let scale = (node.width / (2.0 * dx.abs())).min(node.height / (2.0 * dy.abs()));
+            (center.0 + dx * scale, center.1 + dy * scale)
+        };
+        points[index] = vec![intersect(from, fc), via, intersect(to, tc)];
+        if edge.label.is_some() {
+            labels[index] = Some(via);
         }
     }
 }

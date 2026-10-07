@@ -1281,7 +1281,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let edge_curve = edge.curve.unwrap_or(config.flowchart.curve);
             let render_points = class_symbol_render_points(edge, layout.kind);
             let d = {
-                let raw = if layout.kind == crate::ir::DiagramKind::Mindmap {
+                let raw = if layout.kind == crate::ir::DiagramKind::Mindmap
+                    || (layout.kind == crate::ir::DiagramKind::Er
+                        && edge_curve == crate::ir::CurveType::Basis)
+                {
                     curve_d3_basis(&render_points)
                 } else {
                     points_to_curved_path(&render_points, edge_curve)
