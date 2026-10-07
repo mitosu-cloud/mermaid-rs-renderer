@@ -308,6 +308,17 @@ pub fn compute_layout_with_metrics(
             event_modeling::compute_event_modeling_layout(graph)
         }
         crate::ir::DiagramKind::Railroad => railroad::compute_railroad_layout(graph),
+        crate::ir::DiagramKind::Agentflow => {
+            let mut flowchart = graph.clone();
+            flowchart.kind = crate::ir::DiagramKind::Flowchart;
+            let mut layout =
+                compute_flowchart_layout(&flowchart, theme, config, Some(&mut stage_metrics));
+            layout.kind = graph.kind;
+            layout
+        }
+        crate::ir::DiagramKind::UseCase => {
+            compute_flowchart_layout(graph, theme, config, Some(&mut stage_metrics))
+        }
         crate::ir::DiagramKind::Class
         | crate::ir::DiagramKind::State
         | crate::ir::DiagramKind::Er
@@ -484,16 +495,23 @@ fn compute_flowchart_layout(
     let mut state_height_count = 0usize;
 
     for node in graph.nodes.values() {
+        let node_theme = (graph.kind == crate::ir::DiagramKind::UseCase)
+            .then(|| crate::usecase::node_theme(&graph.usecase, &node.id, theme));
+        let theme = node_theme.as_ref().unwrap_or(theme);
         // Iter 269: state diagram labels render via foreignObject HTML in JS
         // and never auto-wrap on character count — only explicit <br/> / \n
         // breaks lines. Disable the 22-char auto-wrap for state nodes so
         // labels like "Your state with spaces in it" stay on one line.
         let auto_wrap = !matches!(
             graph.kind,
-            crate::ir::DiagramKind::State | crate::ir::DiagramKind::Er
+            crate::ir::DiagramKind::State
+                | crate::ir::DiagramKind::Er
+                | crate::ir::DiagramKind::UseCase
         );
-        let label = if node.markdown_label {
+        let mut label = if node.markdown_label {
             measure_markdown_label(&node.label, theme, &label_config)
+        } else if graph.kind == crate::ir::DiagramKind::UseCase {
+            crate::usecase::text_block(&decode_mermaid_entities(&node.label), theme, &label_config)
         } else if has_html_formatting(&node.label) {
             let normalized = normalize_html_label(&node.label);
             measure_markdown_label(&normalized, theme, &label_config)
@@ -503,7 +521,11 @@ fn compute_flowchart_layout(
             } else {
                 measure_label_with_font_size(
                     &node.label,
-                    measure_font_size,
+                    if graph.kind == crate::ir::DiagramKind::UseCase {
+                        theme.font_size
+                    } else {
+                        measure_font_size
+                    },
                     &label_config,
                     auto_wrap,
                     theme.font_family.as_str(),
@@ -513,6 +535,34 @@ fn compute_flowchart_layout(
         let label_empty = label.lines.len() == 1 && label.lines[0].text().trim().is_empty();
         let (mut width, mut height) =
             shape_size(node.shape, &label, &effective_config, theme, graph.kind);
+        let mut stereotype = graph
+            .usecase
+            .nodes
+            .get(&node.id)
+            .and_then(|details| details.stereotype.as_ref())
+            .map(|value| measure_label(&format!("«{value}»"), theme, &label_config));
+        if graph.kind == crate::ir::DiagramKind::UseCase {
+            let weight = resolve_node_style(&node.id, graph)
+                .font_weight
+                .or_else(|| crate::usecase::font_weight(&graph.usecase, &node.id));
+            if weight.as_deref().is_some_and(|value| {
+                value == "bold" || value.parse::<u16>().is_ok_and(|value| value >= 600)
+            }) {
+                crate::usecase::measure_bold(&mut label, theme);
+                if let Some(stereotype) = stereotype.as_mut() {
+                    crate::usecase::measure_bold(stereotype, theme);
+                }
+            }
+            (width, height) = crate::usecase::node_size(
+                &graph.usecase,
+                &node.id,
+                node.shape,
+                &label,
+                stereotype.as_ref(),
+                theme,
+                &label_config,
+            );
+        }
         if graph.kind == crate::ir::DiagramKind::State
             && label_empty
             && matches!(
@@ -536,10 +586,29 @@ fn compute_flowchart_layout(
             }
         }
         let style = resolve_node_style(node.id.as_str(), graph);
-        nodes.insert(
-            node.id.clone(),
-            build_node_layout(node, label, width, height, style, graph),
-        );
+        let mut node_layout = build_node_layout(node, label, width, height, style, graph);
+        if node.shape == crate::ir::NodeShape::Image {
+            let (image_width, image_height) =
+                crate::image_shape::dimensions(node, &node_layout.label);
+            let label_height = if node_layout
+                .label
+                .lines
+                .iter()
+                .any(|line| !line.text().is_empty())
+            {
+                node_layout.label.height + 8.0
+            } else {
+                0.0
+            };
+            node_layout.width = image_width.max(node_layout.label.width);
+            node_layout.height = image_height + label_height;
+            node_layout.img_w = Some(image_width);
+            node_layout.img_h = Some(image_height);
+        }
+        if graph.kind == crate::ir::DiagramKind::UseCase {
+            node_layout.sub_label = stereotype;
+        }
+        nodes.insert(node.id.clone(), node_layout);
     }
 
     if graph.kind == crate::ir::DiagramKind::State && !state_marker_ids.is_empty() {
@@ -659,6 +728,14 @@ fn compute_flowchart_layout(
     // Pre-measure all edge labels once (reused across layout, routing, and edge construction).
     let measure_edge_field = |field: &Option<String>, markdown_label: bool| -> Option<TextBlock> {
         field.as_ref().map(|label| {
+            if graph.kind == crate::ir::DiagramKind::UseCase {
+                let theme = crate::usecase::node_theme(&graph.usecase, "", theme);
+                return if markdown_label {
+                    measure_markdown_label(label, &theme, config)
+                } else {
+                    crate::usecase::text_block(&decode_mermaid_entities(label), &theme, config)
+                };
+            }
             if graph.kind == crate::ir::DiagramKind::Er {
                 let mut label_theme = theme.clone();
                 label_theme.font_size = 14.0;
@@ -2073,7 +2150,10 @@ fn compute_flowchart_layout(
         height,
         acc_title: None,
         acc_descr: None,
-        diagram: DiagramData::Graph { state_notes },
+        diagram: DiagramData::Graph {
+            state_notes,
+            usecase: (graph.kind == crate::ir::DiagramKind::UseCase).then(|| graph.usecase.clone()),
+        },
     }
 }
 
@@ -2252,6 +2332,7 @@ fn assign_positions_manual(
                     img: None,
                     img_w: None,
                     img_h: None,
+                    img_pos: None,
                     sub_label: None,
                     is_treemap_leaf: false,
                 },
@@ -2372,6 +2453,7 @@ fn assign_positions_manual(
                         img: None,
                         img_w: None,
                         img_h: None,
+                        img_pos: None,
                         sub_label: None,
                         is_treemap_leaf: false,
                     },
@@ -5006,7 +5088,7 @@ fn apply_preferred_aspect_ratio_layout(layout: &mut Layout, config: &LayoutConfi
         sub.width *= scale_x;
         sub.height *= scale_y;
     }
-    if let DiagramData::Graph { state_notes } = &mut layout.diagram {
+    if let DiagramData::Graph { state_notes, .. } = &mut layout.diagram {
         for note in state_notes {
             note.x *= scale_x;
             note.y *= scale_y;
@@ -5024,7 +5106,7 @@ fn apply_preferred_aspect_ratio_layout(layout: &mut Layout, config: &LayoutConfi
         &layout.edges,
         edge_margin_cap,
     );
-    if let DiagramData::Graph { state_notes } = &layout.diagram {
+    if let DiagramData::Graph { state_notes, .. } = &layout.diagram {
         for note in state_notes {
             max_x = max_x.max(note.x + note.width);
             max_y = max_y.max(note.y + note.height);
@@ -5606,6 +5688,7 @@ fn build_node_layout(
         img: node.img.clone(),
         img_w: node.img_w,
         img_h: node.img_h,
+        img_pos: node.img_pos.clone(),
         sub_label: None,
         is_treemap_leaf: false,
     }
@@ -8022,6 +8105,7 @@ fn build_subgraph_layouts(
         let extra_width = width - base_width;
 
         subgraphs.push(SubgraphLayout {
+            id: sub.id.clone(),
             label: sub.label.clone(),
             label_block,
             nodes: sub.nodes.clone(),
@@ -8406,6 +8490,15 @@ fn shape_size(
             width += height / 4.0;
         }
         crate::ir::NodeShape::Subroutine => {}
+        crate::ir::NodeShape::ReferenceDocument => {
+            // A reference document has a horizontal body and a wave below it.
+            width *= 1.1;
+            height *= 1.25;
+        }
+        crate::ir::NodeShape::CollapsedGroup => {
+            width = width.max(80.0);
+            height += 28.0;
+        }
         crate::ir::NodeShape::SmallCircle | crate::ir::NodeShape::FilledCircle => {
             // Fixed 14×14 matching mermaid-js (stateStart.ts / filledCircle.ts).
             width = 14.0;
@@ -8650,6 +8743,7 @@ mod tests {
             img: None,
             img_w: None,
             img_h: None,
+            img_pos: None,
             sub_label: None,
             is_treemap_leaf: false,
         }

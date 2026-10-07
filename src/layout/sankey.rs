@@ -264,6 +264,7 @@ pub(super) fn compute_sankey_layout(graph: &Graph, theme: &Theme, config: &Layou
                 img: None,
                 img_w: None,
                 img_h: None,
+                img_pos: None,
                 sub_label: None,
                 is_treemap_leaf: false,
             },

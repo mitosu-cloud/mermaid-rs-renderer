@@ -146,6 +146,7 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
                 img: None,
                 img_w: None,
                 img_h: None,
+                img_pos: None,
                 sub_label: None,
                 is_treemap_leaf: false,
             },

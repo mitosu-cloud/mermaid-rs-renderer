@@ -4,7 +4,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::{HashMap, VecDeque};
 
+mod agentflow;
+mod extended;
 mod railroad;
+mod usecase;
 
 type NodeTokenParts = (
     String,
@@ -60,10 +63,9 @@ pub struct ParseOutput {
 }
 
 pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
-    if let Some(kind) = detect_unimplemented_diagram(input) {
-        anyhow::bail!("Mermaid diagram type '{kind}' is not implemented");
-    }
     match detect_diagram_kind(input) {
+        DiagramKind::UseCase => usecase::parse(input),
+        DiagramKind::Agentflow => agentflow::parse(input),
         DiagramKind::Class => parse_class_diagram(input),
         DiagramKind::State => parse_state_diagram(input),
         DiagramKind::Sequence => parse_sequence_diagram(input),
@@ -98,23 +100,6 @@ pub fn parse_mermaid(input: &str) -> Result<ParseOutput> {
     }
 }
 
-fn detect_unimplemented_diagram(input: &str) -> Option<&'static str> {
-    let input = extract_yaml_frontmatter(input).1;
-    for line in input.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with("%%") {
-            continue;
-        }
-        let keyword = line.split_whitespace().next()?;
-        return match keyword.to_ascii_lowercase().as_str() {
-            "usecase-beta" => Some("usecase-beta"),
-            "agentflow-beta" => Some("agentflow-beta"),
-            _ => None,
-        };
-    }
-    None
-}
-
 fn detect_diagram_kind(input: &str) -> DiagramKind {
     // Skip YAML frontmatter if present.
     let input = extract_yaml_frontmatter(input).1;
@@ -134,6 +119,12 @@ fn detect_diagram_kind(input: &str) -> DiagramKind {
             continue;
         }
         let lower = without_comment.to_ascii_lowercase();
+        if lower.split_whitespace().next() == Some("usecase-beta") {
+            return DiagramKind::UseCase;
+        }
+        if lower.split_whitespace().next() == Some("agentflow-beta") {
+            return DiagramKind::Agentflow;
+        }
         if lower.starts_with("swimlane-beta") {
             return DiagramKind::Swimlane;
         }
@@ -677,7 +668,10 @@ fn parse_edge_metadata_line(line: &str) -> Option<(String, Option<crate::ir::Cur
             if key == "curve" {
                 curve = crate::ir::CurveType::from_name(val);
             }
-            if key == "shape" {
+            if matches!(
+                key,
+                "shape" | "label" | "img" | "icon" | "w" | "h" | "pos" | "constraint"
+            ) {
                 has_shape = true;
             }
             // "animate" is skipped (not applicable to static output)
@@ -7962,7 +7956,8 @@ fn parse_at_shape_syntax(token: &str) -> Option<AtNodeMeta> {
     if id.is_empty() {
         return None;
     }
-    let block = &token[at_pos + 2..token.len() - 1].trim();
+    let (_, metadata) = extended::metadata(token).ok()?;
+    let metadata = metadata?;
     // Parse key:value pairs from the block (shape, label).
     let mut shape_name: Option<String> = None;
     let mut label: Option<String> = None;
@@ -7972,29 +7967,36 @@ fn parse_at_shape_syntax(token: &str) -> Option<AtNodeMeta> {
     let mut img_pos: Option<String> = None;
     let mut constraint: Option<String> = None;
     let mut icon: Option<String> = None;
-    for pair in block.split(',') {
-        let pair = pair.trim();
-        if let Some(colon) = pair.find(':') {
-            let key = pair[..colon].trim().trim_matches('"').trim_matches('\'');
-            let val = pair[colon + 1..]
-                .trim()
-                .trim_matches('"')
-                .trim_matches('\'');
-            match key {
-                "shape" => shape_name = Some(val.to_string()),
-                "label" => label = Some(val.to_string()),
-                "img" => img = Some(val.to_string()),
-                "w" => img_w = val.parse().ok(),
-                "h" => img_h = val.parse().ok(),
-                "pos" => img_pos = Some(val.to_string()),
-                "constraint" => constraint = Some(val.to_string()),
-                "icon" => icon = Some(val.to_string()),
-                _ => {}
-            }
+    for (key, value) in metadata.as_object()? {
+        let val = value
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| value.to_string());
+        let val = val.as_str();
+        match key.as_str() {
+            "shape" => shape_name = Some(val.to_string()),
+            "label" => label = Some(val.to_string()),
+            "img" => img = Some(val.to_string()),
+            "w" => img_w = val.parse().ok(),
+            "h" => img_h = val.parse().ok(),
+            "pos" => img_pos = Some(val.to_string()),
+            "constraint" => constraint = Some(val.to_string()),
+            "icon" => icon = Some(val.to_string()),
+            _ => {}
         }
     }
-    let shape = resolve_shape_name(&shape_name?)?;
-    let label = label.unwrap_or_else(|| id.clone());
+    let shape = if img.is_some() {
+        crate::ir::NodeShape::Image
+    } else {
+        resolve_shape_name(shape_name.as_deref()?)?
+    };
+    let label = label.unwrap_or_else(|| {
+        if img.is_some() {
+            String::new()
+        } else {
+            id.clone()
+        }
+    });
     Some(AtNodeMeta {
         id,
         label,
@@ -8767,14 +8769,6 @@ fn extract_bracket_coords(s: &str) -> Option<(f32, f32)> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn unimplemented_diagrams_report_an_error_instead_of_rendering_as_flowcharts() {
-        for keyword in ["usecase-beta", "agentflow-beta"] {
-            let input = format!("{keyword}\nexample");
-            let error = parse_mermaid(&input).unwrap_err();
-            assert!(error.to_string().contains(keyword));
-        }
-    }
     use crate::ir::DiagramKind;
 
     #[test]

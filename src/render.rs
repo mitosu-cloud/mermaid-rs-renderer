@@ -19,6 +19,7 @@ mod kanban;
 mod packet;
 mod radar;
 mod railroad;
+mod usecase;
 
 fn fit_dimensions_to_preferred_ratio(
     width: f32,
@@ -182,7 +183,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     };
     let is_sequence = seq_data.is_some();
     let is_state = layout.kind == crate::ir::DiagramKind::State;
-    let is_class = layout.kind == crate::ir::DiagramKind::Class;
+    let has_class_markers = matches!(
+        layout.kind,
+        crate::ir::DiagramKind::Class | crate::ir::DiagramKind::UseCase
+    );
     let is_c4 = matches!(layout.diagram, DiagramData::C4(_));
     let has_links = is_c4
         || layout.nodes.values().any(|node| node.link.is_some())
@@ -435,7 +439,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 color, color
             ));
             }
-            if is_class {
+            if has_class_markers {
                 svg.push_str(&format!(
                 "<marker id=\"arrow-class-open-{idx}\" viewBox=\"0 0 20 14\" refX=\"1\" refY=\"7\" markerUnits=\"userSpaceOnUse\" markerWidth=\"20\" markerHeight=\"14\" orient=\"auto\"><path d=\"M 1 1 V 13 L 18 7 Z\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"1,0\"/></marker>",
                 color
@@ -560,6 +564,18 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
     }
 
     for subgraph in &layout.subgraphs {
+        if let DiagramData::Graph {
+            usecase: Some(data),
+            ..
+        } = &layout.diagram
+            && subgraph
+                .id
+                .as_ref()
+                .is_some_and(|id| data.packages.contains(id))
+        {
+            svg.push_str(&usecase::render_package(subgraph, theme, config));
+            continue;
+        }
         let label_empty = subgraph.label.trim().is_empty();
         if let DiagramData::Swimlane { direction } = &layout.diagram {
             let sub_fill = subgraph
@@ -742,7 +758,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 && sub_stroke_width <= 0.0;
             if !invisible {
                 let block_group = layout.kind == crate::ir::DiagramKind::Block;
-                let radius = if block_group { 0.0 } else { 10.0 };
+                let radius = if block_group || layout.kind == crate::ir::DiagramKind::UseCase {
+                    0.0
+                } else {
+                    10.0
+                };
                 let opacity = if block_group {
                     format!(
                         " fill-opacity=\"{}\" stroke-opacity=\"{}\"",
@@ -964,7 +984,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         ));
     }
 
-    if let DiagramData::Graph { state_notes } = &layout.diagram {
+    if let DiagramData::Graph { state_notes, .. } = &layout.diagram {
         for note in state_notes {
             let fill = theme.sequence_note_fill.as_str();
             let stroke = theme.sequence_note_border.as_str();
@@ -1271,6 +1291,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             crate::ir::DiagramKind::Class
             | crate::ir::DiagramKind::State
             | crate::ir::DiagramKind::Block
+            | crate::ir::DiagramKind::UseCase
             | crate::ir::DiagramKind::Er => 1.0,
             _ => 2.0,
         };
@@ -1328,15 +1349,17 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     crate::ir::DiagramKind::State => {
                         format!("marker-end=\"url(#arrow-state-{marker_id})\"")
                     }
-                    crate::ir::DiagramKind::Class => match edge.arrow_end_kind {
-                        Some(crate::ir::EdgeArrowhead::OpenTriangle) => {
-                            format!("marker-end=\"url(#arrow-class-open-{marker_id})\"")
+                    crate::ir::DiagramKind::Class | crate::ir::DiagramKind::UseCase => {
+                        match edge.arrow_end_kind {
+                            Some(crate::ir::EdgeArrowhead::OpenTriangle) => {
+                                format!("marker-end=\"url(#arrow-class-open-{marker_id})\"")
+                            }
+                            Some(crate::ir::EdgeArrowhead::ClassDependency) => {
+                                format!("marker-end=\"url(#arrow-class-dep-{marker_id})\"")
+                            }
+                            None => format!("marker-end=\"url(#arrow-{marker_id})\""),
                         }
-                        Some(crate::ir::EdgeArrowhead::ClassDependency) => {
-                            format!("marker-end=\"url(#arrow-class-dep-{marker_id})\"")
-                        }
-                        None => format!("marker-end=\"url(#arrow-{marker_id})\""),
-                    },
+                    }
                     _ => format!("marker-end=\"url(#arrow-{marker_id})\""),
                 }
             } else {
@@ -1347,15 +1370,17 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     crate::ir::DiagramKind::State => {
                         format!("marker-start=\"url(#arrow-state-{marker_id})\"")
                     }
-                    crate::ir::DiagramKind::Class => match edge.arrow_start_kind {
-                        Some(crate::ir::EdgeArrowhead::OpenTriangle) => {
-                            format!("marker-start=\"url(#arrow-class-open-start-{marker_id})\"")
+                    crate::ir::DiagramKind::Class | crate::ir::DiagramKind::UseCase => {
+                        match edge.arrow_start_kind {
+                            Some(crate::ir::EdgeArrowhead::OpenTriangle) => {
+                                format!("marker-start=\"url(#arrow-class-open-start-{marker_id})\"")
+                            }
+                            Some(crate::ir::EdgeArrowhead::ClassDependency) => {
+                                format!("marker-start=\"url(#arrow-class-dep-start-{marker_id})\"")
+                            }
+                            None => format!("marker-start=\"url(#arrow-start-{marker_id})\""),
                         }
-                        Some(crate::ir::EdgeArrowhead::ClassDependency) => {
-                            format!("marker-start=\"url(#arrow-class-dep-start-{marker_id})\"")
-                        }
-                        None => format!("marker-start=\"url(#arrow-start-{marker_id})\""),
-                    },
+                    }
                     _ => format!("marker-start=\"url(#arrow-start-{marker_id})\""),
                 }
             } else {
@@ -1417,7 +1442,23 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             if let Some(label) = edge.label.as_ref()
                 && let Some((x, y)) = edge.label_anchor
             {
-                if layout.kind == crate::ir::DiagramKind::Er {
+                if let DiagramData::Graph {
+                    usecase: Some(data),
+                    ..
+                } = &layout.diagram
+                {
+                    let label_theme = crate::usecase::node_theme(data, "", theme);
+                    svg.push_str(&format!("<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>", x - label.width / 2.0, y - label.height / 2.0, label.width, label.height, theme.edge_label_background));
+                    svg.push_str(&text_block_svg(
+                        x,
+                        y,
+                        label,
+                        &label_theme,
+                        config,
+                        false,
+                        edge.override_style.label_color.as_deref(),
+                    ));
+                } else if layout.kind == crate::ir::DiagramKind::Er {
                     let fill = crate::theme::adjust_color(&theme.primary_color, -160.0, 0.0, 0.0);
                     svg.push_str(&format!("<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{fill}\" fill-opacity=\"0.5\"/>", x - label.width / 2.0, y - label.height / 2.0, label.width, label.height));
                     let baseline = y - label.height / 2.0
@@ -1712,6 +1753,17 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 }
                 continue;
             }
+            if let DiagramData::Graph {
+                usecase: Some(data),
+                ..
+            } = &layout.diagram
+            {
+                svg.push_str(&usecase::render_node(node, data, theme, config));
+                if node.link.is_some() {
+                    svg.push_str("</a>");
+                }
+                continue;
+            }
             svg.push_str(&shape_svg(node, theme, config, layout.kind));
             if layout.kind != crate::ir::DiagramKind::Er {
                 let divider_line_height = if layout.kind == crate::ir::DiagramKind::Class {
@@ -1737,6 +1789,19 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 center_x -= crate::block_shapes::cylinder_radius(node.height);
             }
             let mut center_y = node.y + node.height / 2.0;
+            if node.shape == crate::ir::NodeShape::Image {
+                center_y = if node.img_pos.as_deref() == Some("t") {
+                    node.y + node.label.height / 2.0
+                } else {
+                    node.y + node.img_h.unwrap_or(60.0) + 8.0 + node.label.height / 2.0
+                };
+            }
+            if node.shape == crate::ir::NodeShape::CollapsedGroup {
+                center_y -= 14.0;
+            }
+            if node.shape == crate::ir::NodeShape::ReferenceDocument {
+                center_y -= node.height * 0.1;
+            }
             if layout.kind == crate::ir::DiagramKind::Block
                 && node.shape == crate::ir::NodeShape::Cylinder
             {
@@ -1872,6 +1937,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     crate::ir::DiagramKind::Block
                         | crate::ir::DiagramKind::Mindmap
                         | crate::ir::DiagramKind::Flowchart
+                        | crate::ir::DiagramKind::Agentflow
                 ) {
                     let baseline_offset =
                         text_metrics::centered_baseline_offset(theme.font_size, &theme.font_family)
@@ -7144,6 +7210,15 @@ fn class_symbol_render_points(
     kind: crate::ir::DiagramKind,
 ) -> Vec<(f32, f32)> {
     let mut points = edge.points.clone();
+    if kind == crate::ir::DiagramKind::UseCase && points.len() >= 2 {
+        if edge.arrow_start_kind == Some(crate::ir::EdgeArrowhead::OpenTriangle) {
+            trim_polyline_endpoint(&mut points, true, CLASS_OPEN_MARKER_EXTENT);
+        }
+        if edge.arrow_end_kind == Some(crate::ir::EdgeArrowhead::OpenTriangle) {
+            trim_polyline_endpoint(&mut points, false, CLASS_OPEN_MARKER_EXTENT);
+        }
+        return points;
+    }
     if kind != crate::ir::DiagramKind::Class || points.len() < 2 {
         return points;
     }
@@ -7264,6 +7339,11 @@ fn shape_svg(
     config: &LayoutConfig,
     kind: crate::ir::DiagramKind,
 ) -> String {
+    let kind = if kind == crate::ir::DiagramKind::Agentflow {
+        crate::ir::DiagramKind::Flowchart
+    } else {
+        kind
+    };
     let mut raw = shape_svg_inner(node, theme, config, kind);
     // If the node has an icon, render it inside the shape
     if let Some(icon_name) = &node.icon {
@@ -7284,9 +7364,22 @@ fn shape_svg(
         let iw = node.img_w.unwrap_or(60.0);
         let ih = node.img_h.unwrap_or(60.0);
         let ix = node.x + (node.width - iw) / 2.0;
-        let iy = node.y + (node.height - ih) / 2.0;
+        let iy = if node.shape == crate::ir::NodeShape::Image {
+            if node.img_pos.as_deref() == Some("t") {
+                node.y + node.height - ih
+            } else {
+                node.y
+            }
+        } else {
+            node.y + (node.height - ih) / 2.0
+        };
+        let aspect = if node.shape == crate::ir::NodeShape::Image {
+            "none"
+        } else {
+            "xMidYMid meet"
+        };
         raw.push_str(&format!(
-            "<image x=\"{ix:.2}\" y=\"{iy:.2}\" width=\"{iw:.2}\" height=\"{ih:.2}\" href=\"{img_url}\" preserveAspectRatio=\"xMidYMid meet\"/>",
+            "<image x=\"{ix:.2}\" y=\"{iy:.2}\" width=\"{iw:.2}\" height=\"{ih:.2}\" href=\"{}\" preserveAspectRatio=\"{aspect}\"/>", escape_xml(img_url)
         ));
     }
     if config.look == crate::ir::DiagramLook::HandDrawn {
@@ -7353,6 +7446,15 @@ fn shape_svg_inner(
         );
     }
     match node.shape {
+        crate::ir::NodeShape::Image => String::new(),
+        crate::ir::NodeShape::Ellipse => format!(
+            "<ellipse cx=\"{:.2}\" cy=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{}\"{dash}{join}/>",
+            x + w / 2.0,
+            y + h / 2.0,
+            w / 2.0,
+            h / 2.0,
+            node.style.stroke_width.unwrap_or(1.0)
+        ),
         crate::ir::NodeShape::BlockArrow(direction) => {
             let points = crate::block_shapes::arrow_points(direction, w, h)
                 .into_iter()
@@ -8038,6 +8140,46 @@ fn shape_svg_inner(
                 "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"{r:.2}\" ry=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
             )
         }
+        crate::ir::NodeShape::ReferenceDocument => {
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let wave = h * 0.2;
+            let body_bottom = y + h - wave;
+            let bottom = y + h;
+            let right = x + w;
+            let middle = x + w / 2.0;
+            let margin = x + w / 22.0;
+            format!(
+                "<path d=\"M {x:.2} {y:.2} H {right:.2} V {body_bottom:.2} C {:.2} {:.2} {:.2} {:.2} {middle:.2} {:.2} C {:.2} {:.2} {:.2} {:.2} {x:.2} {body_bottom:.2} Z\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/><path d=\"M {margin:.2} {y:.2} V {:.2}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{sw}\"/>",
+                x + w * 0.8,
+                body_bottom - wave * 0.35,
+                x + w * 0.65,
+                body_bottom + wave * 0.5,
+                body_bottom + wave * 0.5,
+                x + w * 0.35,
+                bottom,
+                x + w * 0.2,
+                bottom,
+                body_bottom + wave * 0.15,
+            )
+        }
+        crate::ir::NodeShape::CollapsedGroup => {
+            let sw = node.style.stroke_width.unwrap_or(1.0);
+            let separator_y = y + h - config.node_padding_y - 20.0;
+            let dot_y = separator_y + 10.0;
+            let center = x + w / 2.0;
+            let mut shape = format!(
+                "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"10\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}/><line x1=\"{:.2}\" y1=\"{separator_y:.2}\" x2=\"{:.2}\" y2=\"{separator_y:.2}\" stroke=\"{stroke}\" stroke-dasharray=\"3,3\"/>",
+                x + 8.0,
+                x + w - 8.0
+            );
+            for offset in [-10.0, 0.0, 10.0] {
+                shape.push_str(&format!(
+                    "<circle cx=\"{:.2}\" cy=\"{dot_y:.2}\" r=\"2.5\" fill=\"{stroke}\"/>",
+                    center + offset
+                ));
+            }
+            shape
+        }
         crate::ir::NodeShape::LinedDocument => {
             // Document shape with horizontal lines inside.
             let sw = node.style.stroke_width.unwrap_or(1.0);
@@ -8560,6 +8702,7 @@ mod tests {
             img: None,
             img_w: None,
             img_h: None,
+            img_pos: None,
             sub_label: None,
             is_treemap_leaf: false,
         };
@@ -8650,6 +8793,7 @@ mod tests {
             img: None,
             img_w: None,
             img_h: None,
+            img_pos: None,
             sub_label: None,
             is_treemap_leaf: false,
         };

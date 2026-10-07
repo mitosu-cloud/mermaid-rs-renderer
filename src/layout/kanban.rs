@@ -100,6 +100,7 @@ pub(super) fn compute_kanban_layout(
         let height = (y - top + 30.0).max(50.0) + header_height - 25.0;
         max_height = max_height.max(height);
         columns.push(SubgraphLayout {
+            id: column.id.clone(),
             label: column.label.clone(),
             label_block,
             nodes: column.nodes.clone(),

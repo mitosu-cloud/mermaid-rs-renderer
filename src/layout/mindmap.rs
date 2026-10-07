@@ -465,6 +465,7 @@ pub(super) fn compute_mindmap_layout(
                 img: None,
                 img_w: None,
                 img_h: None,
+                img_pos: None,
                 sub_label: None,
                 is_treemap_leaf: false,
             },
@@ -712,6 +713,7 @@ pub(super) fn compute_mindmap_layout(
         acc_title: None,
         acc_descr: None,
         diagram: DiagramData::Graph {
+            usecase: None,
             state_notes: Vec::new(),
         },
     }

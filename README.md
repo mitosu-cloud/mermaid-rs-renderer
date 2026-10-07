@@ -149,15 +149,20 @@ mmdr -i README.md -o ./diagrams/ -e svg
 
 ## Diagram Types
 
-mmdr supports **23 Mermaid diagram types**:
+mmdr supports **33 Mermaid diagram families**, including the new Mermaid 12 use case and agentflow syntaxes:
 
 | Category | Diagrams |
 |:---------|:---------|
-| **Core** | Flowchart, Sequence, Class, State |
-| **Data** | ER Diagram, Pie Chart, XY Chart, Quadrant Chart, Sankey |
+| **Core** | Flowchart, Sequence, Class, State, Use Case |
+| **Data** | ER Diagram, Pie Chart, XY Chart, Quadrant Chart, Sankey, Venn |
 | **Planning** | Gantt, Timeline, Journey, Kanban |
-| **Architecture** | C4, Block, Architecture, Requirement |
-| **Other** | Mindmap, Git Graph, ZenUML, Packet, Radar, Treemap |
+| **Architecture** | C4, Block, Architecture, Requirement, Agentflow |
+| **Other** | Mindmap, Git Graph, ZenUML, Packet, Radar, Treemap, Tree View, Ishikawa, Wardley |
+| **Specialized** | Swimlane, Cynefin, Event Modeling, Railroad |
+
+Use case support includes actor variants, business glyphs, stereotypes, system and package boundaries, UML relationships, notes, and JSON tables. Agentflow support includes nested flows, shared global nodes, connector declarations, task/tool/input/decision/reference-document/action shapes, metadata, and collapsed containers. The comparison suite includes 36 examples from the Mermaid 12.1 documentation.
+
+These families use the native Rust graph layout. Mermaid 12's ELK layout, neo appearance, redux palettes, animated edges, and agentflow semantic diagnostics remain comparison gaps. See [the comparison setup and gap list](tests/mermaid-js-comparison/README.md).
 
 <table>
 <tr>
@@ -289,7 +294,7 @@ Supported:
 
 ## Features
 
-**Diagram types:** `flowchart` / `graph` | `sequenceDiagram` | `classDiagram` | `stateDiagram-v2` | `erDiagram` | `pie` | `gantt` | `journey` | `timeline` | `mindmap` | `gitGraph` | `xychart-beta` | `quadrantChart` | `sankey-beta` | `kanban` | `C4Context` | `block-beta` | `architecture-beta` | `requirementDiagram` | `zenuml` | `packet-beta` | `radar-beta` | `treemap` | `swimlane-beta` | `cynefin-beta` | `eventmodeling` | `railroad-beta` / `railroad-ebnf-beta` / `railroad-abnf-beta` / `railroad-peg-beta` (core grammar subset)
+**Diagram types:** `flowchart` / `graph` | `sequenceDiagram` | `classDiagram` | `stateDiagram-v2` | `erDiagram` | `pie` | `gantt` | `journey` | `timeline` | `mindmap` | `gitGraph` | `xychart-beta` | `quadrantChart` | `sankey-beta` | `kanban` | `C4Context` | `block-beta` | `architecture-beta` | `requirementDiagram` | `zenuml` | `packet-beta` | `radar-beta` | `treemap` | `swimlane-beta` | `cynefin-beta` | `eventmodeling` | `railroad-beta` / `railroad-ebnf-beta` / `railroad-abnf-beta` / `railroad-peg-beta` (core grammar subset) | `venn` | `treeView` | `ishikawa-beta` | `wardley-beta` | `usecase-beta` | `agentflow-beta`
 
 The railroad parser handles named rules, sequences, choices, optional terms, and repetition. It currently rejects ABNF bounded repetition and PEG lookahead. Event modeling currently renders `tf` / `timeframe` statements with inferred links between adjacent frames.
 

@@ -817,7 +817,9 @@ pub(super) fn anchor_point_for_node(node: &NodeLayout, side: EdgeSide, offset: f
     let origin = (cx + perp.0 * clamp, cy + perp.1 * clamp);
 
     match node.shape {
-        crate::ir::NodeShape::Circle | crate::ir::NodeShape::DoubleCircle => {
+        crate::ir::NodeShape::Circle
+        | crate::ir::NodeShape::DoubleCircle
+        | crate::ir::NodeShape::Ellipse => {
             let rx = node.width / 2.0;
             let ry = node.height / 2.0;
             if let Some(point) = ray_ellipse_intersection(origin, dir, (cx, cy), rx, ry) {

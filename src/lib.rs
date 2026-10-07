@@ -55,6 +55,8 @@
 //! ## Supported Diagram Types
 //!
 //! - **Flowcharts** (`flowchart` / `graph`): TD, TB, LR, RL, BT directions
+//! - **Use Case Diagrams** (`usecase-beta`): actors, boundaries, UML relationships, notes, JSON tables
+//! - **Agent Flows** (`agentflow-beta`): nested flows, shared nodes, connectors, metadata, collapsed containers
 //! - **Swimlanes** (`swimlane-beta`): lane based process diagrams
 //! - **Cynefin** (`cynefin-beta`): complexity domains and transitions
 //! - **Event modeling** (`eventmodeling`): timeframes and inferred flows
@@ -99,6 +101,7 @@ pub mod cli;
 pub mod config;
 mod er;
 pub mod icons;
+mod image_shape;
 pub mod ir;
 pub mod layout;
 pub mod layout_dump;
@@ -107,6 +110,7 @@ pub mod parser;
 pub mod render;
 mod text_metrics;
 pub mod theme;
+mod usecase;
 
 // Re-export commonly used types at crate root for ergonomic library usage
 pub use config::{Config, LayoutConfig, RenderConfig};

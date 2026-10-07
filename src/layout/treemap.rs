@@ -59,6 +59,7 @@ pub(super) fn compute_treemap_layout(
         acc_title: None,
         acc_descr: None,
         diagram: DiagramData::Graph {
+            usecase: None,
             state_notes: Vec::new(),
         },
     }
@@ -203,6 +204,7 @@ fn layout_treemap_nodes(
                     img: None,
                     img_w: None,
                     img_h: None,
+                    img_pos: None,
                     sub_label,
                     is_treemap_leaf: is_leaf,
                 },

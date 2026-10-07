@@ -7347,3 +7347,37 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 #### Visual defects
 
 - **0 material gap groups** in this example. No clipping or overflow observed.
+
+## Mermaid 12.1 — upgrade and support audit — 2026-10-07T15:45:13+00:00
+
+## Mermaid 12.1 upgrade and native diagram support
+
+### Discovery and reference refresh
+
+- Verified npm stable releases on 2026-10-07: Mermaid 12.1.0 and Mermaid CLI 12.0.0. Updated both package manifests and lockfiles. Retrieved the official Mermaid 12.1 tag for source inspection without changing the sibling checkout.
+- Mermaid 12 changed default appearance and layout to neo/redux/ELK where applicable. The new references retain those defaults; no legacy settings were forced onto the corpus.
+- Audited the Mermaid detector registry against Rust's 33 diagram families. Use case and agentflow were the two rejected diagram families. Mermaid's info/version diagnostic is excluded from diagram-family coverage.
+- Initial refresh: Rust 422 SVG/PNG pairs, Mermaid 413 pairs; nine older inputs failed in JS. Corrected six edge-ID/property examples and a mindmap class attachment; replaced two unavailable placeholder image URLs with the same embedded 160×80 PNG.
+- Added 24 use case and 12 agentflow examples extracted from the official Mermaid 12.1 documentation, bringing the corpus to 458.
+
+### Native implementation
+
+- Added typed use case data, extended metadata handling, and separate usecase/agentflow parser dispatch. Preserved multiline labels, metadata, accessibility descriptions, and frontmatter configuration.
+- Use case: actor variants, business glyphs, stereotypes, ellipse/rectangular cases, system/package boundaries, associations/include/extend/generalization, notes, ordered JSON tables, and explicit edge styling. Plain strings preserve literal backslashes; class delimiters inside quoted labels/JSON remain content. Scalar arrays display their key once; nested object arrays retain indexed paths. Generalization uses hollow triangles.
+- Agentflow: nested flows, shared global nodes, connector declarations, native shape aliases, collapsed-container indicators and edge redirection, and retained metadata. Reference documents use a horizontal body, left margin, and bottom wave. Prototype keys are removed recursively.
+- Fixed the separate image-node gap uncovered by the refreshed corpus: img-only node declarations were discarded as edge metadata. Complete data URLs now survive metadata parsing, image dimensions participate in layout, captions can be placed above/below, and embedded image aspect-ratio constraints use intrinsic dimensions through the existing PNG backend. No network asset fetching was added.
+- The comparison harness now uses Mermaid CLI's official renderer with a shared browser, records version/output/error metadata, removes stale failed outputs, and returns failure after generating the gallery if any render fails.
+
+### Validation and visual assessment
+
+- Release build succeeded. The library also compiles without default features.
+- 208 tests passed: 199 library tests, the existing fixture-rendering test, and eight integration tests covering all 36 new documentation examples plus targeted semantic/rendering regressions.
+- Final corpus: 458 Rust SVGs and PNGs, 458 Mermaid SVGs and PNGs; 916 SVGs and 916 PNGs total, with no missing/invalid files or render failures.
+- Of the original 422 native SVGs, 414 are byte-for-byte unchanged from the pre-implementation baseline. Eight changed: six repaired edge fixtures and the two formerly blank image fixtures. All 36 new-family examples render.
+- Inspected browser-rendered pairs for usecase basic/business/complete/JSON/UML relationships, agentflow shapes/collapse/worked example, and both image examples, with raw SVG dimensions/markers also checked.
+- Visual match remains partial for simple examples and no for some complex layouts. Rust uses native graph placement and classic themes: actor ordering, branching, isolated connector placement, nested-container spacing, overall aspect ratios, and edge bends differ from ELK. The agentflow worked example remains a tall native layout with its connector above the team, while JS places that connector to the right. Usecase complete remains wider and places the JSON table to the left rather than to the right. Palettes, shadows, fonts, rounding, and JSON cell backgrounds differ. Image content and aspect-ratio sizing now render; neo borders and caption styling still differ.
+- Remaining gaps are documented in tests/mermaid-js-comparison/README.md: ELK, neo/redux, namespace padding/palette/useMaxWidth options, animation and edge minimum length, fonts/icons, external image resolution/wrapping-width options, agentflow semantic tooling, full grammar conformance, and the existing railroad core subset.
+
+Gallery: tests/mermaid-js-comparison/comparison-output/index.html
+
+Final image sizing review: the unconstrained fixture now uses Mermaid 12's 120 px wrapping-width floor (RS viewBox 136×108; JS 136×109). The constrained fixture uses intrinsic 2:1 sizing at 200×100. The final native refresh rendered all 458 SVG/PNG pairs with zero failures and left the latest JS references unchanged. Recorded 2026-10-07T15:46:49+00:00.

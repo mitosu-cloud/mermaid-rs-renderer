@@ -40,6 +40,7 @@ pub(super) fn compute_swimlane_layout(
             lane_of.entry(id.clone()).or_insert(graph.subgraphs.len());
         }
         layout.subgraphs.push(SubgraphLayout {
+            id: None,
             label: String::new(),
             label_block: TextBlock {
                 lines: Vec::new(),

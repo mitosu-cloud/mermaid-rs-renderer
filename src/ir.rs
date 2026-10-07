@@ -20,6 +20,8 @@ pub enum Direction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagramKind {
     Flowchart,
+    UseCase,
+    Agentflow,
     Swimlane,
     Cynefin,
     EventModeling,
@@ -785,11 +787,40 @@ pub struct Graph {
     pub cynefin: CynefinData,
     pub event_modeling: EventModelingData,
     pub railroad: RailroadData,
+    pub usecase: UseCaseData,
+    /// Metadata attached to nodes, edges, and containers by extended diagrams.
+    pub element_metadata: BTreeMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UseCaseActorType {
+    #[default]
+    Normal,
+    Hollow,
+    Awesome,
+    Icon,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UseCaseNodeData {
+    pub actor_type: Option<UseCaseActorType>,
+    pub business: bool,
+    pub stereotype: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UseCaseData {
+    pub nodes: BTreeMap<String, UseCaseNodeData>,
+    pub json_tables: BTreeMap<String, Vec<(String, String)>>,
+    pub packages: std::collections::BTreeSet<String>,
+    pub config: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeShape {
     Rectangle,
+    Ellipse,
+    Image,
     ForkJoin,
     RoundRect,
     Stadium,
@@ -819,24 +850,26 @@ pub enum NodeShape {
     Collections, // collections keyword — stacked rectangles
     Queue,       // queue keyword — cylinder rotated 90 degrees
     // v11.3+ @{shape: ...} shapes
-    NotchRect,       // notch-rect — rectangle with notched corner
-    TagRect,         // tag-rect — rectangle with tag/flag
-    Document,        // doc — document with curled bottom
-    LinedDocument,   // lin-doc — document with lines
-    TagDocument,     // tag-doc — document with tag
-    StackedDocument, // docs — multiple stacked documents
-    WindowPane,      // win-pane — grid/window layout
-    Hourglass,       // hourglass — hourglass/timer shape
-    LightningBolt,   // bolt — event trigger shape
-    BraceLeft,       // brace-l — left brace
-    BraceRight,      // brace-r — right brace
-    Comment,         // comment — callout comment
-    Flag,            // flag — flag shape
-    LeanRight,       // lean-r — lean right parallelogram
-    LeanLeft,        // lean-l — lean left parallelogram
-    OddShape,        // odd — irregular shape
-    LinedCylinder,   // lin-cyl — cylinder with lines
-    CurvedTrapezoid, // curv-trap — curved trapezoid
+    NotchRect,         // notch-rect — rectangle with notched corner
+    TagRect,           // tag-rect — rectangle with tag/flag
+    Document,          // doc — document with curled bottom
+    LinedDocument,     // lin-doc — document with lines
+    ReferenceDocument, // agentflow refdoc — wave bottom and left margin
+    CollapsedGroup,    // collapsed flow — title, separator, and ellipsis
+    TagDocument,       // tag-doc — document with tag
+    StackedDocument,   // docs — multiple stacked documents
+    WindowPane,        // win-pane — grid/window layout
+    Hourglass,         // hourglass — hourglass/timer shape
+    LightningBolt,     // bolt — event trigger shape
+    BraceLeft,         // brace-l — left brace
+    BraceRight,        // brace-r — right brace
+    Comment,           // comment — callout comment
+    Flag,              // flag — flag shape
+    LeanRight,         // lean-r — lean right parallelogram
+    LeanLeft,          // lean-l — lean left parallelogram
+    OddShape,          // odd — irregular shape
+    LinedCylinder,     // lin-cyl — cylinder with lines
+    CurvedTrapezoid,   // curv-trap — curved trapezoid
     // v11.3+ additional shapes
     Cloud,              // cloud — overlapping elliptical arcs
     Triangle,           // tri / extract — pointing up
@@ -1048,6 +1081,8 @@ impl Graph {
             cynefin: CynefinData::default(),
             event_modeling: EventModelingData::default(),
             railroad: RailroadData::default(),
+            usecase: UseCaseData::default(),
+            element_metadata: BTreeMap::new(),
         }
     }
 

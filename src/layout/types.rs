@@ -74,7 +74,8 @@ pub struct NodeLayout {
     pub img: Option<String>,
     pub img_w: Option<f32>,
     pub img_h: Option<f32>,
-    /// Secondary label for treemap leaf nodes (displays the value below the name).
+    pub img_pos: Option<String>,
+    /// Secondary label: a treemap value or a use case stereotype.
     pub sub_label: Option<TextBlock>,
     /// Whether this treemap node is a leaf (no children) — affects label centering.
     pub is_treemap_leaf: bool,
@@ -107,6 +108,7 @@ pub struct EdgeLayout {
 
 #[derive(Debug, Clone)]
 pub struct SubgraphLayout {
+    pub id: Option<String>,
     pub label: String,
     pub label_block: TextBlock,
     pub nodes: Vec<String>,
@@ -581,8 +583,13 @@ pub struct VennLayout {
 
 #[derive(Debug, Clone)]
 pub enum DiagramData {
-    Graph { state_notes: Vec<StateNoteLayout> },
-    Swimlane { direction: Direction },
+    Graph {
+        state_notes: Vec<StateNoteLayout>,
+        usecase: Option<crate::ir::UseCaseData>,
+    },
+    Swimlane {
+        direction: Direction,
+    },
     Cynefin(crate::ir::CynefinData),
     EventModeling(crate::ir::EventModelingData),
     Railroad(crate::ir::RailroadData),

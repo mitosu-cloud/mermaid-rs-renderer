@@ -57,6 +57,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             acc_title: None,
             acc_descr: None,
             diagram: DiagramData::Graph {
+                usecase: None,
                 state_notes: Vec::new(),
             },
         };
@@ -180,6 +181,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
         acc_title: None,
         acc_descr: None,
         diagram: DiagramData::Graph {
+            usecase: None,
             state_notes: Vec::new(),
         },
     }
@@ -394,6 +396,7 @@ fn place_block_cell(
             .map(|sub| sub.nodes.clone())
             .unwrap_or_default();
         subgraphs.push(SubgraphLayout {
+            id: Some(cell.id.clone()),
             label: String::new(),
             label_block: TextBlock {
                 lines: Vec::new(),
