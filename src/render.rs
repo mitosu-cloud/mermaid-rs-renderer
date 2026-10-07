@@ -7604,7 +7604,17 @@ fn shape_svg_inner(
             fill,
             stroke,
             node.style.stroke_width.unwrap_or(1.0),
-            radius = if is_block { 5.0 } else { 10.0 }
+            radius = if kind == crate::ir::DiagramKind::Mindmap {
+                config
+                    .mindmap
+                    .default_corner_radius
+                    .max(0.0)
+                    .min(w.min(h) / 2.0)
+            } else if is_block {
+                5.0
+            } else {
+                10.0
+            }
         ),
         crate::ir::NodeShape::Cylinder => {
             let stroke_width = node.style.stroke_width.unwrap_or(1.0);
@@ -7771,8 +7781,8 @@ fn shape_svg_inner(
             let rd = config
                 .mindmap
                 .default_corner_radius
-                .max(theme.font_size * 0.55)
-                .max(4.0);
+                .max(0.0)
+                .min(w.min(h) / 2.0);
             let inner_h = (h - 2.0 * rd).max(0.0);
             let inner_w = (w - 2.0 * rd).max(0.0);
             let rect_path = format!(
@@ -7791,9 +7801,9 @@ fn shape_svg_inner(
             );
             let line_color = node.style.line_color.as_ref().unwrap_or(stroke);
             let line_width = config.mindmap.divider_line_width;
-            let line_y = y + h - stroke_width.max(0.8);
+            let line_y = y + h;
             svg.push_str(&format!(
-                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"{:.2}\" stroke-opacity=\"0.35\"/>",
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"{:.2}\"/>",
                 x,
                 line_y,
                 x + w,

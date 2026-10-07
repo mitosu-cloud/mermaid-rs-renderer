@@ -122,7 +122,7 @@ impl Default for MindmapConfig {
     fn default() -> Self {
         Self {
             use_max_width: true,
-            padding: 9.853,
+            padding: 10.0,
             max_node_width: 200.0,
             layout_algorithm: "cose-bilkent".to_string(),
             node_spacing: 50.0,

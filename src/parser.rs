@@ -2866,6 +2866,32 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
+        // Decorations belong to the preceding node, regardless of indentation.
+        // They must not enter the parent stack or become diagram vertices.
+        if lower.starts_with("::icon(")
+            && let Some(icon) = trimmed[7..].strip_suffix(')')
+        {
+            if let Some(node) = graph.mindmap.nodes.last_mut() {
+                node.icon = Some(icon.trim().to_string());
+            }
+            continue;
+        }
+        if let Some(classes) = trimmed.strip_prefix(":::") {
+            let classes = classes.trim();
+            let node_id = graph.mindmap.nodes.last_mut().map(|node| {
+                node.class = Some(classes.to_string());
+                node.id.clone()
+            });
+            if let Some(node_id) = node_id {
+                let classes = classes
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                apply_node_classes(&mut graph, &node_id, &classes);
+            }
+            continue;
+        }
+
         let indent = count_indent(&raw_line);
         let base = *base_indent.get_or_insert(indent);
         // Mermaid keeps indentation columns as depth, including uneven steps.
@@ -2937,7 +2963,7 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
             section,
             node_type,
             icon: None,
-            class: None,
+            class: (!classes.is_empty()).then(|| classes.join(" ")),
             children: Vec::new(),
             markdown_label: md_label,
         };

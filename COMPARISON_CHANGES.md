@@ -5383,3 +5383,71 @@ Build passed; all **422 Rust SVG/PNG pairs** refreshed. Three mindmap SVGs chang
 - Two connectors use 11 and 5 px widths. Rust M/C/C/C/C is collinear vertical; JS M/L/C/C/L is collinear along the lateral offsets, with no extra bulge. The interior portions are concealed by the filled rectangles. No selected overlaps, crossings or viewBox clipping were observed. The residual offset and approximately 3.27 px shorter center steps are the same force-layout gap left by the previous decorative-shape iteration.
 - Square-shape horizontal padding is improved: Rust node width now 141.344 versus JS 136.5, instead of the previous 121.344. The remaining 4.844 px difference is from plain fast text measurement; its force offsets also remain. The classes Rust image has wider square boxes with adequate label margins; its JS golden remains unavailable. Its icon/decorations parsing and branching layout gaps are not claimed addressed. The family overview was refreshed and now explicitly marks that unavailable golden.
 - cargo build --release passed in 12.42 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Only mindmap-markdown-strings, mindmap-square-shape and mindmap-classes SVGs changed; all other 419 are byte-for-byte unchanged, including previous cloud/bang, XY and quadrant outputs. Three source files edited in one pass; no source follow-up after build/review, no test suite run or test files edited. git diff --check passed.
+
+## mindmap-icons — Pass 1 findings — 2026-10-07T04:30:15+00:00
+
+### Pass 1 — `mindmap-icons`
+
+#### Visual appearance
+
+- **Aspect and size:** Rust is 757.75 × 167.71; JS is 92.19 × 335.79. Their aspect ratios differ by 16.46×.
+- **Layout:** Rust spreads seven nodes horizontally. JS has four nodes in the vertical order **B → A → Root → C**.
+- **Edges:** Root–A, A–B and Root–C use `M/C…` in Rust versus `M/L/C/C/L` in JS. Both draw collinear connectors; Rust’s wrong node positions change their direction. Three extra connectors lead to icon-name nodes.
+- **Spacing:** Root–A’s boundary gap / node height is about 1.26 in Rust versus 1.57 in JS. Rust also splits A’s children into separate rows.
+- **Label fit:** The labels fit, but plain-text widths differ: B’s container is 40.37 px wide versus 39.06 px in JS.
+- **Summary:** These look like different diagrams. Decoration parsing changes the tree, and the layout does not recognize a simple path whose root is an internal node.
+
+#### Structural differences
+
+- Rust adds nodes labelled `fa fa-book`, `mdi mdi-skull-outline` and `fa fa-twitter`, plus three edges. JS attaches these declarations to existing nodes; its golden SVG displays no icon glyphs.
+- Rust’s default-node corners are 8.8 px versus JS’s 5 px; B’s corners are 10 px versus 5 px.
+- Rust’s bottom dividers are faint and inset, with Root’s divider invisible. JS has opaque dividers at the bottom boundary, including a yellow divider under Root.
+
+#### Visual defects in Rust
+
+- Five visible gap groups: extra decoration nodes, wrong layout and spacing, container widths, corner shapes, and divider styling.
+
+## mindmap-icons — Changes applied — 2026-10-07T04:31:56+00:00
+
+- `src/parser.rs:2869` — Parse standalone icon/class decorations as metadata on the preceding node; preserve the parent stack and exclude decorations from node/edge counts. Retain inline classes in mindmap metadata.
+- `src/layout/mindmap.rs:228` — Recognize connected undirected paths, including a root with two children, and arrange their deepest endpoint above its ancestors. Validate the whole path before moving nodes; retain section placement for branching trees. This approximates the vertical topology without reproducing COSE forces.
+- `src/layout/mindmap.rs:324` — Measure all mindmap labels with their actual font faces and kerning, extending the earlier Markdown/cloud/bang sizing to plain labels.
+- `src/layout/mindmap.rs:377` — Supply the root divider's palette color instead of its invisible outline stroke.
+- `src/config.rs:125` — Restore Mermaid's 10 px default mindmap padding for matching container dimensions and outer margins.
+- `src/render.rs:7607` and `src/render.rs:7781` — Respect the 5 px mindmap corner radius for rounded/default shapes; leave other diagram families' rounded rectangles unchanged.
+- `src/render.rs:7804` — Draw opaque dividers at the bottom boundary instead of faint inset lines.
+
+## mindmap-icons — Pass 2 findings — 2026-10-07T04:34:55+00:00
+
+### Pass 2 — `mindmap-icons`
+
+#### Visual appearance
+
+- **Aspect and size:** Rust is now 92.18 × 326.00 versus JS’s 92.19 × 335.79. Rust remains 2.9% shorter.
+- **Layout:** Rust keeps every node on one vertical axis. Relative to Root, JS offsets A 7.24 px right, B 3.36 px left and C 7.22 px left.
+- **Edges:** Rust uses vertical `M/C` connectors; JS uses diagonal `M/L/C/C/L` connectors. Both are collinear, with no outward curve bulge.
+- **Spacing:** Rust’s center steps are 94/84/84 px versus JS’s 97.18/87.31/87.31 px. Root–A’s boundary gap / node height is 1.47 versus 1.57.
+- **Label fit:** Rust’s text sits about 1 px higher within its containers than JS’s text.
+- **Summary:** The diagrams are now recognizably similar, but Rust still differs in node placement, spacing and text alignment. **Visual match: partial.**
+
+#### Structural differences
+
+- Node positions and connector directions retain the geometry differences above.
+- Browser rendering shows a roughly 1 px upward text offset despite the container widths agreeing within 0.01 px.
+
+#### Visual defects in Rust
+
+- Two visible gaps remain: force-based placement/spacing, and vertical text alignment.
+Verification:
+
+- Release build succeeded in 12.02 seconds with the same 33 existing warnings.
+- Regenerated all 422 Rust SVGs and 422 Rust PNGs successfully. All 14 mindmap SVGs changed; the other 408 SVGs are byte-identical to their pre-pass outputs. No JS golden SVG changed.
+- Read the newly generated selected Rust SVG and visually inspected the browser comparison plus all 14 mindmap fixture cards. No overlapping labels, boundary overflow, clipping, crossed connectors, or invisible labels appeared in the selected diagram.
+- Selected diagram now has four nodes and three edges; the three icon declarations are metadata rather than visible label nodes. The current JS golden contains no icon glyphs, so this pass does not establish icon drawing support.
+- Selected dimensions: Root 72.18 × 34, A 49.44 × 34, B 39.05 × 54, C 49.57 × 34; corresponding JS widths 72.1875 / 49.4375 / 39.0625 / 49.578125. Mindmap corners are 5 px and the dividers are opaque at the bottom boundary.
+- At a consistent browser scale, glyph centers are approximately 0.95–1.09 px higher within Rust's containers than in JS. This newly measured residual is included in Pass 2; source was not edited after the build/render pass.
+- Secondary improvement: mindmap-unclear-indentation now uses the same four-node vertical order as JS, with remaining COSE offsets. Comprehensive/classes diagrams exclude their extra icon-name nodes; branching/basic/default/tidy-tree layouts retain broader spatial differences. mindmap-classes still has no JS golden in this folder, so no visual-match claim is made for it.
+- Secondary square/rounded-square widths now agree with JS label-driven dimensions. Existing cloud/bang/Markdown vertical topology remains intact; all retain small placement differences. Hexagon outlines still differ and are a future gap.
+- Saved selected and family previews beside the ignored generated comparison output. Tests were not run, per the skill.
+
+Review outcome: mindmap-icons improved from five visible gap groups to two; four source files edited in one pass.

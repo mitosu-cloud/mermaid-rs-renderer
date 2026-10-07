@@ -225,38 +225,65 @@ fn place_mindmap_children(
     }
 }
 
-// A connected chain follows COSE's vertical tree arrangement, with the root
-// at the bottom. Use measured outline heights to keep the decorative shapes
-// separated; branching trees retain the existing section placement.
+// Approximate COSE's vertical arrangement for a connected path, including a
+// root with two children. Orient the deepest endpoint above its ancestors;
+// branching trees retain the existing section placement.
 fn place_mindmap_chain(
-    root: &str,
     info: &HashMap<String, MindmapNodeInfo>,
     nodes: &mut BTreeMap<String, NodeLayout>,
     gap: f32,
 ) -> bool {
+    if nodes.len() < 3 {
+        return false;
+    }
+    let mut neighbors: BTreeMap<String, Vec<String>> =
+        nodes.keys().map(|id| (id.clone(), Vec::new())).collect();
+    for (id, node_info) in info {
+        for child in &node_info.children {
+            let Some(adjacent) = neighbors.get_mut(id) else {
+                return false;
+            };
+            adjacent.push(child.clone());
+            let Some(adjacent) = neighbors.get_mut(child) else {
+                return false;
+            };
+            adjacent.push(id.clone());
+        }
+    }
+    if neighbors.values().any(|adjacent| adjacent.len() > 2)
+        || neighbors.values().map(Vec::len).sum::<usize>() != 2 * (nodes.len() - 1)
+    {
+        return false;
+    }
+    let mut next = neighbors
+        .iter()
+        .filter(|(_, adjacent)| adjacent.len() == 1)
+        .max_by_key(|(id, _)| info.get(*id).map(|node| node.level).unwrap_or(0))
+        .map(|(id, _)| id.clone());
     let mut chain = Vec::new();
-    let mut next = Some(root);
+    let mut previous = None;
     while let Some(id) = next {
-        let Some(node_info) = info.get(id) else {
-            return false;
-        };
-        if node_info.children.len() > 1 || chain.len() >= nodes.len() {
+        if chain.len() >= nodes.len() {
             return false;
         }
-        chain.push(id);
-        next = node_info.children.first().map(String::as_str);
+        next = neighbors[&id]
+            .iter()
+            .find(|neighbor| Some(*neighbor) != previous.as_ref())
+            .cloned();
+        chain.push(id.clone());
+        previous = Some(id);
     }
-    if chain.len() != nodes.len() || chain.len() < 3 {
+    if chain.len() != nodes.len() {
         return false;
     }
     let mut center_y = 0.0;
     let mut previous_height = None;
     for id in chain {
-        let Some(node) = nodes.get_mut(id) else {
+        let Some(node) = nodes.get_mut(&id) else {
             return false;
         };
         if let Some(height) = previous_height {
-            center_y -= (height + node.height) / 2.0 + gap;
+            center_y += (height + node.height) / 2.0 + gap;
         }
         node.x = -node.width / 2.0;
         node.y = center_y - node.height / 2.0;
@@ -290,38 +317,43 @@ pub(super) fn compute_mindmap_layout(
                 .filter(|line| !line.is_empty())
                 .collect::<Vec<_>>()
                 .join("\n");
-            let mut label = measure_markdown_label(&normalized, theme, config);
-            let font_size = theme.font_size.max(16.0);
-            label.width = label
-                .lines
-                .iter()
-                .map(|line| {
-                    line.spans
-                        .iter()
-                        .map(|span| {
-                            crate::text_metrics::measure_styled_text_width(
-                                &span.text,
-                                font_size,
-                                &theme.font_family,
-                                span.style.bold,
-                                span.style.italic,
-                            )
-                            .unwrap_or_else(|| {
-                                text_width(
-                                    &span.text,
-                                    font_size,
-                                    &theme.font_family,
-                                    config.fast_text_metrics,
-                                ) * if span.style.bold { 1.07 } else { 1.0 }
-                            })
-                        })
-                        .sum::<f32>()
-                })
-                .fold(0.0, f32::max);
-            label
+            measure_markdown_label(&normalized, theme, config)
         } else {
             measure_label(&label_text, theme, config)
         };
+        // All mindmap shapes size their containers from browser-style font
+        // advances, including plain labels and each Markdown font face.
+        let font_size = if node.markdown_label {
+            theme.font_size.max(16.0)
+        } else {
+            theme.font_size
+        };
+        label.width = label
+            .lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| {
+                        crate::text_metrics::measure_styled_text_width(
+                            &span.text,
+                            font_size,
+                            &theme.font_family,
+                            span.style.bold,
+                            span.style.italic,
+                        )
+                        .unwrap_or_else(|| {
+                            text_width(
+                                &span.text,
+                                font_size,
+                                &theme.font_family,
+                                config.fast_text_metrics,
+                            ) * if span.style.bold { 1.07 } else { 1.0 }
+                        })
+                    })
+                    .sum::<f32>()
+            })
+            .fold(0.0, f32::max);
         label.width *= config.mindmap.text_width_scale;
         if config.mindmap.use_max_width {
             label.width = label.width.min(config.mindmap.max_node_width);
@@ -331,34 +363,6 @@ pub(super) fn compute_mindmap_layout(
             .get(&node.id)
             .map(|n| n.shape)
             .unwrap_or(crate::ir::NodeShape::MindmapDefault);
-        if matches!(
-            shape,
-            crate::ir::NodeShape::MindmapCloud | crate::ir::NodeShape::MindmapBang
-        ) {
-            label.width = label
-                .lines
-                .iter()
-                .map(|line| {
-                    crate::text_metrics::measure_text_width_with_kerning(
-                        &line.text(),
-                        theme.font_size,
-                        &theme.font_family,
-                    )
-                    .unwrap_or_else(|| {
-                        text_width(
-                            &line.text(),
-                            theme.font_size,
-                            &theme.font_family,
-                            config.fast_text_metrics,
-                        )
-                    })
-                })
-                .fold(0.0, f32::max)
-                * config.mindmap.text_width_scale;
-            if config.mindmap.use_max_width {
-                label.width = label.width.min(config.mindmap.max_node_width);
-            }
-        }
         let (width, height) = mindmap_node_size(shape, &label, config);
         let mut style = resolve_node_style(node.id.as_str(), graph);
         let is_root = node.level == 0;
@@ -368,6 +372,9 @@ pub(super) fn compute_mindmap_layout(
             }
             if style.text_color.is_none() {
                 style.text_color = Some(palette.root_text.clone());
+            }
+            if style.line_color.is_none() {
+                style.line_color = Some(pick_palette_color(&palette.section_lines, 0));
             }
         } else if let Some(section) = node.section {
             let index = section + 1;
@@ -441,10 +448,9 @@ pub(super) fn compute_mindmap_layout(
     horizontal_gap = (horizontal_gap * density_scale).max(theme.font_size * 1.1);
     vertical_gap = (vertical_gap * density_scale).max(theme.font_size * 0.9);
 
-    let placed_chain = root_id.as_ref().is_some_and(|root_id| {
-        config.mindmap.layout_algorithm == "cose-bilkent"
-            && place_mindmap_chain(root_id, &info_map, &mut nodes, vertical_gap)
-    });
+    let placed_chain = root_id.is_some()
+        && config.mindmap.layout_algorithm == "cose-bilkent"
+        && place_mindmap_chain(&info_map, &mut nodes, vertical_gap);
     if !placed_chain && let Some(root_id) = root_id.as_ref() {
         mindmap_subtree_height(
             root_id,
