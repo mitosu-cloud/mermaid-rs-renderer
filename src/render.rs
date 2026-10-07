@@ -5068,6 +5068,12 @@ fn render_gitgraph(gitgraph: &GitGraphLayout, theme: &Theme, config: &LayoutConf
     let gg = &config.gitgraph;
     let mut svg = String::new();
     svg.push_str("<g>");
+    if let Some(title) = gitgraph.title.as_deref().filter(|title| !title.is_empty()) {
+        svg.push_str(&format!(
+            "<text class=\"gitTitleText\" x=\"{:.3}\" y=\"{:.3}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"18\" fill=\"{}\">{}</text>",
+            gitgraph.title_x, -gg.title_top_margin, normalize_font_family(&theme.font_family), escape_xml(&theme.primary_text_color), escape_xml(title)
+        ));
+    }
 
     if gg.show_branches {
         for branch in &gitgraph.branches {

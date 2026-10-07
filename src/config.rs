@@ -244,7 +244,7 @@ impl Default for GitGraphConfig {
     fn default() -> Self {
         Self {
             diagram_padding: 8.0,
-            title_top_margin: 22.0,
+            title_top_margin: 25.0,
             use_max_width: true,
             main_branch_name: "main".to_string(),
             main_branch_order: 0.0,

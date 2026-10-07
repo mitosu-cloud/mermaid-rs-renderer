@@ -3868,6 +3868,18 @@ fn parse_gitgraph_diagram(input: &str) -> Result<ParseOutput> {
     let mut graph = Graph::new();
     graph.kind = DiagramKind::GitGraph;
     graph.direction = Direction::LeftRight;
+    // Titles are metadata alongside config, including when config is nested.
+    let trimmed = input.trim_start();
+    if let Some(after_open) = trimmed.strip_prefix("---") {
+        if let Some(close) = after_open.find("\n---") {
+            if let Ok(metadata) = serde_yaml::from_str::<serde_json::Value>(&after_open[..close]) {
+                graph.gitgraph.title = metadata
+                    .get("title")
+                    .and_then(|title| title.as_str())
+                    .map(str::to_string);
+            }
+        }
+    }
     let (lines, init_config) = preprocess_input(input)?;
 
     let mut branch_heads: HashMap<String, Option<String>> = HashMap::new();

@@ -6637,3 +6637,43 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - One remaining gap group: canvas bounds.
 - **Visual match: partial.** All 422 renders succeeded; JS was unchanged.
+
+## batch12-07-git-title-and-bounds — Pass 1 findings — 2026-10-07T06:16:38+00:00
+
+### Iteration 7/10 — Pass 1
+
+#### Visual appearance
+
+- In `gitgraph-example-git-diagram`, Rust omits “Example Git diagram,” which appears above the JS graph.
+- Rust is 475.4 × 187.1 versus JS’s 475.4 × 201.1. Branches and merge curves are similar, and labels fit, but the title and canvas framing differ.
+
+#### Structural differences
+
+- Git frontmatter titles are discarded. Bounds calculations also apply translation and rotation in the wrong order.
+
+#### Visual defects
+
+- Two gap groups: missing title and canvas bounds. This pass targets both parts of the git canvas framing.
+
+## batch12-07-git-title-and-bounds — Changes applied — 2026-10-07T06:16:45+00:00
+
+- `src/ir.rs`, `src/parser.rs`, `src/layout/types.rs`, `src/layout/gitgraph.rs`, `src/config.rs`, `src/render.rs` — Preserve YAML git titles, draw them at JS’s font size and top margin, include title bounds, and apply SVG transforms in the correct order when measuring rotated labels.
+
+## batch12-07-git-title-and-bounds — Pass 2 findings — 2026-10-07T06:17:46+00:00
+
+### Iteration 7/10 — Pass 2
+
+#### Visual appearance
+
+- The title now appears in the same position and size as JS. Rust is 475.4 × 202.7 versus JS’s 475.4 × 201.1; generated commit IDs account for small label-length differences.
+- The stable custom-ID example now has the same 254 × 75.5 canvas and closely matching text placement.
+- Rust’s connection strokes remain visibly thinner in the titled example.
+
+#### Structural differences
+
+- Git connection stroke width is still 6 pixels versus JS’s 8.
+
+#### Visual defects
+
+- One remaining gap group: connection weight.
+- **Visual match: partial.** All 422 renders succeeded with JS unchanged.

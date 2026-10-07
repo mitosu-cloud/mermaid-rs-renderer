@@ -464,6 +464,29 @@ pub(super) fn compute_gitgraph_layout(
         max_y = 1.0;
     }
 
+    let title_x = (min_x + max_x) / 2.0;
+    if let Some(title) = graph
+        .gitgraph
+        .title
+        .as_deref()
+        .filter(|title| !title.is_empty())
+    {
+        let (title_width, title_height) = measure_gitgraph_text(
+            title,
+            18.0,
+            1.0,
+            1.0,
+            &theme.font_family,
+            config.fast_text_metrics,
+        );
+        let baseline_offset =
+            text_metrics::centered_baseline_offset(18.0, &theme.font_family).unwrap_or(6.5);
+        min_x = min_x.min(title_x - title_width / 2.0);
+        max_x = max_x.max(title_x + title_width / 2.0);
+        min_y = min_y.min(-gg.title_top_margin - title_height / 2.0 - baseline_offset);
+        max_y = max_y.max(-gg.title_top_margin + title_height / 2.0 - baseline_offset);
+    }
+
     min_x -= gg.diagram_padding;
     min_y -= gg.diagram_padding;
     max_x += gg.diagram_padding;
@@ -508,6 +531,8 @@ pub(super) fn compute_gitgraph_layout(
         acc_title: None,
         acc_descr: None,
         diagram: DiagramData::GitGraph(GitGraphLayout {
+            title: graph.gitgraph.title.clone(),
+            title_x,
             branches: branch_layouts,
             commits: commit_layouts,
             arrows,
@@ -830,8 +855,8 @@ fn update_bounds_points(
 
 fn apply_transform_point(x: f32, y: f32, transform: Option<&GitGraphTransform>) -> (f32, f32) {
     if let Some(transform) = transform {
-        let mut px = x + transform.translate_x;
-        let mut py = y + transform.translate_y;
+        let mut px = x;
+        let mut py = y;
         if transform.rotate_deg.abs() > f32::EPSILON {
             let angle = transform.rotate_deg.to_radians();
             let cos = angle.cos();
@@ -841,7 +866,8 @@ fn apply_transform_point(x: f32, y: f32, transform: Option<&GitGraphTransform>) 
             px = transform.rotate_cx + dx * cos - dy * sin;
             py = transform.rotate_cy + dx * sin + dy * cos;
         }
-        (px, py)
+        // SVG lists translate before rotate, so rotation acts first.
+        (px + transform.translate_x, py + transform.translate_y)
     } else {
         (x, y)
     }

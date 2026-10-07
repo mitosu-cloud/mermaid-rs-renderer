@@ -255,6 +255,7 @@ pub struct GitGraphBranch {
 
 #[derive(Debug, Clone, Default)]
 pub struct GitGraphData {
+    pub title: Option<String>,
     pub main_branch: String,
     pub commits: Vec<GitGraphCommit>,
     pub branches: Vec<GitGraphBranch>,

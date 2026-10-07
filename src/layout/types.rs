@@ -335,6 +335,8 @@ pub struct GitGraphArrowLayout {
 
 #[derive(Debug, Clone)]
 pub struct GitGraphLayout {
+    pub title: Option<String>,
+    pub title_x: f32,
     pub branches: Vec<GitGraphBranchLayout>,
     pub commits: Vec<GitGraphCommitLayout>,
     pub arrows: Vec<GitGraphArrowLayout>,
