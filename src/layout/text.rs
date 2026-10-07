@@ -180,6 +180,74 @@ pub(super) fn measure_label(text: &str, theme: &Theme, config: &LayoutConfig) ->
     )
 }
 
+/// Plain flowchart labels use the browser's fixed-width HTML wrapping box.
+pub(super) fn measure_flowchart_label(
+    text: &str,
+    theme: &Theme,
+    config: &LayoutConfig,
+) -> TextBlock {
+    let measure = |value: &str| {
+        crate::text_metrics::measure_text_width_with_kerning(
+            value,
+            theme.font_size,
+            &theme.font_family,
+        )
+        .map(|width| (width * 64.0).ceil() / 64.0)
+        .unwrap_or_else(|| text_width(value, theme.font_size, &theme.font_family, true))
+    };
+    let limit = if config.max_label_width_chars == LayoutConfig::default().max_label_width_chars {
+        200.0
+    } else {
+        max_label_width_px(
+            config.max_label_width_chars,
+            theme.font_size,
+            &theme.font_family,
+            false,
+        )
+    };
+    let mut lines = Vec::new();
+    let mut wrapped = false;
+    for raw in split_lines(text) {
+        if measure(&raw) <= limit {
+            lines.push(raw);
+            continue;
+        }
+        wrapped = true;
+        let mut current = String::new();
+        for word in raw.split_whitespace() {
+            let next = if current.is_empty() {
+                word.to_string()
+            } else {
+                format!("{current} {word}")
+            };
+            if !current.is_empty() && measure(&next) > limit {
+                lines.push(current);
+                current = word.to_string();
+            } else {
+                current = next;
+            }
+        }
+        lines.push(current);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    let width = if wrapped {
+        limit
+    } else {
+        lines
+            .iter()
+            .map(|line| measure(line))
+            .fold(0.0_f32, f32::max)
+    };
+    let height = lines.len() as f32 * theme.font_size * config.label_line_height;
+    TextBlock {
+        lines: lines.into_iter().map(TextLine::plain).collect(),
+        width,
+        height,
+    }
+}
+
 pub(super) fn measure_label_with_font_size(
     text: &str,
     font_size: f32,

@@ -1851,7 +1851,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     )
                 } else if matches!(
                     layout.kind,
-                    crate::ir::DiagramKind::Block | crate::ir::DiagramKind::Mindmap
+                    crate::ir::DiagramKind::Block
+                        | crate::ir::DiagramKind::Mindmap
+                        | crate::ir::DiagramKind::Flowchart
                 ) {
                     let baseline_offset =
                         text_metrics::centered_baseline_offset(theme.font_size, &theme.font_family)

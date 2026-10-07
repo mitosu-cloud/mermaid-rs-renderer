@@ -6354,3 +6354,47 @@ warning: unused variable: `has_title`
 #### Visual defects
 
 - One gap group: flowchart label and rectangle geometry.
+
+## batch11-10-flow-label-geometry — Changes applied — 2026-10-07T05:52:51+00:00
+
+- `src/layout/text.rs` — Measure plain flowchart labels using kerning and a fixed 200px HTML wrapping box (custom label limits remain honored).
+- `src/layout/mod.rs` — Use those label measurements and Mermaid's 30px horizontal/15px vertical rectangle padding.
+- `src/render.rs` — Position flowchart labels with the same font-metric baseline used by HTML reference labels.
+
+## batch11-10-flow-label-geometry — Pass 2 findings — 2026-10-07T05:54:01+00:00
+
+### Iteration 10/10 — Pass 2
+
+#### Visual appearance
+
+- Rust now matches the selected example’s 742.13 × 94 canvas and all three box dimensions.
+- Column spacing, wrapping, label margins, and text placement closely match JS.
+
+#### Structural differences
+
+- Plain labels now use measured glyph widths and retain the reference’s wrapping-box width.
+
+#### Visual defects
+
+- No major gap groups remain in this example.
+- **Visual match: yes.** Build succeeded; all 422 Rust SVG/PNG pairs regenerated; JS references unchanged.
+
+## batch11 — Batch validation — 2026-10-07T05:54:01+00:00
+
+Ten successful comparison passes on codex/fix-svg-comparison-parity:
+1. ER column and row measurement.
+2. ER table colors, square borders, and baselines (one failed compile attempt logged separately, followed by a fresh successful recovery pass).
+3. ER attribute-free entity sizing.
+4. ER rank and node spacing.
+5. ER endpoint cardinality geometry.
+6. ER relationship-label measurement and appearance.
+7. ER textual cardinalities and relationship operators.
+8. Git graph commit, branch, bullet, merge-ring, and arc geometry.
+9. Git SVG label bounds, padding, and placement.
+10. Flowchart plain-label wrapping, rectangle padding, and baselines.
+
+Each successful pass rebuilt the release binary and regenerated all 422 Rust SVG/PNG pairs with zero renderer errors and no JS reference changes. No test-suite commands were run, per the svg-parity skill.
+
+Selected ER alias-table and flowchart special-character examples now look essentially the same as their references. Broader family gaps remain: ER default entity fills and diagonal/multiple-edge routing; git fast text-width estimates; other flowchart shapes and complex layouts. Individual Pass 2 reports give the visual limits of each pass.
+
+Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output/batch11-parity-review.html and batch11-parity-review.png.

@@ -498,13 +498,17 @@ fn compute_flowchart_layout(
             let normalized = normalize_html_label(&node.label);
             measure_markdown_label(&normalized, theme, &label_config)
         } else {
-            measure_label_with_font_size(
-                &node.label,
-                measure_font_size,
-                &label_config,
-                auto_wrap,
-                theme.font_family.as_str(),
-            )
+            if graph.kind == crate::ir::DiagramKind::Flowchart {
+                text::measure_flowchart_label(&node.label, theme, &label_config)
+            } else {
+                measure_label_with_font_size(
+                    &node.label,
+                    measure_font_size,
+                    &label_config,
+                    auto_wrap,
+                    theme.font_family.as_str(),
+                )
+            }
         };
         let label_empty = label.lines.len() == 1 && label.lines[0].text().trim().is_empty();
         let (mut width, mut height) =
@@ -8031,6 +8035,12 @@ fn shape_size(
         return (
             (crate::er::text_width(&table.title, theme) + 40.0).max(100.0),
             theme.font_size * config.label_line_height + 60.0,
+        );
+    }
+    if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Rectangle {
+        return (
+            label.width + config.node_padding_x * 3.0,
+            label.height + config.node_padding_y * 3.0,
         );
     }
     if kind == crate::ir::DiagramKind::Block
