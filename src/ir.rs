@@ -181,6 +181,16 @@ pub struct QuadrantPoint {
     pub label: String,
     pub x: f32,
     pub y: f32,
+    pub class_name: Option<String>,
+    pub style: QuadrantPointStyle,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct QuadrantPointStyle {
+    pub radius: Option<f32>,
+    pub color: Option<String>,
+    pub stroke_color: Option<String>,
+    pub stroke_width: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,6 +210,7 @@ pub struct QuadrantData {
     pub y_axis_top: Option<String>,
     pub quadrant_labels: [Option<String>; 4], // top-right, top-left, bottom-left, bottom-right
     pub points: Vec<QuadrantPoint>,
+    pub classes: BTreeMap<String, QuadrantPointStyle>,
 }
 
 #[derive(Debug, Clone)]

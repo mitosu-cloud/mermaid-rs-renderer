@@ -4002,12 +4002,18 @@ fn render_quadrant(
         ));
     }
     for point in &layout.points {
+        let stroke = if point.stroke_width > 0.0 {
+            format!(" stroke=\"{}\"", escape_xml(&point.stroke_color))
+        } else {
+            String::new()
+        };
         svg.push_str(&format!(
-            "<circle cx=\"{:.3}\" cy=\"{:.3}\" r=\"{}\" fill=\"{}\" stroke-width=\"0\"/>",
+            "<circle cx=\"{:.3}\" cy=\"{:.3}\" r=\"{}\" fill=\"{}\" stroke-width=\"{}\"{stroke}/>",
             point.x,
             point.y,
-            options.point_radius,
+            point.radius,
             escape_xml(&point.color),
+            point.stroke_width,
         ));
         svg.push_str(&quadrant_text(
             &point.label,

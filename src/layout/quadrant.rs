@@ -79,17 +79,48 @@ pub(super) fn compute_quadrant_layout(
         .points
         .iter()
         .rev()
-        .map(|point| QuadrantPointLayout {
-            label: label(
-                &Some(point.label.clone()),
-                options.point_label_font_size,
-                theme,
-            )
-            .unwrap(),
-            x: grid_x + point.x * grid_width,
-            y: grid_y + (1.0 - point.y) * grid_height,
-            // The reference's invalid default HSL fill inherits the root text fill.
-            color: theme.text_color.clone(),
+        .map(|point| {
+            let class = point
+                .class_name
+                .as_ref()
+                .and_then(|name| graph.quadrant.classes.get(name))
+                .cloned()
+                .unwrap_or_default();
+            QuadrantPointLayout {
+                label: label(
+                    &Some(point.label.clone()),
+                    options.point_label_font_size,
+                    theme,
+                )
+                .unwrap(),
+                x: grid_x + point.x * grid_width,
+                y: grid_y + (1.0 - point.y) * grid_height,
+                // The reference's invalid default HSL fill inherits the root text fill.
+                color: point
+                    .style
+                    .color
+                    .as_ref()
+                    .or(class.color.as_ref())
+                    .cloned()
+                    .unwrap_or_else(|| theme.text_color.clone()),
+                radius: point
+                    .style
+                    .radius
+                    .or(class.radius)
+                    .unwrap_or(options.point_radius),
+                stroke_color: point
+                    .style
+                    .stroke_color
+                    .as_ref()
+                    .or(class.stroke_color.as_ref())
+                    .cloned()
+                    .unwrap_or_else(|| theme.text_color.clone()),
+                stroke_width: point
+                    .style
+                    .stroke_width
+                    .or(class.stroke_width)
+                    .unwrap_or(0.0),
+            }
         })
         .collect();
     Layout {

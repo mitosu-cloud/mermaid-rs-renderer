@@ -5028,3 +5028,61 @@ All 422 Rust SVG/PNG pairs regenerated successfully. Only the four quadrant SVGs
 - The styled-point fixture still has no parsed points because inline properties and class attachments are unsupported. Consequently the new layout correctly applies its empty-chart rules (X-axis at top and quadrant labels centered), while JS has data points with the X-axis at bottom and quadrant labels at top. This fixture remains visibly different and is outside the selected basic-chart pass.
 - cargo build --release passed in 11.05 seconds with 33 existing warnings. All 422 Rust SVG and 422 Rust PNG exports succeeded using the absolute release binary path. Only the four quadrant SVGs changed; all 418 other SVGs are byte-for-byte unchanged from the pre-edit snapshot.
 - No test suite was run and no test files were edited, per the svg-parity skill. Existing JS goldens were used. Updated four ignored side-by-side review images and all Rust gallery exports. Exactly one source fix pass was performed. git diff --check passed.
+
+## quadrantChart-point-styling-with-inline-properties-and-class-definitions — Pass 1 findings — 2026-10-07T00:34:56+00:00
+
+### Pass 1 — styled quadrant points
+
+**Visual appearance**
+
+- Rust omits all six campaign points and their labels.
+- That makes it use the empty-chart layout: the X-axis moves to the top and quadrant labels move to the center.
+- Requested point radii, colors, and outlines are absent.
+
+**Structural differences**
+
+- Rust’s coordinate parser rejects inline properties and `:::class` attachments.
+
+**Visual defects**
+
+- The colored point series is missing entirely. Three issue categories are selected for this pass.
+
+Validated the styled-point SVG pair, reference source, Cargo.toml and sibling Mermaid checkout. Read both SVGs and inspected their browser rendering. Reused the previously read quadrantBuilder.ts and quadrantDb.ts for class/inline style precedence and point drawing.
+
+- Both canvases are 500×500 and plot sizes are 464×424, but Rust's plot begins at (31,71) instead of (31,45). The axis is at y=45 rather than 479; quadrant labels are centered at y=177/389 instead of hanging at 50/262. The missing numeric series changes the gross visible arrangement, not just element counts.
+- Golden points, in draw order F/E/D/C/B/A, are (216.6,257), (263,299.4), (309.4,341.8), (355.8,384.2), (402.2,426.6), (448.6,469). Radii are 10,10,15,25,10,12. Point-radius/plot-width ranges from 10/464=0.0216 to 25/464=0.0539.
+- Inline properties override class values. E has fill #908342, stroke #310085 and width 10 px; D has fill #ff33f0, stroke #00ff0f and width 5 px. F's inline blue fill overrides class3's pink fill, while its radius inherits 10. B's inline orange/red fill overrides class1's green fill.
+- Point labels use 12 px hanging text at point y+5 independently of radius. The golden intentionally places some labels on their circles and Campaign F near the quadrant heading; these overlaps must be preserved for comparison rather than moved away. All labels and circles fit the reference viewBox, including A's circle extending below the plot into the axis area. No connector edges or bidirectional labels are involved.
+
+## quadrantChart-point-styling-with-inline-properties-and-class-definitions — Changes applied — 2026-10-07T00:35:21+00:00
+
+- src/ir.rs — retain a point's class name and optional radius, fill, stroke color and stroke width; retain quadrant class definitions.
+- src/parser.rs — parse coordinate brackets separately from style suffixes and :::class attachments, and parse classDef declarations and CSS px stroke widths.
+- src/layout/quadrant.rs — combine class and inline styles with inline values taking precedence; retaining the points automatically restores the correct data-chart geometry.
+- src/layout/types.rs — carry resolved radius and outline styles for each point.
+- src/render.rs — draw each resolved circle size, color and outline while retaining reference label placement and draw order. Default circles preserve their existing serialization.
+- One source fix pass, five source files edited. The pinned builder/database source was reused for class precedence, default radius and outline handling. Intentional label/circle overlaps in the golden are retained.
+
+## quadrantChart-point-styling-with-inline-properties-and-class-definitions — Pass 2 findings — 2026-10-07T00:36:42+00:00
+
+### Pass 2 — styled quadrant points
+
+**Visual appearance**
+
+- **Visual match: yes.** All six points now have the reference positions, radii, colors, and outlines.
+- The X-axis and quadrant headings return to the correct positions.
+
+**Structural differences**
+
+- Rust resolves class and inline properties before drawing. Coordinates differ only by rounding.
+
+**Visual defects**
+
+- All three reported gaps are addressed. The remaining label/circle overlaps also occur in JS.
+
+All 422 Rust SVG/PNG pairs refreshed successfully. Only this SVG changed.
+
+- Re-read the generated SVG and inspected the side-by-side browser image. Canvas/plot are 500×500 and (31,45,464,424), matching JS. The X-axis is at y=479 and quadrant headings at y=50/262. The six point centers agree within 0.001 px; labels retain the golden 12 px hanging baselines at point y+5.
+- Radii F/E/D/C/B/A are 10/10/15/25/10/12. Inline blue/orange fills override F/B class fills, while F's radius inherits 10. E retains the class fill #908342, purple #310085 outline at width 10. D has pink fill #ff33f0 and green #00ff0f outline at width 5. C's cyan outline has width 0 and is therefore invisible in both engines.
+- The reference's label/circle overlaps are preserved, including Campaign F near the Re-evaluate heading, Campaign E across its dark outline, and Campaign A's circle crossing the bottom plot border. All remain inside the canvas. No new clipping or extra overlap was introduced; these are golden-image behaviors rather than claims of ideal chart typography. No connectors or bidirectional labels are present.
+- cargo build --release passed in 10.94 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Only the selected SVG changed; all 421 others are byte-for-byte unchanged. No test suite was run or test files edited. Exactly one source pass; git diff --check passed.

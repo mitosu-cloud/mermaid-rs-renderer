@@ -4628,37 +4628,86 @@ fn parse_quadrant_diagram(input: &str) -> Result<ParseOutput> {
             }
             continue;
         }
-        // Parse data points: Campaign A: [0.3, 0.6]
-        if let Some((label, x, y)) = parse_quadrant_point_coords(line) {
+        if lower.starts_with("classdef ") {
+            let rest = line[9..].trim();
+            if let Some((name, styles)) = rest.split_once(char::is_whitespace) {
+                graph
+                    .quadrant
+                    .classes
+                    .insert(name.to_string(), parse_quadrant_point_style(styles));
+            }
+            continue;
+        }
+        // Class attachments precede coordinates; inline properties follow them.
+        if let Some(point) = parse_quadrant_point_coords(line) {
             let node_id = format!("quadrant_{}", graph.nodes.len());
             graph.ensure_node(
                 &node_id,
-                Some(label.clone()),
+                Some(point.label.clone()),
                 Some(crate::ir::NodeShape::Rectangle),
             );
-            graph
-                .quadrant
-                .points
-                .push(crate::ir::QuadrantPoint { label, x, y });
+            graph.quadrant.points.push(point);
         }
     }
 
     Ok(ParseOutput { graph, init_config })
 }
 
-fn parse_quadrant_point_coords(line: &str) -> Option<(String, f32, f32)> {
-    let (left, right) = line.split_once(':')?;
-    let label = left.trim().to_string();
+fn parse_quadrant_point_style(input: &str) -> crate::ir::QuadrantPointStyle {
+    let mut style = crate::ir::QuadrantPointStyle::default();
+    for entry in input.split(',') {
+        let Some((key, value)) = entry.trim().split_once(':') else {
+            continue;
+        };
+        let value = value.trim();
+        match key.trim() {
+            "radius" => {
+                style.radius = value
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|v| v.is_finite() && *v >= 0.0)
+                    .map(f32::trunc)
+            }
+            "color" => style.color = Some(value.to_string()),
+            "stroke-color" => style.stroke_color = Some(value.to_string()),
+            "stroke-width" => {
+                style.stroke_width =
+                    crate::config::parse_css_number(value).filter(|v| v.is_finite() && *v >= 0.0)
+            }
+            _ => {}
+        }
+    }
+    style
+}
+
+fn parse_quadrant_point_coords(line: &str) -> Option<crate::ir::QuadrantPoint> {
+    let start = line.find(['[', '('])?;
+    let close = if line.as_bytes()[start] == b'[' {
+        ']'
+    } else {
+        ')'
+    };
+    let end = start + 1 + line[start + 1..].find(close)?;
+    let prefix = line[..start].trim().strip_suffix(':')?.trim();
+    let (label, class_name) = if let Some((label, class)) = prefix.split_once(":::") {
+        (strip_quotes(label.trim()), Some(class.trim().to_string()))
+    } else {
+        (strip_quotes(prefix), None)
+    };
     if label.is_empty() {
         return None;
     }
-    let coords = right
-        .trim()
-        .trim_matches(|ch| ch == '[' || ch == ']' || ch == '(' || ch == ')');
+    let coords = &line[start + 1..end];
     let mut parts = coords.split(',').map(|p| p.trim());
     let x: f32 = parts.next()?.parse().ok()?;
     let y: f32 = parts.next()?.parse().ok()?;
-    Some((label, x, y))
+    Some(crate::ir::QuadrantPoint {
+        label,
+        x,
+        y,
+        class_name,
+        style: parse_quadrant_point_style(&line[end + 1..]),
+    })
 }
 
 fn parse_zenuml_diagram(input: &str) -> Result<ParseOutput> {

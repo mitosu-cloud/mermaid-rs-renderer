@@ -728,6 +728,9 @@ pub struct QuadrantPointLayout {
     pub x: f32,
     pub y: f32,
     pub color: String,
+    pub radius: f32,
+    pub stroke_color: String,
+    pub stroke_width: f32,
 }
 
 #[derive(Debug, Clone)]
