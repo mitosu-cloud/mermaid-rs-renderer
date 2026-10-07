@@ -6597,3 +6597,43 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - Two remaining gap groups: entity width and canvas bounds.
 - **Visual match: partial.** All 422 renders succeeded with JS unchanged.
+
+## batch12-06-git-text-geometry — Pass 1 findings — 2026-10-07T06:14:08+00:00
+
+### Iteration 6/10 — Pass 1
+
+#### Visual appearance
+
+- In `gitgraph-custom-commit-ids`, Rust is 254.8 × 86.4 versus JS’s 254 × 75.5.
+- The three-commit arrangement is similar, but Rust’s labels are wider and the branch name sits too low in its background.
+- Commit spacing is five marker radii in both. Labels fit, though Rust has extra space below them.
+
+#### Structural differences
+
+- Git labels use estimated widths in the default mode. The horizontal branch label and spine offsets also differ from JS.
+
+#### Visual defects
+
+- Two gap groups: text geometry and canvas bounds. This pass targets text geometry.
+
+## batch12-06-git-text-geometry — Changes applied — 2026-10-07T06:14:08+00:00
+
+- `src/layout/gitgraph.rs` — Measure git text with actual font advances even in the default fast mode, round SVG line heights to pixels, and match JS’s horizontal branch spine and label offsets.
+
+## batch12-06-git-text-geometry — Pass 2 findings — 2026-10-07T06:15:05+00:00
+
+### Iteration 6/10 — Pass 2
+
+#### Visual appearance
+
+- Branch background size, text placement, commit spacing, and label widths now closely resemble JS.
+- Rust is 254 × 86.3 versus JS’s 254 × 75.5. Text fits, but extra space remains below the rotated labels.
+
+#### Structural differences
+
+- Rotated label bounds still enlarge the canvas incorrectly.
+
+#### Visual defects
+
+- One remaining gap group: canvas bounds.
+- **Visual match: partial.** All 422 renders succeeded; JS was unchanged.

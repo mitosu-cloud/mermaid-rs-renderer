@@ -57,6 +57,7 @@ pub(super) fn compute_gitgraph_layout(
         };
         let bg_width = label_width + gg.branch_label_bg_pad_x;
         let bg_height = label_height + gg.branch_label_bg_pad_y;
+        let spine_pos = if is_vertical { pos } else { pos - 2.0 };
         let (bg_final_x, bg_final_y, text_x, text_y) = if is_vertical {
             let bg_x = pos - label_width / 2.0 - gg.branch_label_tb_bg_offset_x;
             let text_x = pos - label_width / 2.0 - gg.branch_label_tb_text_offset_x;
@@ -70,9 +71,9 @@ pub(super) fn compute_gitgraph_layout(
             let bg_x = -label_width - gg.branch_label_bg_offset_x - label_rotate_extra;
             let bg_y = -label_height / 2.0 + gg.branch_label_bg_offset_y;
             let bg_final_x = bg_x + gg.branch_label_translate_x;
-            let bg_final_y = bg_y + (pos - label_height / 2.0);
+            let bg_final_y = bg_y + spine_pos - 12.0;
             let text_x = -label_width - gg.branch_label_text_offset_x - label_rotate_extra;
-            let text_y = pos - label_height / 2.0 + gg.branch_label_text_offset_y;
+            let text_y = spine_pos - label_height / 2.0 + gg.branch_label_text_offset_y;
             (bg_final_x, bg_final_y, text_x, text_y)
         };
         let label = GitGraphBranchLabelLayout {
@@ -88,10 +89,13 @@ pub(super) fn compute_gitgraph_layout(
         branch_layouts.push(GitGraphBranchLayout {
             name: branch.name.clone(),
             index,
-            pos,
+            pos: spine_pos,
             label,
         });
-        branch_pos.insert(branch.name.clone(), (pos, index, label_width, label_height));
+        branch_pos.insert(
+            branch.name.clone(),
+            (spine_pos, index, label_width, label_height),
+        );
         let width_extra = if is_vertical { label_width / 2.0 } else { 0.0 };
         pos += gg.branch_spacing + spacing_rotate_extra + width_extra;
     }
@@ -544,18 +548,15 @@ fn measure_gitgraph_text(
     let max_width = lines
         .iter()
         .map(|line| {
-            if fast_metrics {
-                text_width(line, font_size, font_family, true)
-            } else {
-                crate::text_metrics::measure_text_width_with_kerning(line, font_size, font_family)
-                    .map(|width| (width * 64.0).ceil() / 64.0)
-                    .unwrap_or_else(|| text_width(line, font_size, font_family, false))
-            }
+            crate::text_metrics::measure_text_width_with_kerning(line, font_size, font_family)
+                .map(|width| (width * 64.0).ceil() / 64.0)
+                .unwrap_or_else(|| text_width(line, font_size, font_family, fast_metrics))
         })
         .fold(0.0_f32, f32::max);
     let width = max_width * width_scale;
-    let glyph_height =
-        crate::text_metrics::svg_text_height(font_size, font_family).unwrap_or(font_size * 1.2);
+    let glyph_height = crate::text_metrics::svg_text_height(font_size, font_family)
+        .unwrap_or(font_size * 1.2)
+        .ceil();
     let height = glyph_height + lines.len().saturating_sub(1) as f32 * font_size * line_height;
     (width, height)
 }
