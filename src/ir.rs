@@ -1094,6 +1094,8 @@ impl Graph {
 #[derive(Debug, Clone, Default)]
 pub struct NodeStyle {
     pub fill: Option<String>,
+    /// ER odd rows accept inline fills, while class fills only affect even rows.
+    pub er_odd_row_fill: Option<String>,
     pub stroke: Option<String>,
     pub text_color: Option<String>,
     pub stroke_width: Option<f32>,

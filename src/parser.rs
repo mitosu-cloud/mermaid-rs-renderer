@@ -6303,6 +6303,7 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                     id,
                     NodeStyle {
                         fill: Some("none".to_string()),
+                        er_odd_row_fill: None,
                         stroke: Some("#9370DB".to_string()),
                         text_color: None,
                         stroke_width: Some(1.0),

@@ -6576,15 +6576,15 @@ fn render_er_node(
         "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{body_fill}\" stroke=\"{border}\" stroke-width=\"{stroke_width}\"{dash}/>"
     );
     svg.push_str(&format!(
-        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{row_height:.2}\" fill=\"{header_fill}\"/>"
+        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{row_height:.2}\" fill=\"{header_fill}\" stroke=\"{border}\" stroke-width=\"{stroke_width}\"{dash}/>"
     ));
     for (index, _) in table.rows.iter().enumerate() {
         let row_y = y + row_height * (index + 1) as f32;
-        let fill = node.style.fill.as_deref().unwrap_or(if index % 2 == 0 {
-            &odd_fill
+        let fill = if index % 2 == 0 {
+            node.style.er_odd_row_fill.as_deref().unwrap_or(&odd_fill)
         } else {
-            &even_fill
-        });
+            node.style.fill.as_deref().unwrap_or(&even_fill)
+        };
         svg.push_str(&format!("<rect x=\"{x:.2}\" y=\"{row_y:.2}\" width=\"{w:.2}\" height=\"{row_height:.2}\" fill=\"{fill}\" stroke=\"{border}\" stroke-width=\"{stroke_width}\"{dash}/>"));
     }
     let header = TextBlock {

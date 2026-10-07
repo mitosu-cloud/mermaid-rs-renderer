@@ -5435,6 +5435,9 @@ fn resolve_node_style(node_id: &str, graph: &Graph) -> crate::ir::NodeStyle {
 
     if let Some(node_style) = graph.node_styles.get(node_id) {
         merge_node_style(&mut style, node_style);
+        if graph.kind == crate::ir::DiagramKind::Er {
+            style.er_odd_row_fill = node_style.fill.clone();
+        }
     }
 
     style

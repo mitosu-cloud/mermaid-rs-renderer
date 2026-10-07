@@ -6438,3 +6438,43 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - One remaining gap group: connection geometry.
 - **Visual match: partial.** Build and all 422 renders succeeded; JS references were unchanged.
+
+## batch12-02-er-table-class-paint — Pass 1 findings — 2026-10-07T06:07:17+00:00
+
+### Iteration 2/10 — Pass 1
+
+#### Visual appearance
+
+- In `entityRelationshipDiagram-default-class-definition`, both canvases are 485.7 × 459, but Rust reverses CAR and HOUSE and uses diagonal connections.
+- Rust paints every attribute row pink. JS alternates white and pink. Rust’s header border also looks thinner.
+- Text fits inside the tables; the tables are separated by about 0.6 table heights. These still look like different layouts.
+
+#### Structural differences
+
+- Class fills override odd rows in Rust, and the header fill covers part of the outer stroke.
+
+#### Visual defects
+
+- Three gap groups: table painting, layer placement, and connection geometry. This pass targets table painting.
+
+## batch12-02-er-table-class-paint — Changes applied — 2026-10-07T06:07:17+00:00
+
+- `src/ir.rs`, `src/parser.rs`, `src/layout/mod.rs`, `src/render.rs` — Preserve inline ER fill provenance, restrict class fills to even rows, and stroke the header without masking its border.
+
+## batch12-02-er-table-class-paint — Pass 2 findings — 2026-10-07T06:08:04+00:00
+
+### Iteration 2/10 — Pass 2
+
+#### Visual appearance
+
+- The white/pink row alternation and full header outlines now resemble JS. Canvas dimensions and text fit are unchanged.
+- CAR and HOUSE remain reversed, HOUSE sits too high, and connections remain diagonal. The diagrams still look different.
+
+#### Structural differences
+
+- Node positions and connection paths still differ.
+
+#### Visual defects
+
+- Two remaining gap groups: layer placement and connection geometry.
+- **Visual match: no.** Table painting improved; all 422 renders succeeded with JS unchanged.
