@@ -768,6 +768,13 @@ pub struct KanbanConfig {
     pub ticket_base_url: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct XYChartConfig {
+    pub show_data_label: bool,
+    pub show_data_label_outside_bar: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct QuadrantChartConfig {
@@ -839,6 +846,8 @@ pub struct LayoutConfig {
     pub kanban: KanbanConfig,
     #[serde(default)]
     pub quadrant_chart: QuadrantChartConfig,
+    #[serde(default)]
+    pub xy_chart: XYChartConfig,
     pub treemap: TreemapConfig,
     pub flowchart: FlowchartLayoutConfig,
     pub look: crate::ir::DiagramLook,
@@ -863,6 +872,7 @@ impl Default for LayoutConfig {
             packet: PacketConfig::default(),
             kanban: KanbanConfig::default(),
             quadrant_chart: QuadrantChartConfig::default(),
+            xy_chart: XYChartConfig::default(),
             treemap: TreemapConfig::default(),
             flowchart: FlowchartLayoutConfig::default(),
             look: crate::ir::DiagramLook::default(),
@@ -1562,6 +1572,7 @@ struct ConfigFile {
     packet: Option<PacketConfig>,
     kanban: Option<KanbanConfig>,
     quadrant_chart: Option<QuadrantChartConfig>,
+    xy_chart: Option<XYChartConfig>,
     requirement: Option<RequirementConfigFile>,
     mindmap: Option<MindmapConfigFile>,
     #[serde(rename = "gitGraph")]
@@ -1829,9 +1840,11 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
         if let Some(radar) = vars.radar {
             config.theme.radar.apply_overrides(&radar);
         }
-        config
-            .theme
-            .apply_quadrant_overrides(&serde_json::Value::Object(vars.extra));
+        let extra = serde_json::Value::Object(vars.extra);
+        config.theme.apply_quadrant_overrides(&extra);
+        if let Some(xy_chart) = extra.get("xyChart") {
+            config.theme.xy_chart.apply_overrides(xy_chart);
+        }
     }
 
     if let Some(ratio) = parsed
@@ -1853,6 +1866,10 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
 
     if let Some(quadrant) = parsed.quadrant_chart {
         config.layout.quadrant_chart = quadrant;
+    }
+
+    if let Some(xy_chart) = parsed.xy_chart {
+        config.layout.xy_chart = xy_chart;
     }
 
     if let Some(flow) = parsed.flowchart {

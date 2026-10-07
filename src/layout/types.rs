@@ -373,6 +373,7 @@ pub struct XYChartBarLayout {
     pub height: f32,
     pub value: f32,
     pub color: String,
+    pub label_font_size: Option<f32>,
 }
 
 #[derive(Debug, Clone)]

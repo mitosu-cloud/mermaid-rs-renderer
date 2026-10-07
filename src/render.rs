@@ -4429,6 +4429,28 @@ fn render_xychart(
         ));
     }
 
+    // Bar values use the series-wide font size resolved by the layout.
+    let outside = config.xy_chart.show_data_label_outside_bar;
+    let label_color = theme
+        .xy_chart
+        .data_label_color
+        .as_deref()
+        .unwrap_or(&theme.primary_text_color);
+    for bar in &layout.bars {
+        if let Some(size) = bar.label_font_size.filter(|size| *size > 0.0) {
+            svg.push_str(&format!(
+                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"{}\" font-family=\"{}\" font-size=\"{}px\" fill=\"{}\">{}</text>",
+                bar.x + bar.width / 2.0,
+                bar.y + if outside { -10.0 } else { 10.0 },
+                if outside { "auto" } else { "hanging" },
+                normalize_font_family(&theme.font_family),
+                size,
+                escape_xml(label_color),
+                bar.value,
+            ));
+        }
+    }
+
     // Lines
     for line in &layout.lines {
         if line.points.len() >= 2 {

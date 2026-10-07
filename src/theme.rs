@@ -96,6 +96,30 @@ impl RadarStyle {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct XYChartStyle {
+    pub data_label_color: Option<String>,
+    pub plot_color_palette: Option<String>,
+}
+
+impl XYChartStyle {
+    pub(crate) fn apply_overrides(&mut self, overrides: &serde_json::Value) {
+        for (key, target) in [
+            ("dataLabelColor", &mut self.data_label_color),
+            ("plotColorPalette", &mut self.plot_color_palette),
+        ] {
+            if let Some(value) = overrides
+                .get(key)
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.trim().is_empty())
+            {
+                *target = Some(value.to_string());
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Theme {
     pub font_family: String,
@@ -146,6 +170,8 @@ pub struct Theme {
     pub radar: RadarStyle,
     #[serde(default)]
     pub quadrant_color_overrides: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub xy_chart: XYChartStyle,
 }
 
 impl Theme {
@@ -266,6 +292,10 @@ impl Theme {
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
             quadrant_color_overrides: Default::default(),
+            xy_chart: XYChartStyle {
+                data_label_color: Some("#131300".to_string()),
+                ..XYChartStyle::default()
+            },
         }
     }
 
@@ -319,6 +349,7 @@ impl Theme {
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
             quadrant_color_overrides: Default::default(),
+            xy_chart: XYChartStyle::default(),
         }
     }
     /// Official Mermaid "dark" theme — dark background with bright accents.
@@ -371,6 +402,7 @@ impl Theme {
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
             quadrant_color_overrides: Default::default(),
+            xy_chart: XYChartStyle::default(),
         }
     }
 
@@ -435,6 +467,7 @@ impl Theme {
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
             quadrant_color_overrides: Default::default(),
+            xy_chart: XYChartStyle::default(),
         }
     }
 
@@ -499,6 +532,7 @@ impl Theme {
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
             quadrant_color_overrides: Default::default(),
+            xy_chart: XYChartStyle::default(),
         }
     }
 
@@ -554,6 +588,7 @@ impl Theme {
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
             quadrant_color_overrides: Default::default(),
+            xy_chart: XYChartStyle::default(),
         }
     }
 }

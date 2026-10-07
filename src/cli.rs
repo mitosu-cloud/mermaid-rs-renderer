@@ -510,6 +510,16 @@ sequenceDiagram
 }
 
 fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
+    if let Some(overrides) = init.get("xyChart").and_then(|v| v.as_object()) {
+        if let Ok(mut value) = serde_json::to_value(&config.layout.xy_chart) {
+            if let Some(options) = value.as_object_mut() {
+                options.extend(overrides.clone());
+            }
+            if let Ok(xy_chart) = serde_json::from_value(value) {
+                config.layout.xy_chart = xy_chart;
+            }
+        }
+    }
     if let Some(overrides) = init.get("quadrantChart").and_then(|v| v.as_object()) {
         if let Ok(mut value) = serde_json::to_value(&config.layout.quadrant_chart) {
             if let Some(options) = value.as_object_mut() {
@@ -552,6 +562,9 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
     }
     if let Some(theme_vars) = init.get("themeVariables") {
         config.theme.apply_quadrant_overrides(theme_vars);
+        if let Some(xy_chart) = theme_vars.get("xyChart") {
+            config.theme.xy_chart.apply_overrides(xy_chart);
+        }
         if let Some(radar) = theme_vars.get("radar") {
             config.theme.radar.apply_overrides(radar);
         }

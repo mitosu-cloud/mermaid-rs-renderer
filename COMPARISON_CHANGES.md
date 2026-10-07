@@ -5136,3 +5136,63 @@ All 422 Rust SVG/PNG pairs refreshed successfully. Only the configured quadrant 
 
 - Re-read the generated SVG and inspected the updated side-by-side browser image. Plan at (304,122) has fill #ff0000; font size 16, middle baseline, background #ECECFF and geometry remain unchanged. Canvas/plot are 400×400 and (31,31,364,364). Labels retain the same fit/clearance and borders, with no overlap, clipping or invisible-text defect. No connectors or data points are present.
 - cargo build --release passed in 11.94 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Only the configured quadrant SVG changed; all 421 others are byte-for-byte unchanged, including the basic, title-only and styled-point comparisons inspected during the prior two passes. No test suite was run or test files edited. Exactly one source pass; git diff --check passed.
+
+## xyChart-data-labels-inside-bars / outside-bars — Pass 1 findings — 2026-10-07T00:41:58+00:00
+
+### Pass 1 — XY bar value labels
+
+**Visual appearance**
+
+- Rust omits all six values, both inside and above the bars.
+- Its blue bars differ from Mermaid’s pale lavender bars.
+
+**Structural differences**
+
+- Rust ignores `showDataLabel` and `showDataLabelOutsideBar`.
+- Mermaid fits a uniform label size separately for each bar series.
+
+**Visual defects**
+
+- Six gaps are visible: missing values, bar color, canvas size, plot proportions, title wrapping, and axis styling.
+- This pass will add the labels and reference palette. The layout differences will remain for another iteration.
+
+- Read both raw SVG pairs, their reference sources, layout/render/config code, and the installed official Mermaid XY renderer. Browser images show no values in Rust; JS has 12, 2, 20, 25, 17 and 24 at 25 px, dark #131300, centered at each bar x midpoint. Inside uses y+10 with a hanging baseline; outside uses y-10 with an auto baseline.
+- Rust is 540×400 versus JS 700×500 (aspect ratios 1.35 / 1.4). Rust plot (100,70,400,250) takes 74.1% of canvas width; JS plot spans approximately x=60.69 to 700 (91.3%). Rust bar width/category-step ratio is 0.8 versus JS 0.564. The smallest bar is 16.67 px high in Rust versus 35.19 in JS, so Mermaid's existing font-fit algorithm will choose a smaller size with the current Rust geometry.
+- Rust wraps the title into two 16 px lines, with the second line overlapping the plot's top border. JS has one centered 20 px line. Rust has six dashed guides and a full plot border; JS has 16 Y ticks and short solid ticks on two axes. The rotated Y title and category labels also have different positions. Category text currently fits its chart; no clipping or connector/bidirectional-label issues are present. Missing values are absent rather than merely low contrast.
+- Scoped source pass: recognize data-label flags, render numeric labels using per-series uniform font fitting and reference anchors/offsets, and use the reference default series palette so dark values remain legible. Canvas, axes and title geometry are explicitly deferred.
+
+## xyChart-data-labels-inside-bars / outside-bars — Changes applied — 2026-10-07T00:43:09+00:00
+
+- src/config.rs — recognize showDataLabel and showDataLabelOutsideBar from config files, with backward-compatible defaults; load nested XY theme overrides.
+- src/cli.rs — merge the same flags from init/YAML frontmatter without discarding config-file values; apply nested dataLabelColor and plotColorPalette overrides.
+- src/theme.rs — retain optional XY label color and series palette overrides in all built-in themes. Mermaid's default label color is #131300.
+- src/layout/xychart.rs — use the ten-color Mermaid default palette or a supplied comma-separated palette. Fit value labels with the reference 0.7 character-width factor and 10 px offset, using a uniform size separately for each valid bar series. Omit labels for bars with non-positive dimensions.
+- src/layout/types.rs — carry the resolved per-series label font size on each bar.
+- src/render.rs — draw numeric values at bar centers, y+10/hanging inside and y-10/auto outside, with escaped configured color attributes. Preserve current chart geometry and line-series rendering.
+- One source pass, six source files edited; no test suite or test files. The primary sibling bar-plot builder and default theme palette were read; the installed official Mermaid renderer supplied the newer label implementation absent from the pinned sibling builder. Non-positive fitted sizes are omitted rather than emitting invalid negative font sizes.
+
+## xyChart-data-labels-inside-bars / outside-bars — Pass 2 findings — 2026-10-07T00:44:49+00:00
+
+### Pass 2 — XY bar value labels
+
+**Visual appearance**
+
+- **Visual match: partial.** Values now appear inside or above each bar, and the palette matches.
+- The values are still too small: 6 px in Rust versus 25 px in JS, because Rust’s shortest bar limits the shared size.
+
+**Structural differences**
+
+- Both label options and custom palette colors are now applied.
+- Canvas size, plot proportions, title wrapping, and axis styling still differ.
+
+**Visual defects**
+
+- Five gaps remain, including label size and the title overlapping the plot border.
+- The chart is improved, but the two images still look different.
+
+All 422 Rust SVG/PNG pairs regenerated successfully.
+
+- Re-read both generated raw SVGs and inspected all six XY browser comparison images. All six numeric values are now present at each Rust bar's center, with y+10/hanging or y-10/auto as requested. The selected chart's bar fill is #ECECFF and text fill #131300 (approximately 16:1 contrast); text is high contrast but too small, not invisible. The uniform size is 6 px because the smallest bar is only 16.67 px high. JS's 35.19 px smallest bar permits 25 px labels. All selected labels fit their bars/canvas with no new clipping or label overlaps.
+- Five selected visual gaps remain: label size, 540×400 versus 700×500 canvas, narrower plot proportions/bar spacing, wrapped title at 16 px with a second baseline at y=72 crossing the plot border at y=70, and six dashed guides/full border instead of JS's 16 short solid Y ticks/two axes. The width and bar-spacing ratios remain those reported in Pass 1. No connector edges, curve differences or bidirectional label pairs occur in these two bar-only fixtures.
+- Full configuration now shows all 12 values at a uniform 7 px and the correct lavender/gray bar/line colors. Its requested 900×600 canvas and red title remain unsupported. The multi-series color fixture now honors black/blue/green/red in declaration order; its bars remain side-by-side rather than the reference's overlaid bars, and the X-axis title/category rows overlap. Sales-revenue and simplest-line palettes match, while existing line markers, tick/domain/category and geometry differences remain. No source follow-up pass was made after visual review.
+- cargo build --release passed in 11.84 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Exactly the six XY SVGs changed; all 416 other SVGs are byte-for-byte unchanged, including the four quadrant comparisons. Six source files edited in one pass; no test suite run or test files edited; git diff --check passed.

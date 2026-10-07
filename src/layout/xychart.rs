@@ -60,16 +60,21 @@ pub(super) fn compute_xychart_layout(
         .max(1);
     let bar_width = (bar_group_width - bar_padding * 2.0) / bar_count as f32;
 
-    let colors = [
-        "#4e79a7".to_string(),
-        "#f28e2c".to_string(),
-        "#e15759".to_string(),
-        "#76b7b2".to_string(),
-        "#59a14f".to_string(),
-        "#edc949".to_string(),
-        "#af7aa1".to_string(),
-        "#ff9da7".to_string(),
-    ];
+    let default_palette =
+        "#ECECFF,#8493A6,#FFC3A0,#DCDDE1,#B8E994,#D1A36F,#C3CDE6,#FFB6C1,#496078,#F8F3E3";
+    let mut colors: Vec<String> = theme
+        .xy_chart
+        .plot_color_palette
+        .as_deref()
+        .unwrap_or(default_palette)
+        .split(',')
+        .map(str::trim)
+        .filter(|color| !color.is_empty())
+        .map(str::to_string)
+        .collect();
+    if colors.is_empty() {
+        colors = default_palette.split(',').map(str::to_string).collect();
+    }
 
     let mut bars = Vec::new();
     let mut lines = Vec::new();
@@ -83,6 +88,7 @@ pub(super) fn compute_xychart_layout(
 
         match series.kind {
             crate::ir::XYSeriesKind::Bar => {
+                let series_start = bars.len();
                 for (i, &value) in series.values.iter().enumerate() {
                     let bar_height = ((value - min_val) / range) * plot_height;
                     let x = plot_x
@@ -98,7 +104,32 @@ pub(super) fn compute_xychart_layout(
                         height: bar_height,
                         value,
                         color: color.clone(),
+                        label_font_size: None,
                     });
+                }
+                if config.xy_chart.show_data_label {
+                    // Mermaid fits every valid bar, then shares the smallest
+                    // font size across that series, even for outside labels.
+                    let font_size = bars[series_start..]
+                        .iter()
+                        .filter(|bar| bar.width > 0.0 && bar.height > 0.0)
+                        .map(|bar| {
+                            let chars = bar.value.to_string().len() as f32;
+                            let mut size = bar.width / (chars * 0.7);
+                            while size > 0.0
+                                && (size * chars * 0.7 > bar.width || size + 10.0 > bar.height)
+                            {
+                                size -= 1.0;
+                            }
+                            size
+                        })
+                        .reduce(f32::min)
+                        .map(|size| size.floor().max(0.0));
+                    for bar in &mut bars[series_start..] {
+                        if bar.width > 0.0 && bar.height > 0.0 {
+                            bar.label_font_size = font_size;
+                        }
+                    }
                 }
                 bar_series_idx += 1;
             }
