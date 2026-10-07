@@ -645,7 +645,7 @@ pub(super) fn shape_polygon_points(node: &NodeLayout) -> Option<Vec<(f32, f32)>>
             ])
         }
         crate::ir::NodeShape::Parallelogram | crate::ir::NodeShape::ParallelogramAlt => {
-            let offset = w * 0.18;
+            let offset = h / 2.0;
             let points = if node.shape == crate::ir::NodeShape::Parallelogram {
                 vec![
                     (x + offset, y),

@@ -7606,7 +7606,7 @@ fn shape_svg_inner(
             )
         }
         crate::ir::NodeShape::Parallelogram | crate::ir::NodeShape::ParallelogramAlt => {
-            let offset = w * 0.18;
+            let offset = if kind == crate::ir::DiagramKind::Flowchart { h / 2.0 } else { w * 0.18 };
             let (p1, p2, p3, p4) = if node.shape == crate::ir::NodeShape::Parallelogram {
                 (
                     (x + offset, y),

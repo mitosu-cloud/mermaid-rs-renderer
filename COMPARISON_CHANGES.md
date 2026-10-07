@@ -6968,3 +6968,44 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining visible gap groups. Visual match: yes.**
 - Build and all 422 renders passed.
+
+## batch13-04-flow-parallelograms — Pass 1 findings — 2026-10-07T06:39:42+00:00
+
+### Iteration 4/10 — Pass 1
+
+#### Visual appearance
+
+- Both Rust parallelograms have excessively shallow sides. Their corner offsets are about 40px versus JS’s 19.5px.
+- Rust’s canvases are approximately 237 × 50 versus JS’s 254.91 × 55. The label takes 84% of Rust’s width versus 77% in JS.
+- Text crosses the sloping borders in both Rust orientations. There are no connections; the shapes visibly differ.
+
+#### Structural differences
+
+- Rust uses a width-based slope and generic padding. JS uses half the padded height for the slope.
+
+#### Visual defects
+
+- **1 gap group:** parallelogram geometry causing label overflow.
+
+## batch13-04-flow-parallelograms — Changes applied — 2026-10-07T06:39:43+00:00
+
+- `src/layout/mod.rs` — Use Mermaid’s padded height and full height extension for both flowchart parallelogram widths.
+- `src/render.rs`, `src/layout/routing.rs` — Derive the slanted outline and connection intersection offset from h/2.
+
+## batch13-04-flow-parallelograms — Pass 2 findings — 2026-10-07T06:40:52+00:00
+
+### Iteration 4/10 — Pass 2
+
+#### Visual appearance
+
+- Both orientations now match JS’s 254.91 × 55 canvas and 19.5px slopes.
+- The labels sit inside the borders without crossing them.
+
+#### Structural differences
+
+- No material outline or size difference remains.
+
+#### Visual defects
+
+- **0 remaining visible gap groups. Visual match: yes.**
+- Build and all 422 renders passed.
