@@ -7168,3 +7168,43 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining material gap groups. Visual match: yes.**
 - Build and all 422 renders passed.
+
+## batch13-09-flow-horizontal-cylinder — Pass 1 findings — 2026-10-07T06:46:48+00:00
+
+### Iteration 9/10 — Pass 1
+
+#### Visual appearance
+
+- Rust’s horizontal cylinder is oversized: 70.38 × 64.4 versus JS’s 48.03 × 47.5.
+- Rust centers “A” across the entire cylinder; JS shifts it about 5px left into the body. Label-to-shape width ratios are 17% versus 29%, with no overflow.
+- Rust draws the right cap as a filled ellipse; JS uses a combined arc path. There are no connections. The body and label proportions visibly differ.
+
+#### Structural differences
+
+- Rust scales a generic box and derives cap width from overall width. JS derives cap width from height and uses half the usual padding.
+
+#### Visual defects
+
+- **3 gap groups:** cylinder sizing, cap construction, and horizontal label position.
+
+## batch13-09-flow-horizontal-cylinder — Changes applied — 2026-10-07T06:46:48+00:00
+
+- `src/layout/mod.rs` — Size horizontal cylinders from half padding and three height-derived cap radii.
+- `src/render.rs` — Emit Mermaid’s combined arc path and shift the flowchart label left by one cap radius.
+
+## batch13-09-flow-horizontal-cylinder — Pass 2 findings — 2026-10-07T06:48:40+00:00
+
+### Iteration 9/10 — Pass 2
+
+#### Visual appearance
+
+- The horizontal cylinder now matches JS’s 48.03 × 47.5 canvas, arc construction, and label position within the body.
+
+#### Structural differences
+
+- Tiny coordinate rounding and the existing approximately 0.5px text baseline difference remain.
+
+#### Visual defects
+
+- **0 remaining material gap groups. Visual match: yes.**
+- Build and all 422 renders passed.

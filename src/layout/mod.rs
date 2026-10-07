@@ -8248,6 +8248,14 @@ fn shape_size(
         let height = label.height + config.node_padding_y * 1.5;
         return (label.width + config.node_padding_x * 0.75 + height / 4.0, height);
     }
+    if kind == crate::ir::DiagramKind::Flowchart
+        && shape == crate::ir::NodeShape::HorizontalCylinder
+    {
+        // tiltedCylinder.ts uses half padding and three horizontal cap radii.
+        let height = label.height + config.node_padding_y * 0.75;
+        let radius = (height / 2.0) / (2.5 + height / 50.0);
+        return (label.width + config.node_padding_x * 0.375 + 3.0 * radius, height);
+    }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Stadium {
         // stadium.ts adds one padding extent vertically and h/4 to width.
         let height = label.height + config.node_padding_y * 1.5;

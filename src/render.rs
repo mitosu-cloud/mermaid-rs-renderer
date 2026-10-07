@@ -1731,6 +1731,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 // Center the label in the rectangular body to the right of the notch.
                 center_x += node.height / 8.0;
             }
+            if layout.kind == crate::ir::DiagramKind::Flowchart
+                && node.shape == crate::ir::NodeShape::HorizontalCylinder
+            {
+                center_x -= crate::block_shapes::cylinder_radius(node.height);
+            }
             let mut center_y = node.y + node.height / 2.0;
             if layout.kind == crate::ir::DiagramKind::Block
                 && node.shape == crate::ir::NodeShape::Cylinder
@@ -8301,6 +8306,20 @@ fn shape_svg_inner(
         crate::ir::NodeShape::HorizontalCylinder => {
             // Cylinder rotated 90 degrees (horizontal).
             let sw = node.style.stroke_width.unwrap_or(1.0);
+            if kind == crate::ir::DiagramKind::Flowchart {
+                let ry = h / 2.0;
+                let rx = crate::block_shapes::cylinder_radius(h);
+                let body = w - 2.0 * rx;
+                let left = x + rx;
+                let right = left + body;
+                let bottom = y + h;
+                let path = format!(
+                    "M{left:.5},{bottom:.5} a{rx:.5},{ry:.5} 0,0,1 0,-{h:.5} l{body:.5},0 a{rx:.5},{ry:.5} 0,0,1 0,{h:.5} M{right:.5},{y:.5} a{rx:.5},{ry:.5} 0,0,0 0,{h:.5} l-{body:.5},0"
+                );
+                return format!(
+                    "<path d=\"{path}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}{join}/>"
+                );
+            }
             let rx = (w * 0.1).max(6.0);
             let ry = h / 2.0;
             let body_w = w - 2.0 * rx;
