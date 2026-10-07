@@ -7129,3 +7129,42 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining material gap groups. Visual match: yes.**
 - Build and all 422 renders passed.
+
+## batch13-08-flow-asymmetric — Pass 1 findings — 2026-10-07T06:45:05+00:00
+
+### Iteration 8/10 — Pass 1
+
+#### Visual appearance
+
+- Rust’s asymmetric box is 251.91 × 60 versus JS’s 225.66 × 55. Its label occupies 78% of the shape width versus 88% in JS.
+- The notch is 11px deep versus JS’s 9.75px. Both labels fit, but Rust has visibly excessive space around the text.
+- There are no connections. The notch arrangement agrees, while the proportions differ.
+
+#### Structural differences
+
+- Rust uses generic rectangle padding before adding the notch. JS adds one 15px padding extent per dimension.
+
+#### Visual defects
+
+- **1 gap group:** asymmetric box padding and notch dimensions.
+
+## batch13-08-flow-asymmetric — Changes applied — 2026-10-07T06:45:05+00:00
+
+- `src/layout/mod.rs` — Use JS’s single padding extent and h/4 notch for flowchart asymmetric boxes. The existing label offset centers text in the rectangular body.
+
+## batch13-08-flow-asymmetric — Pass 2 findings — 2026-10-07T06:46:36+00:00
+
+### Iteration 8/10 — Pass 2
+
+#### Visual appearance
+
+- The box now matches JS’s 225.66 × 55 canvas, 9.75px notch, and label placement within the rectangular body.
+
+#### Structural differences
+
+- Rust uses a polygon; JS’s zero-roughness paths trace the same outline.
+
+#### Visual defects
+
+- **0 remaining material gap groups. Visual match: yes.**
+- Build and all 422 renders passed.

@@ -8243,6 +8243,11 @@ fn shape_size(
             + 3.0 * crate::block_shapes::cylinder_radius(width);
         return (width, height);
     }
+    if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Asymmetric {
+        // rectLeftInvArrow.ts adds an h/4 notch to the padded label box.
+        let height = label.height + config.node_padding_y * 1.5;
+        return (label.width + config.node_padding_x * 0.75 + height / 4.0, height);
+    }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Stadium {
         // stadium.ts adds one padding extent vertically and h/4 to width.
         let height = label.height + config.node_padding_y * 1.5;
