@@ -1408,7 +1408,25 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             if let Some(label) = edge.label.as_ref()
                 && let Some((x, y)) = edge.label_anchor
             {
-                if layout.kind == crate::ir::DiagramKind::Block {
+                if layout.kind == crate::ir::DiagramKind::Er {
+                    let fill = crate::theme::adjust_color(&theme.primary_color, -160.0, 0.0, 0.0);
+                    svg.push_str(&format!("<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{fill}\" fill-opacity=\"0.5\"/>", x - label.width / 2.0, y - label.height / 2.0, label.width, label.height));
+                    let baseline = y - label.height / 2.0
+                        + 14.0 * config.label_line_height / 2.0
+                        + text_metrics::centered_baseline_offset(14.0, &theme.font_family)
+                            .unwrap_or(4.5);
+                    svg.push_str(&text_block_svg_with_font_size(
+                        x,
+                        baseline,
+                        label,
+                        theme,
+                        config,
+                        14.0,
+                        "middle",
+                        edge.override_style.label_color.as_deref(),
+                        true,
+                    ));
+                } else if layout.kind == crate::ir::DiagramKind::Block {
                     svg.push_str(&format!(
                         "<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"rgba(232,232,232,0.8)\"/>",
                         x-label.width/2.0, y-label.height/2.0, label.width, label.height

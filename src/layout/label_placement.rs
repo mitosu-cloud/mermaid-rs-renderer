@@ -119,6 +119,7 @@ pub(crate) fn edge_label_padding(kind: DiagramKind, config: &LayoutConfig) -> (f
             config.requirement.edge_label_padding_x,
             config.requirement.edge_label_padding_y,
         ),
+        DiagramKind::Er => (0.0, 0.0),
         DiagramKind::State => (3.0, 1.6),
         DiagramKind::Flowchart => (4.5, 2.2),
         _ => (4.0, 2.0),

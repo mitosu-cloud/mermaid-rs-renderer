@@ -6189,3 +6189,46 @@ warning: unused variable: `has_title`
 #### Visual defects
 
 - One gap group: relationship-label measurement and appearance.
+
+## batch11-06-er-labels — Changes applied — 2026-10-07T05:46:57+00:00
+
+- `src/layout/mod.rs` — Measure relationship labels at 14px with actual glyph widths; keep their measured extent in rank spacing.
+- `src/layout/label_placement.rs` — Remove generic label padding for ER.
+- `src/render.rs` — Draw ER label text and a translucent theme background without a pill border.
+
+## batch11-06-er-labels — Pass 2 findings — 2026-10-07T05:48:14+00:00
+
+### Iteration 6/10 — Pass 2
+
+#### Visual appearance
+
+- The alias example now looks essentially the same as JS: matching canvas, tables, connector gap, endpoint symbols, and 14-pixel relationship label.
+- Minor outline thickness and text-baseline differences remain.
+
+#### Structural differences
+
+- Label size is now 20.67 × 21, matching the reference; the pill border is gone.
+
+#### Visual defects
+
+- No major gap groups remain in this selected example.
+- **Visual match: yes.** Build and all 422 renders succeeded.
+
+## batch11-07-er-cardinality-aliases — Pass 1 findings — 2026-10-07T05:48:14+00:00
+
+### Iteration 7/10 — Pass 1
+
+#### Visual appearance
+
+- `entityRelationshipDiagram-relationships-with-aliases` is a 939.66 × 100 strip in Rust versus a 351.5 × 285 connected diagram in JS.
+- Rust displays entire relationship statements as two isolated boxes. JS has three entities and two curved connections, one dashed.
+- These look like different pictures.
+
+#### Structural differences
+
+- Textual cardinalities and “to”/“optionally to” relationship operators are not parsed.
+
+#### Visual defects
+
+- Three groups: missing relationships/entities, default entity color, and connection layout.
+- This pass adds the missing relationship syntax.

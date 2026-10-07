@@ -655,6 +655,18 @@ fn compute_flowchart_layout(
     // Pre-measure all edge labels once (reused across layout, routing, and edge construction).
     let measure_edge_field = |field: &Option<String>, markdown_label: bool| -> Option<TextBlock> {
         field.as_ref().map(|label| {
+            if graph.kind == crate::ir::DiagramKind::Er {
+                let mut label_theme = theme.clone();
+                label_theme.font_size = 14.0;
+                let mut block =
+                    measure_label_with_font_size(label, 14.0, config, false, &theme.font_family);
+                block.width = block
+                    .lines
+                    .iter()
+                    .map(|line| crate::er::text_width(&line.text(), &label_theme))
+                    .fold(0.0_f32, f32::max);
+                return block;
+            }
             if markdown_label {
                 return measure_markdown_label(label, theme, config);
             }
@@ -2453,9 +2465,9 @@ fn assign_positions_manual(
                         if lo <= rank_idx && rank_idx < hi {
                             let label = edge_labels[index].as_ref()?;
                             Some(if is_horizontal(graph.direction) {
-                                label.width * 0.875
+                                label.width
                             } else {
-                                label.height * 0.875
+                                label.height
                             })
                         } else {
                             None
