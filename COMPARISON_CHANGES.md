@@ -6150,3 +6150,42 @@ warning: unused variable: `has_title`
 #### Visual defects
 
 - Two annotation subgroups: cardinality symbols and relationship labels. This pass targets the symbols.
+
+## batch11-05-er-markers — Changes applied — 2026-10-07T05:45:46+00:00
+
+- `src/render.rs` — Match Mermaid's start/end cardinality offsets, 18px bars, radius-6 circles, and curved crow’s feet. Symbols now extend into the connector instead of hiding beneath entity borders.
+
+## batch11-05-er-markers — Pass 2 findings — 2026-10-07T05:46:54+00:00
+
+### Iteration 5/10 — Pass 2
+
+#### Visual appearance
+
+- Both cardinality bars are visible, and the optional circle now matches JS’s size and position.
+- The relationship label remains larger and boxed in Rust.
+
+#### Structural differences
+
+- Endpoint symbols now use Mermaid’s start/end coordinates and curved crow’s feet.
+
+#### Visual defects
+
+- One label subgroup remains.
+- **Visual match: partial.** Build and all 422 renders succeeded.
+
+## batch11-06-er-labels — Pass 1 findings — 2026-10-07T05:46:54+00:00
+
+### Iteration 6/10 — Pass 1
+
+#### Visual appearance
+
+- The alias layout matches, but Rust renders “has” at 16 pixels inside a 34.77 × 28 bordered pill. JS uses 14-pixel text with a 20.67 × 21 background.
+- Labels fit both diagrams; Rust’s annotation looks heavier and wider.
+
+#### Structural differences
+
+- ER labels currently inherit generic edge-label font, padding, and border styling.
+
+#### Visual defects
+
+- One gap group: relationship-label measurement and appearance.

@@ -7116,7 +7116,7 @@ fn edge_decoration_svg(
     decoration: crate::ir::EdgeDecoration,
     stroke: &str,
     stroke_width: f32,
-    _at_start: bool,
+    at_start: bool,
 ) -> String {
     let (x, y) = point;
     let angle = angle_deg;
@@ -7144,23 +7144,32 @@ fn edge_decoration_svg(
                 points, stroke, stroke, stroke_width
             )
         }
-        // Crow's foot notation for ER diagrams
-        crate::ir::EdgeDecoration::CrowsFootOne => format!(
-            "<path d=\"M 0 -6 L 0 6 M 5 -6 L 5 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
-            stroke, stroke_width
-        ),
-        crate::ir::EdgeDecoration::CrowsFootZeroOne => format!(
-            "<g><circle cx=\"-4\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 4 -6 L 4 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
-            stroke, stroke_width, stroke, stroke_width
-        ),
-        crate::ir::EdgeDecoration::CrowsFootMany => format!(
-            "<path d=\"M 0 -6 L 0 6 M 0 0 L 8 -6 M 0 0 L 8 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/>",
-            stroke, stroke_width
-        ),
-        crate::ir::EdgeDecoration::CrowsFootZeroMany => format!(
-            "<g><circle cx=\"-4\" cy=\"0\" r=\"4\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/><path d=\"M 4 0 L 12 -6 M 4 0 L 12 6\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"{join}/></g>",
-            stroke, stroke_width, stroke, stroke_width
-        ),
+        // Mermaid marker coordinates translated by their refX/refY.
+        // Both endpoints use the forward tangent; end markers point back.
+        crate::ir::EdgeDecoration::CrowsFootOne => {
+            let (first, second) = if at_start { (9, 15) } else { (-15, -9) };
+            format!(
+                "<path d=\"M {first} -9 L {first} 9 M {second} -9 L {second} 9\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"/>"
+            )
+        }
+        crate::ir::EdgeDecoration::CrowsFootZeroOne => {
+            let (circle, bar) = if at_start { (21, 9) } else { (-21, -9) };
+            format!(
+                "<circle cx=\"{circle}\" cy=\"0\" r=\"6\" fill=\"white\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"/><path d=\"M {bar} -9 L {bar} 9\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"/>"
+            )
+        }
+        crate::ir::EdgeDecoration::CrowsFootMany => {
+            let bar = if at_start { 24 } else { -24 };
+            format!(
+                "<path d=\"M -18 0 Q 0 -18 18 0 Q 0 18 -18 0 M {bar} -9 L {bar} 9\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"/>"
+            )
+        }
+        crate::ir::EdgeDecoration::CrowsFootZeroMany => {
+            let circle = if at_start { 30 } else { -30 };
+            format!(
+                "<circle cx=\"{circle}\" cy=\"0\" r=\"6\" fill=\"white\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"/><path d=\"M -18 0 Q 0 -18 18 0 Q 0 18 -18 0\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"{stroke_width}\"/>"
+            )
+        }
     };
     format!("<g transform=\"translate({x:.2} {y:.2}) rotate({angle:.2})\">{shape}</g>")
 }
