@@ -5805,3 +5805,46 @@ Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical 
 
 - Four visible gap groups remain: branch ordering, table appearance, proportions, and connections/annotations. **Visual match: partial**.
 - Build and all 422 Rust pairs succeeded; three ER SVGs changed. JS references stayed unchanged.
+
+## batch10-09-er-aliases — Pass 1 findings — 2026-10-07T05:19:43+00:00
+
+### Iteration 9/10 — `entityRelationshipDiagram-entity-name-aliases`, Pass 1
+
+#### Visual appearance
+
+- Rust separates `p[Person]` and `a["Customer Account"]` from the connected `p` and `a` entities, creating four boxes on a 568.67 × 230.30 canvas.
+- JS has two connected attribute tables titled “Person” and “Customer Account” on a 195.58 × 330.75 canvas.
+- Rust reverses the attribute columns and uses different header colors, row spacing, and relationship-label styling.
+- Labels fit; the layout and entity identities visibly differ.
+
+#### Structural differences
+
+- Alias declarations are stored as complete entity IDs, so later relationships connect new empty entities.
+
+#### Visual defects
+
+- Four gap groups: alias identity/layout, table appearance, proportions, and connection annotations. This pass targets alias identity.
+
+## batch10-09-er-aliases — Changes applied — 2026-10-07T05:19:44+00:00
+
+- `src/parser.rs` — parse ER bracket aliases into an entity ID and display label; retain classes and attributes under that ID so subsequent relationships reuse the same entity.
+
+## batch10-09-er-aliases — Pass 2 findings — 2026-10-07T05:20:33+00:00
+
+### Iteration 9/10 — `entityRelationshipDiagram-entity-name-aliases`, Pass 2
+
+#### Visual appearance
+
+- Rust now has two connected attribute tables with the correct display names.
+- Canvas size is 213.96 × 289.90 versus JS’s 195.58 × 330.75.
+- The connecting gap is still about half JS’s gap relative to the Person table height. Column order, row styling, and annotations also differ.
+- Labels fit; the intended diagram is recognizable.
+
+#### Structural differences
+
+- Aliases, attributes, and relationships now share the same entity IDs.
+
+#### Visual defects
+
+- Four gap groups decreased to three: table appearance, proportions, and annotations. **Visual match: partial**.
+- Build and all 422 Rust pairs succeeded; only the alias SVG changed. JS references stayed unchanged.

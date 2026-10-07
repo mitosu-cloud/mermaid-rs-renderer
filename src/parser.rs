@@ -2467,6 +2467,18 @@ fn parse_er_relation_line(
     ))
 }
 
+fn parse_er_entity_declaration(token: &str) -> (String, Option<String>, Vec<String>) {
+    let (base, classes) = split_inline_classes(token);
+    // A fully quoted name may contain brackets literally. Otherwise the
+    // bracket suffix is a display alias, while the prefix remains the ID.
+    if !(base.starts_with('"') && base.ends_with('"'))
+        && let Some((id, alias)) = split_class_bracket_label(&base)
+    {
+        return (id, Some(alias), classes);
+    }
+    (strip_quotes(&base), None, classes)
+}
+
 fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
     let mut graph = Graph::new();
     graph.kind = DiagramKind::Er;
@@ -2567,10 +2579,9 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
 
         if let Some(open_idx) = line.find('{') {
             let name = line[..open_idx].trim();
-            let (name, classes) = split_inline_classes(name);
-            let name = strip_quotes(&name);
+            let (name, alias, classes) = parse_er_entity_declaration(name);
             if !name.is_empty() {
-                graph.ensure_node(&name, None, Some(crate::ir::NodeShape::RoundRect));
+                graph.ensure_node(&name, alias, Some(crate::ir::NodeShape::RoundRect));
                 apply_node_classes(&mut graph, &name, &classes);
                 current_entity = Some(name.clone());
                 let tail = line[open_idx + 1..].trim();
@@ -2587,10 +2598,9 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
-        let (entity, classes) = split_inline_classes(line);
-        let entity = strip_quotes(&entity);
+        let (entity, alias, classes) = parse_er_entity_declaration(line);
         if !entity.is_empty() {
-            graph.ensure_node(&entity, None, Some(crate::ir::NodeShape::RoundRect));
+            graph.ensure_node(&entity, alias, Some(crate::ir::NodeShape::RoundRect));
             apply_node_classes(&mut graph, &entity, &classes);
         }
     }
