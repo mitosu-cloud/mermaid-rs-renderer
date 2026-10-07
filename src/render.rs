@@ -1304,9 +1304,15 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 crate::ir::EdgeStyle::Solid | crate::ir::EdgeStyle::Invisible => {
                     (String::new(), base_edge_width)
                 }
-                crate::ir::EdgeStyle::Dotted => {
-                    ("stroke-dasharray=\"2\"".to_string(), base_edge_width)
-                }
+                crate::ir::EdgeStyle::Dotted => (
+                    if layout.kind == crate::ir::DiagramKind::Er {
+                        "stroke-dasharray=\"8,8\""
+                    } else {
+                        "stroke-dasharray=\"2\""
+                    }
+                    .to_string(),
+                    base_edge_width,
+                ),
                 crate::ir::EdgeStyle::Thick => (String::new(), 3.5),
             };
 

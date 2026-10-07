@@ -2305,10 +2305,40 @@ fn is_er_card_char(ch: char) -> bool {
     matches!(ch, '|' | 'o' | '{' | '}')
 }
 
+// Longest forms first: aliases can be prefixes/suffixes of shorter words.
+const ER_CARDINALITY_ALIASES: &[(&str, &str)] = &[
+    ("zero or more", "o{"),
+    ("zero or many", "o{"),
+    ("one or more", "|{"),
+    ("one or many", "|{"),
+    ("zero or one", "o|"),
+    ("one or zero", "o|"),
+    ("only one", "||"),
+    ("many(0)", "o{"),
+    ("many(1)", "|{"),
+    ("many", "o{"),
+    ("one", "||"),
+    ("0+", "o{"),
+    ("1+", "|{"),
+    ("1", "||"),
+];
+
 fn split_er_cardinality_left(input: &str) -> (String, Option<String>) {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return (String::new(), None);
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    for (alias, symbol) in ER_CARDINALITY_ALIASES {
+        if lower.ends_with(alias) {
+            let boundary = trimmed.len() - alias.len();
+            if trimmed[..boundary].ends_with(char::is_whitespace) {
+                return (
+                    trimmed[..boundary].trim().to_string(),
+                    Some((*symbol).to_string()),
+                );
+            }
+        }
     }
     let chars: Vec<char> = trimmed.chars().collect();
     let len = chars.len();
@@ -2333,6 +2363,15 @@ fn split_er_cardinality_right(input: &str) -> (String, Option<String>) {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return (String::new(), None);
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    for (alias, symbol) in ER_CARDINALITY_ALIASES {
+        if lower.starts_with(alias) && trimmed[alias.len()..].starts_with(char::is_whitespace) {
+            return (
+                trimmed[alias.len()..].trim().to_string(),
+                Some((*symbol).to_string()),
+            );
+        }
     }
     let chars: Vec<char> = trimmed.chars().collect();
     let len = chars.len();
@@ -2425,15 +2464,44 @@ fn parse_er_relation_line(
         (line.trim(), None)
     };
 
-    let (sep, style) = if let Some(idx) = relation_part.find("--") {
-        (idx, crate::ir::EdgeStyle::Solid)
-    } else if let Some(idx) = relation_part.find("..") {
-        (idx, crate::ir::EdgeStyle::Dotted)
-    } else {
-        return None;
-    };
+    let lower = relation_part.to_ascii_lowercase();
+    let mut quoted = false;
+    let mut separator = None;
+    for (index, ch) in relation_part.char_indices() {
+        if ch == '"' {
+            quoted = !quoted;
+        }
+        if quoted {
+            continue;
+        }
+        for (token, dotted) in [
+            (" optionally to ", true),
+            (" to ", false),
+            ("--", false),
+            ("..", true),
+            (".-", true),
+            ("-.", true),
+        ] {
+            if lower[index..].starts_with(token) {
+                separator = Some((
+                    index,
+                    token.len(),
+                    if dotted {
+                        crate::ir::EdgeStyle::Dotted
+                    } else {
+                        crate::ir::EdgeStyle::Solid
+                    },
+                ));
+                break;
+            }
+        }
+        if separator.is_some() {
+            break;
+        }
+    }
+    let (sep, length, style) = separator?;
     let left_part = relation_part[..sep].trim();
-    let right_part = relation_part[sep + 2..].trim();
+    let right_part = relation_part[sep + length..].trim();
     if left_part.is_empty() || right_part.is_empty() {
         return None;
     }

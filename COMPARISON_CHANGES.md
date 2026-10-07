@@ -6232,3 +6232,44 @@ warning: unused variable: `has_title`
 
 - Three groups: missing relationships/entities, default entity color, and connection layout.
 - This pass adds the missing relationship syntax.
+
+## batch11-07-er-cardinality-aliases — Changes applied — 2026-10-07T05:48:18+00:00
+
+- `src/parser.rs` — Parse Mermaid’s word/numeric cardinality aliases and identifying/nonidentifying textual or mixed punctuation operators; ignore separators inside quoted names.
+- `src/render.rs` — Use ER’s 8,8 dashed relationship pattern.
+
+## batch11-07-er-cardinality-aliases — Pass 2 findings — 2026-10-07T05:49:28+00:00
+
+### Iteration 7/10 — Pass 2
+
+#### Visual appearance
+
+- Rust now renders the three entities and two relationships, including the dashed optional relationship. Its canvas is 356 × 285 versus JS’s 351.5 × 285.
+- The overall arrangement is recognizable. Rust still uses yellow entity fills and diagonal connectors where JS curves outward from vertical segments.
+
+#### Structural differences
+
+- Textual cardinalities and relationship operators now parse correctly.
+
+#### Visual defects
+
+- Two groups remain: default entity color and connection geometry/label placement.
+- **Visual match: partial.** Build and all 422 renders succeeded.
+
+## batch11-08-git-geometry — Pass 1 findings — 2026-10-07T05:49:28+00:00
+
+### Iteration 8/10 — Pass 1
+
+#### Visual appearance
+
+- `gitgraph-top-to-bottom-orientation` is 193.93 × 432.76 in Rust versus 215.77 × 504.61 in JS.
+- Branch topology matches, but Rust uses 42-pixel commit intervals versus 50, radius-8 bullets versus 10, and narrower branch spacing.
+- The main branch label touches the first bullet. Commit labels fit; generated hash text naturally differs between renderers.
+
+#### Structural differences
+
+- Rust’s default git geometry constants differ from Mermaid’s renderer.
+
+#### Visual defects
+
+- Two groups: graph geometry and label geometry. This pass targets graph geometry.
