@@ -1126,6 +1126,8 @@ struct ThemeVariables {
     pie_outer_stroke_color: Option<String>,
     pie_opacity: Option<NumberOrString>,
     radar: Option<serde_json::Value>,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1827,6 +1829,9 @@ pub fn load_config(path: Option<&Path>) -> anyhow::Result<Config> {
         if let Some(radar) = vars.radar {
             config.theme.radar.apply_overrides(&radar);
         }
+        config
+            .theme
+            .apply_quadrant_overrides(&serde_json::Value::Object(vars.extra));
     }
 
     if let Some(ratio) = parsed

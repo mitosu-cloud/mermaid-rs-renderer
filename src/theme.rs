@@ -144,9 +144,46 @@ pub struct Theme {
     pub cscale_colors: Vec<String>,
     #[serde(default)]
     pub radar: RadarStyle,
+    #[serde(default)]
+    pub quadrant_color_overrides: std::collections::BTreeMap<String, String>,
 }
 
 impl Theme {
+    pub(crate) fn apply_quadrant_overrides(&mut self, overrides: &serde_json::Value) {
+        for key in [
+            "quadrant1Fill",
+            "quadrant2Fill",
+            "quadrant3Fill",
+            "quadrant4Fill",
+            "quadrant1TextFill",
+            "quadrant2TextFill",
+            "quadrant3TextFill",
+            "quadrant4TextFill",
+            "quadrantPointTextFill",
+            "quadrantXAxisTextFill",
+            "quadrantYAxisTextFill",
+            "quadrantTitleFill",
+            "quadrantInternalBorderStrokeFill",
+            "quadrantExternalBorderStrokeFill",
+        ] {
+            if let Some(color) = overrides
+                .get(key)
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+            {
+                self.quadrant_color_overrides
+                    .insert(key.to_string(), color.to_string());
+            }
+        }
+    }
+
+    pub(crate) fn quadrant_color<'a>(&'a self, key: &str, fallback: &'a str) -> &'a str {
+        self.quadrant_color_overrides
+            .get(key)
+            .map(String::as_str)
+            .unwrap_or(fallback)
+    }
+
     /// Select a theme by name. Returns `None` if the name is unrecognized.
     pub fn by_name(name: &str) -> Option<Self> {
         match name {
@@ -228,6 +265,7 @@ impl Theme {
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
+            quadrant_color_overrides: Default::default(),
         }
     }
 
@@ -280,6 +318,7 @@ impl Theme {
             pie_opacity: 0.85,
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
+            quadrant_color_overrides: Default::default(),
         }
     }
     /// Official Mermaid "dark" theme — dark background with bright accents.
@@ -331,6 +370,7 @@ impl Theme {
             pie_opacity: 0.85,
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
+            quadrant_color_overrides: Default::default(),
         }
     }
 
@@ -394,6 +434,7 @@ impl Theme {
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
+            quadrant_color_overrides: Default::default(),
         }
     }
 
@@ -457,6 +498,7 @@ impl Theme {
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
+            quadrant_color_overrides: Default::default(),
         }
     }
 
@@ -511,6 +553,7 @@ impl Theme {
             pie_opacity: 0.7,
             cscale_colors: Vec::new(),
             radar: RadarStyle::default(),
+            quadrant_color_overrides: Default::default(),
         }
     }
 }

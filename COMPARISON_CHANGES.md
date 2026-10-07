@@ -5086,3 +5086,53 @@ All 422 Rust SVG/PNG pairs refreshed successfully. Only this SVG changed.
 - Radii F/E/D/C/B/A are 10/10/15/25/10/12. Inline blue/orange fills override F/B class fills, while F's radius inherits 10. E retains the class fill #908342, purple #310085 outline at width 10. D has pink fill #ff33f0 and green #00ff0f outline at width 5. C's cyan outline has width 0 and is therefore invisible in both engines.
 - The reference's label/circle overlaps are preserved, including Campaign F near the Re-evaluate heading, Campaign E across its dark outline, and Campaign A's circle crossing the bottom plot border. All remain inside the canvas. No new clipping or extra overlap was introduced; these are golden-image behaviors rather than claims of ideal chart typography. No connectors or bidirectional labels are present.
 - cargo build --release passed in 10.94 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Only the selected SVG changed; all 421 others are byte-for-byte unchanged. No test suite was run or test files edited. Exactly one source pass; git diff --check passed.
+
+## quadrantChart-config-and-theme-customization — Pass 1 findings — 2026-10-07T00:37:39+00:00
+
+### Pass 1 — quadrant theme override
+
+**Visual appearance**
+
+- “Plan” is dark `#131300` instead of the requested red `#ff0000`.
+
+**Structural differences**
+
+- The quadrant text-fill override is ignored when loading theme variables.
+
+**Visual defects**
+
+- One color mismatch remains in this comparison.
+
+Validated Cargo.toml, both selected SVGs, the reference source and sibling Mermaid checkout. Read both raw SVGs and inspected the current browser-rendered pair. Reused the pinned quadrant database and default theme source to confirm flat theme variable names.
+
+- Mandatory visual checks confirm identical 400×400 size/aspect ratio, plot bounds (31,31,364,364), four 182×182 quadrants, solid border geometry, centered quadrant labels and rotated axis labels. Label/grid width and spacing ratios are identical; all text fits the viewBox and its regions. There are no data points, connector edges or bidirectional labels in this fixture.
+- Only the Plan label at transform (304,122) differs: the 16 px middle-baseline text uses #131300 instead of #ff0000. Its background is #ECECFF. No clipping, overlap or invisible-text defect is observed; the expected red text is readable, and its lower contrast is shared with the golden.
+
+## quadrantChart-config-and-theme-customization — Changes applied — 2026-10-07T00:37:55+00:00
+
+- src/theme.rs — retain quadrant color overrides with backward-compatible serialized defaults and a shared merge that preserves omitted values. Initialize the map in all built-in themes.
+- src/config.rs — preserve flat quadrant color keys from config-file themeVariables and apply the shared merge.
+- src/cli.rs — apply the same overrides from YAML frontmatter/init directives.
+- src/render.rs — consume quadrant fill/text colors, point-label/axis/title colors and internal/external border colors. Escape color attributes while preserving existing defaults.
+- One source fix pass, four source files edited. No geometry or point-style changes. Reused Mermaid quadrantDb.ts and the theme-default quadrant color derivations for variable names.
+
+## quadrantChart-config-and-theme-customization — Pass 2 findings — 2026-10-07T00:39:11+00:00
+
+### Pass 2 — quadrant theme override
+
+**Visual appearance**
+
+- **Visual match: yes.** “Plan” now uses the requested red color.
+
+**Structural differences**
+
+- The override is retained and applied to Rust’s SVG text attribute.
+
+**Visual defects**
+
+- The reported color mismatch is addressed. All four quadrant comparisons now look like their JS references.
+
+All 422 Rust SVG/PNG pairs refreshed successfully. Only the configured quadrant SVG changed.
+
+- Re-read the generated SVG and inspected the updated side-by-side browser image. Plan at (304,122) has fill #ff0000; font size 16, middle baseline, background #ECECFF and geometry remain unchanged. Canvas/plot are 400×400 and (31,31,364,364). Labels retain the same fit/clearance and borders, with no overlap, clipping or invisible-text defect. No connectors or data points are present.
+- cargo build --release passed in 11.94 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Only the configured quadrant SVG changed; all 421 others are byte-for-byte unchanged, including the basic, title-only and styled-point comparisons inspected during the prior two passes. No test suite was run or test files edited. Exactly one source pass; git diff --check passed.

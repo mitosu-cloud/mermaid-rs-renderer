@@ -551,6 +551,7 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
         }
     }
     if let Some(theme_vars) = init.get("themeVariables") {
+        config.theme.apply_quadrant_overrides(theme_vars);
         if let Some(radar) = theme_vars.get("radar") {
             config.theme.radar.apply_overrides(radar);
         }

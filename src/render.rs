@@ -3963,7 +3963,7 @@ fn render_quadrant(
     for (index, &(qx, qy)) in origins.iter().enumerate() {
         svg.push_str(&format!(
             "<rect x=\"{qx:.3}\" y=\"{qy:.3}\" width=\"{hw:.3}\" height=\"{hh:.3}\" fill=\"{}\"/>",
-            fills[index]
+            escape_xml(theme.quadrant_color(&format!("quadrant{}Fill", index + 1), fills[index]))
         ));
         if let Some(label) = &layout.quadrant_labels[index] {
             let (label_y, baseline) = if layout.center_quadrant_labels {
@@ -3976,7 +3976,7 @@ fn render_quadrant(
                 qx + hw / 2.0,
                 label_y,
                 options.quadrant_label_font_size,
-                text_fills[index],
+                theme.quadrant_color(&format!("quadrant{}TextFill", index + 1), text_fills[index]),
                 0,
                 "middle",
                 baseline,
@@ -3989,16 +3989,25 @@ fn render_quadrant(
     let outer = options.quadrant_external_border_stroke_width;
     let inner = options.quadrant_internal_border_stroke_width;
     let half_outer = outer / 2.0;
-    for (x1, y1, x2, y2, stroke_width) in [
+    for (index, (x1, y1, x2, y2, stroke_width)) in [
         (x - half_outer, y, x + w + half_outer, y, outer),
         (x + w, y + half_outer, x + w, y + h - half_outer, outer),
         (x - half_outer, y + h, x + w + half_outer, y + h, outer),
         (x, y + half_outer, x, y + h - half_outer, outer),
         (x + hw, y + half_outer, x + hw, y + h - half_outer, inner),
         (x + half_outer, y + hh, x + w - half_outer, y + hh, inner),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let key = if index < 4 {
+            "quadrantExternalBorderStrokeFill"
+        } else {
+            "quadrantInternalBorderStrokeFill"
+        };
+        let border_color = escape_xml(theme.quadrant_color(key, "#c7c7f1"));
         svg.push_str(&format!(
-            "<line x1=\"{x1:.3}\" y1=\"{y1:.3}\" x2=\"{x2:.3}\" y2=\"{y2:.3}\" stroke=\"#c7c7f1\" stroke-width=\"{stroke_width}\"/>"
+            "<line x1=\"{x1:.3}\" y1=\"{y1:.3}\" x2=\"{x2:.3}\" y2=\"{y2:.3}\" stroke=\"{border_color}\" stroke-width=\"{stroke_width}\"/>"
         ));
     }
     for point in &layout.points {
@@ -4020,7 +4029,7 @@ fn render_quadrant(
             point.x,
             point.y + options.point_text_padding,
             options.point_label_font_size,
-            "#131300",
+            theme.quadrant_color("quadrantPointTextFill", "#131300"),
             0,
             "middle",
             "hanging",
@@ -4035,7 +4044,7 @@ fn render_quadrant(
             x + if centered_x { hw / 2.0 } else { 0.0 },
             layout.x_axis_y,
             options.x_axis_label_font_size,
-            "#131300",
+            theme.quadrant_color("quadrantXAxisTextFill", "#131300"),
             0,
             x_anchor,
             "hanging",
@@ -4048,7 +4057,7 @@ fn render_quadrant(
             x + hw + if centered_x { hw / 2.0 } else { 0.0 },
             layout.x_axis_y,
             options.x_axis_label_font_size,
-            "#131300",
+            theme.quadrant_color("quadrantXAxisTextFill", "#131300"),
             0,
             x_anchor,
             "hanging",
@@ -4063,7 +4072,7 @@ fn render_quadrant(
             layout.y_axis_x,
             y + h - if centered_y { hh / 2.0 } else { 0.0 },
             options.y_axis_label_font_size,
-            "#131300",
+            theme.quadrant_color("quadrantYAxisTextFill", "#131300"),
             -90,
             y_anchor,
             "hanging",
@@ -4076,7 +4085,7 @@ fn render_quadrant(
             layout.y_axis_x,
             y + hh - if centered_y { hh / 2.0 } else { 0.0 },
             options.y_axis_label_font_size,
-            "#131300",
+            theme.quadrant_color("quadrantYAxisTextFill", "#131300"),
             -90,
             y_anchor,
             "hanging",
@@ -4089,7 +4098,7 @@ fn render_quadrant(
             layout.title_x,
             layout.title_y,
             options.title_font_size,
-            "#131300",
+            theme.quadrant_color("quadrantTitleFill", "#131300"),
             0,
             "middle",
             "hanging",
