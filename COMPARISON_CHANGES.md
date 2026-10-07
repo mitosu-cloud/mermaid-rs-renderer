@@ -5322,3 +5322,64 @@ Build passed; all **422 Rust SVG/PNG pairs** refreshed. Twelve mindmap SVGs chan
 - Labels use 16 px text, plain I am a cloud / I am a bang, with approximately 71% / 50% label-to-outline width ratios and more than 10% label-width margins on each side. The outlines have approximately 9.853 px canvas margins. No selected text overflow, overlap, connector crossing or clipping is visible; white on blue and black on yellow remain high contrast.
 - Related circle, hexagon, rounded-square and square chains now have the vertical orientation. Full force placement remains a family-wide gap. Existing hexagon proportions, branching topology, Markdown parsing and icon/decorations treated as nodes remain outside this pass. Comprehensive/basic/unclear-indentation browser images confirm remaining branching layout differences. The classes JS golden is absent, so its side-by-side preview could not load; this is independent of the successful Rust export. The family overview includes all 14 Rust mindmaps and the 13 available JS goldens.
 - cargo build --release passed in 12.00 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Twelve mindmap SVGs changed, 410 other SVGs byte-for-byte unchanged. Six source files edited in one pass; no source follow-up after build or visual review; no test suite run or test files edited. git diff --check passed.
+
+## mindmap-markdown-strings — Pass 1 findings — 2026-10-07T04:14:38+00:00
+
+### Pass 1 — Mindmap Markdown labels
+
+**Visual appearance**
+
+- Rust is a wide 628×148 diagram; JS is a tall 162×307 chain. Their aspect ratios differ by **8×**.
+- Rust splits the middle label into separate branches. JS keeps “Bold item”, “Italic item”, and “Normal text” inside one node.
+- Rust exposes IDs, brackets, backticks, and asterisks instead of applying the intended formatting.
+- Those extra branches also change the node and connector colors.
+- Square nodes have less horizontal padding: the root is 56 px wide versus 74 px in JS. The visible labels fit, but the intended three-line container is missing.
+
+**Structural differences**
+
+- Rust has two extra nodes and connectors, plus unwanted divider lines under the falsely parsed nodes.
+- Rust uses `M/C/C/C/C` paths across branches; JS uses `M/L/C/C/L` along the vertical chain.
+
+**Visual defects**
+
+- **Five gaps:** proportions, topology, label formatting, colors, and container sizing.
+- No clipping or overlapping text was observed. Side by side, these look like different diagrams.
+
+- Validated Cargo.toml, reference fixture, both raw SVGs and sibling Mermaid checkout; no applicable AGENTS.md found. Working tree was clean at b3e8708. Read both raw SVGs and inspected the browser comparison. Exact canvas dimensions: Rust 628.219×147.559, JS 162.085×306.542; aspect ratios 4.257 / 0.529. Rust draws five nodes with four edges instead of the expected three-node chain.
+- Root label/node widths: Rust approximately 35.78/55.78 (64%), JS 34.234/74.234 (46%). Another item node widths 114.93 / 136.313. Expected middle label is 85.672×72 inside a 125.672×92 square rectangle, with 20 px horizontal and 10 px vertical margins. Rust falsely parses three one-line labels, including id2["`**Bold item** and Normal text`"]. The root-to-first-child center distance is approximately 183.5 px versus JS 121.271; relative to mean end-node height approximately 5.4 / 1.78. No edge labels or bidirectional pairs occur. No observed clipping, crossings, label boundary collisions or invisible text; false green/purple sections are a color/topology discrepancy.
+- Read pinned Mermaid mindmap Jison NSTR/NSTR2 lexer states and database padding/parent rules, plus squareRect/drawRect source and installed Markdown preprocessing (BR conversion, dedent and blank-line collapse). The current upstream squareRect padding formula differs from the stored reference dimensions; this pass targets the explicit golden geometry (40 px total horizontal, 20 px total vertical padding). Scope one source pass: retain quoted multiline statements, format/dedent Markdown lines, measure bold/italic font faces, and correct square-node horizontal padding. Force-solver placement remains a known separate gap.
+
+## mindmap-markdown-strings — Changes applied — 2026-10-07T04:16:31+00:00
+
+- src/parser.rs:310 — add an opt-in quoted-label state to indentation-preserving preprocessing. Mindmap quoted plain/Markdown labels retain all continuation lines, including blank lines and comment-like text, as one statement; unterminated labels return a parse error. Other users of the preprocessor retain the prior behavior.
+- src/layout/mindmap.rs:76 — square nodes now use 40 px total horizontal padding and 20 px total vertical padding at the existing default rectPadding=10, matching the selected golden. Preserve one multiline Markdown label, normalize incidental indentation/blank lines and BR breaks, then use the existing formatted-span renderer. Corrected hierarchy automatically selects the previous vertical chain layout and inherited section colors.
+- src/text_metrics.rs:106 — measure actual bold/italic font faces with kerning and separate style-aware cache keys. Existing normal measurements delegate with bold=false/italic=false, preserving their cache key and behavior. Mindmap Markdown nodes use this measurement instead of the approximate 1.07 bold-width multiplier, with the old approximation retained when fonts are unavailable.
+- Three source files edited in one pass. Full Markdown list/code-block syntax and the COSE force solver are not extended. No test files or dependency files edited.
+
+## mindmap-markdown-strings — Pass 2 findings — 2026-10-07T04:19:21+00:00
+
+### Pass 2 — Mindmap Markdown labels
+
+**Visual appearance**
+
+- **Visual match: partial.** Rust now shows the intended vertical three-node chain, with bold, italic, and plain text together in the middle node.
+- Rust centers the nodes; JS shifts the middle node about 11 px left. Center spacing is 118 px versus 121 px.
+- The canvas is now 156×300 versus 162×307. Aspect ratios differ by approximately 1.6%, versus 8× before.
+
+**Structural differences**
+
+- The extra nodes, connectors, syntax text, and false section colors are gone.
+- Node sizes match within 0.01 px. Connector paths still differ in alignment because of the missing lateral offset.
+
+**Visual defects**
+
+- **One visible gap remains:** placement from Mermaid’s force layout.
+- Labels fit their containers; no clipping, overlapping text, or invisible text was observed.
+
+Build passed; all **422 Rust SVG/PNG pairs** refreshed. Three mindmap SVGs changed; the other 419 are unchanged.
+
+- Re-read the generated raw SVG and inspected the browser Markdown/square comparisons plus the updated classes Rust PNG. The selected canvas is 156.0185×299.706 versus JS 162.0847×306.5417; aspect 0.52057 / 0.52875. Both now have the same vertical three-node topology. Rust has aligned centers at x=78.009; JS end nodes x=88.928 and middle x=77.836, a -11.092 px offset. Rust center steps 118 versus JS 121.271; relative to mean adjacent node height 68, ratios 1.735 / 1.783.
+- Root, middle and leaf rectangles are 74.23×44, 125.67×92 and 136.31×44 versus JS 74.2344×44, 125.6719×92 and 136.3125×44. Root is bold, middle has three 24 px lines (bold/italic/plain), leaf is italic; all use 16 px Trebuchet MS. Label widths approximately 34.23,85.67,96.31 occupy 46%,68%,71% of their containers. Each has 20 px horizontal and 10 px vertical margins, satisfying the fit checks. Rust uses root white on blue and child black on yellow, matching the reference colors; no invisible text.
+- Two connectors use 11 and 5 px widths. Rust M/C/C/C/C is collinear vertical; JS M/L/C/C/L is collinear along the lateral offsets, with no extra bulge. The interior portions are concealed by the filled rectangles. No selected overlaps, crossings or viewBox clipping were observed. The residual offset and approximately 3.27 px shorter center steps are the same force-layout gap left by the previous decorative-shape iteration.
+- Square-shape horizontal padding is improved: Rust node width now 141.344 versus JS 136.5, instead of the previous 121.344. The remaining 4.844 px difference is from plain fast text measurement; its force offsets also remain. The classes Rust image has wider square boxes with adequate label margins; its JS golden remains unavailable. Its icon/decorations parsing and branching layout gaps are not claimed addressed. The family overview was refreshed and now explicitly marks that unavailable golden.
+- cargo build --release passed in 12.42 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Only mindmap-markdown-strings, mindmap-square-shape and mindmap-classes SVGs changed; all other 419 are byte-for-byte unchanged, including previous cloud/bang, XY and quadrant outputs. Three source files edited in one pass; no source follow-up after build/review, no test suite run or test files edited. git diff --check passed.

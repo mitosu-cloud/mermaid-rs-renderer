@@ -76,7 +76,7 @@ fn mindmap_node_size(
         ),
         crate::ir::NodeShape::Rectangle => {
             let pad = mindmap.rect_padding;
-            (label.width + pad * 2.0, label.height + pad * 2.0)
+            (label.width + pad * 4.0, label.height + pad * 2.0)
         }
         crate::ir::NodeShape::RoundRect => {
             let pad = mindmap.rounded_padding;
@@ -281,7 +281,44 @@ pub(super) fn compute_mindmap_layout(
             .map(|n| n.label.clone())
             .unwrap_or_else(|| node.label.clone());
         let mut label = if node.markdown_label {
-            measure_markdown_label(&label_text, theme, config)
+            // Quoted continuation lines belong to one label. HTML Markdown
+            // removes incidental source indentation and blank-line runs.
+            let normalized = label_text.replace("<br/>", "\n");
+            let normalized = normalized
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let mut label = measure_markdown_label(&normalized, theme, config);
+            let font_size = theme.font_size.max(16.0);
+            label.width = label
+                .lines
+                .iter()
+                .map(|line| {
+                    line.spans
+                        .iter()
+                        .map(|span| {
+                            crate::text_metrics::measure_styled_text_width(
+                                &span.text,
+                                font_size,
+                                &theme.font_family,
+                                span.style.bold,
+                                span.style.italic,
+                            )
+                            .unwrap_or_else(|| {
+                                text_width(
+                                    &span.text,
+                                    font_size,
+                                    &theme.font_family,
+                                    config.fast_text_metrics,
+                                ) * if span.style.bold { 1.07 } else { 1.0 }
+                            })
+                        })
+                        .sum::<f32>()
+                })
+                .fold(0.0, f32::max);
+            label
         } else {
             measure_label(&label_text, theme, config)
         };

@@ -308,11 +308,28 @@ fn preprocess_input(input: &str) -> Result<(Vec<String>, Option<serde_json::Valu
 }
 
 fn preprocess_input_keep_indent(input: &str) -> Result<(Vec<String>, Option<serde_json::Value>)> {
+    preprocess_indented_input(input, false)
+}
+
+fn preprocess_indented_input(
+    input: &str,
+    multiline_labels: bool,
+) -> Result<(Vec<String>, Option<serde_json::Value>)> {
     let (yaml_config, input) = extract_yaml_frontmatter(input);
     let mut init_config: Option<serde_json::Value> = yaml_config;
     let mut lines = Vec::new();
+    let mut pending: Option<(String, &'static str)> = None;
 
     for raw_line in input.lines() {
+        if let Some((statement, closing)) = pending.as_mut() {
+            statement.push('\n');
+            statement.push_str(raw_line);
+            if raw_line.contains(*closing) {
+                let (statement, _) = pending.take().unwrap();
+                lines.push(strip_trailing_comment_keep_indent(&statement));
+            }
+            continue;
+        }
         let trimmed_line = raw_line.trim();
         if trimmed_line.is_empty() {
             continue;
@@ -334,10 +351,32 @@ fn preprocess_input_keep_indent(input: &str) -> Result<(Vec<String>, Option<serd
         if without_comment.trim().is_empty() {
             continue;
         }
+        if multiline_labels && let Some(closing) = unfinished_mindmap_label(&without_comment) {
+            pending = Some((without_comment, closing));
+            continue;
+        }
         lines.push(without_comment);
     }
 
+    if pending.is_some() {
+        anyhow::bail!("Unterminated quoted mindmap label");
+    }
     Ok((lines, init_config))
+}
+
+fn unfinished_mindmap_label(line: &str) -> Option<&'static str> {
+    let start = line.find(['[', '(', ')', '{'])?;
+    let label = line[start..]
+        .trim_start_matches(['[', '(', ')', '{'])
+        .trim_start();
+    let (body, closing) = if let Some(body) = label.strip_prefix("\"`") {
+        (body, "`\"")
+    } else if let Some(body) = label.strip_prefix('"') {
+        (body, "\"")
+    } else {
+        return None;
+    };
+    (!body.contains(closing)).then_some(closing)
 }
 
 fn parse_flowchart(input: &str) -> Result<ParseOutput> {
@@ -2812,7 +2851,7 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
     let mut graph = Graph::new();
     graph.kind = DiagramKind::Mindmap;
     graph.direction = Direction::LeftRight;
-    let (lines, init_config) = preprocess_input_keep_indent(input)?;
+    let (lines, init_config) = preprocess_indented_input(input, true)?;
     let mut stack: Vec<(usize, String)> = Vec::new();
     let mut base_indent: Option<usize> = None;
     let mut node_index: HashMap<String, usize> = HashMap::new();

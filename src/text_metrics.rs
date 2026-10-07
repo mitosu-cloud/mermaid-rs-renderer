@@ -112,8 +112,19 @@ pub fn measure_text_width_with_kerning(
     font_size: f32,
     font_family: &str,
 ) -> Option<f32> {
+    measure_styled_text_width(text, font_size, font_family, false, false)
+}
+
+/// Measure an inline label with its actual bold/italic face and kerning.
+pub(crate) fn measure_styled_text_width(
+    text: &str,
+    font_size: f32,
+    font_family: &str,
+    bold: bool,
+    italic: bool,
+) -> Option<f32> {
     let mut measurer = TEXT_MEASURER.lock().ok()?;
-    let font = measurer.face(font_family)?;
+    let font = measurer.styled_face(font_family, bold, italic)?;
     let width = font.measure_width(text, font_size)?;
     let face = font.face.as_ref()?;
     let Some(table) = face.tables().kern else {
@@ -166,9 +177,18 @@ impl TextMeasurer {
     }
 
     fn face(&mut self, font_family: &str) -> Option<&mut FontFace> {
-        let family_key = normalize_family_key(font_family);
+        self.styled_face(font_family, false, false)
+    }
+
+    fn styled_face(
+        &mut self,
+        font_family: &str,
+        bold: bool,
+        italic: bool,
+    ) -> Option<&mut FontFace> {
+        let family_key = styled_family_key(font_family, bold, italic);
         if !self.cache.contains_key(&family_key) {
-            let face = self.load_face(font_family);
+            let face = self.load_face(font_family, bold, italic);
             self.cache.insert(family_key.clone(), face);
         }
         self.cache.get_mut(&family_key)?.as_mut()
@@ -180,8 +200,8 @@ impl TextMeasurer {
         face.measure_width(&normalized, font_size)
     }
 
-    fn load_face(&mut self, font_family: &str) -> Option<FontFace> {
-        let family_key = normalize_family_key(font_family);
+    fn load_face(&mut self, font_family: &str, bold: bool, italic: bool) -> Option<FontFace> {
+        let family_key = styled_family_key(font_family, bold, italic);
         if let Some(face) = load_cached_face(&family_key) {
             return Some(face);
         }
@@ -240,9 +260,9 @@ impl TextMeasurer {
 
         let query = Query {
             families: &families,
-            weight: Weight::NORMAL,
+            weight: if bold { Weight::BOLD } else { Weight::NORMAL },
             stretch: Stretch::Normal,
-            style: Style::Normal,
+            style: if italic { Style::Italic } else { Style::Normal },
         };
         let id = self.db.query(&query)?;
         let mut loaded: Option<FontFace> = None;
@@ -365,6 +385,15 @@ fn normalize_family_key(font_family: &str) -> String {
         "sans-serif".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+fn styled_family_key(font_family: &str, bold: bool, italic: bool) -> String {
+    let family = normalize_family_key(font_family);
+    if bold || italic {
+        format!("{family}\0bold={bold};italic={italic}")
+    } else {
+        family
     }
 }
 
