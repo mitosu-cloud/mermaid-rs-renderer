@@ -6505,7 +6505,11 @@ fn render_er_node(
         };
         svg.push_str(&text_block_svg_anchor(
             node.x + node.width / 2.0,
-            node.y + node.height / 2.0,
+            node.y
+                + node.height / 2.0
+                + text_metrics::centered_baseline_offset(theme.font_size, &theme.font_family)
+                    .unwrap_or(theme.font_size * 0.25)
+                - theme.font_size * 0.25,
             &label,
             theme,
             config,

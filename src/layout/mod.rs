@@ -7981,6 +7981,10 @@ fn shape_size(
         if !table.rows.is_empty() {
             return (table.width, table.height);
         }
+        return (
+            (crate::er::text_width(&table.title, theme) + 40.0).max(100.0),
+            theme.font_size * config.label_line_height + 60.0,
+        );
     }
     if kind == crate::ir::DiagramKind::Block
         && let Some(size) = crate::block_shapes::natural_size(shape, label)

@@ -6051,3 +6051,45 @@ warning: unused variable: `has_title`
 
 - Two groups remain: connection spacing and annotations.
 - **Visual match: partial.** Build and all 422 comparison renders succeeded.
+
+## batch11-03-er-entities — Pass 1 findings — 2026-10-07T05:42:57+00:00
+
+### Iteration 3/10 — Pass 1
+
+#### Visual appearance
+
+- In `entityRelationshipDiagram-styling-nodes-with-inline-style`, Rust is 87.77 × 163.90 versus JS’s 116 × 285.
+- Rust’s two boxes are about 70 × 49; JS uses 100 × 84. Text therefore occupies much more of Rust’s boxes.
+- Both stack vertically with straight-looking connections, but Rust is visibly compressed.
+
+#### Structural differences
+
+- Rust applies generic shape sizing instead of Mermaid’s ER minimum width and label padding.
+
+#### Visual defects
+
+- Four groups: entity geometry, connection spacing, annotations, and the reference’s unusually long dash pattern.
+- This pass targets entity geometry.
+
+## batch11-03-er-entities — Changes applied — 2026-10-07T05:42:57+00:00
+
+- `src/layout/mod.rs` — Attribute-free ER entities use the 100px minimum width and 20px/30px label padding from erBox.ts.
+- `src/render.rs` — Apply the font-metric baseline to entity-only labels.
+
+## batch11-03-er-entities — Pass 2 findings — 2026-10-07T05:44:10+00:00
+
+### Iteration 3/10 — Pass 2
+
+#### Visual appearance
+
+- Both boxes now match JS’s 100 × 84 dimensions, and their labels have similar placement.
+- Rust remains shorter overall: 233.2 versus 285. The connector gap, label box, and cardinality marks still differ.
+
+#### Structural differences
+
+- Attribute-free entities now use Mermaid’s ER sizing rules.
+
+#### Visual defects
+
+- Three groups remain: connection spacing, annotations, and dash styling.
+- **Visual match: partial.** Build and all 422 renders succeeded.
