@@ -367,6 +367,7 @@ pub struct ErrorLayout {
 
 #[derive(Debug, Clone)]
 pub struct XYChartBarLayout {
+    pub series_index: usize,
     pub x: f32,
     pub y: f32,
     pub width: f32,
@@ -378,20 +379,31 @@ pub struct XYChartBarLayout {
 
 #[derive(Debug, Clone)]
 pub struct XYChartLineLayout {
+    pub series_index: usize,
     pub points: Vec<(f32, f32)>,
     pub color: String,
 }
 
 #[derive(Debug, Clone)]
+pub struct XYChartAxisLayout {
+    pub show_line: bool,
+    pub show_tick: bool,
+    pub show_label: bool,
+    pub ticks: Vec<(String, f32)>,
+    pub label_position: f32,
+    pub label_rotation: f32,
+    pub label_offset: f32,
+    pub title: Option<String>,
+    pub title_position: f32,
+}
+
+#[derive(Debug, Clone)]
 pub struct XYChartLayout {
-    pub title: Option<TextBlock>,
+    pub title: Option<String>,
+    pub title_x: f32,
     pub title_y: f32,
-    pub x_axis_label: Option<TextBlock>,
-    pub x_axis_label_y: f32,
-    pub y_axis_label: Option<TextBlock>,
-    pub y_axis_label_x: f32,
-    pub x_axis_categories: Vec<(String, f32)>,
-    pub y_axis_ticks: Vec<(String, f32)>,
+    pub x_axis: XYChartAxisLayout,
+    pub y_axis: XYChartAxisLayout,
     pub bars: Vec<XYChartBarLayout>,
     pub lines: Vec<XYChartLineLayout>,
     pub plot_x: f32,

@@ -768,11 +768,74 @@ pub struct KanbanConfig {
     pub ticket_base_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct XYChartAxisConfig {
+    pub show_label: bool,
+    pub label_font_size: f32,
+    pub label_padding: f32,
+    pub show_title: bool,
+    pub title_font_size: f32,
+    pub title_padding: f32,
+    pub show_tick: bool,
+    pub tick_length: f32,
+    pub tick_width: f32,
+    pub show_axis_line: bool,
+    pub axis_line_width: f32,
+    pub label_rotation: f32,
+}
+
+impl Default for XYChartAxisConfig {
+    fn default() -> Self {
+        Self {
+            show_label: true,
+            label_font_size: 14.0,
+            label_padding: 5.0,
+            show_title: true,
+            title_font_size: 16.0,
+            title_padding: 5.0,
+            show_tick: true,
+            tick_length: 5.0,
+            tick_width: 2.0,
+            show_axis_line: true,
+            axis_line_width: 2.0,
+            label_rotation: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct XYChartConfig {
     pub show_data_label: bool,
     pub show_data_label_outside_bar: bool,
+    pub width: f32,
+    pub height: f32,
+    pub use_max_width: bool,
+    pub show_title: bool,
+    pub title_font_size: f32,
+    pub title_padding: f32,
+    pub plot_reserved_space_percent: f32,
+    pub x_axis: XYChartAxisConfig,
+    pub y_axis: XYChartAxisConfig,
+}
+
+impl Default for XYChartConfig {
+    fn default() -> Self {
+        Self {
+            show_data_label: false,
+            show_data_label_outside_bar: false,
+            width: 700.0,
+            height: 500.0,
+            use_max_width: true,
+            show_title: true,
+            title_font_size: 20.0,
+            title_padding: 10.0,
+            plot_reserved_space_percent: 50.0,
+            x_axis: XYChartAxisConfig::default(),
+            y_axis: XYChartAxisConfig::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

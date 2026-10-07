@@ -5196,3 +5196,65 @@ All 422 Rust SVG/PNG pairs regenerated successfully.
 - Five selected visual gaps remain: label size, 540×400 versus 700×500 canvas, narrower plot proportions/bar spacing, wrapped title at 16 px with a second baseline at y=72 crossing the plot border at y=70, and six dashed guides/full border instead of JS's 16 short solid Y ticks/two axes. The width and bar-spacing ratios remain those reported in Pass 1. No connector edges, curve differences or bidirectional label pairs occur in these two bar-only fixtures.
 - Full configuration now shows all 12 values at a uniform 7 px and the correct lavender/gray bar/line colors. Its requested 900×600 canvas and red title remain unsupported. The multi-series color fixture now honors black/blue/green/red in declaration order; its bars remain side-by-side rather than the reference's overlaid bars, and the X-axis title/category rows overlap. Sales-revenue and simplest-line palettes match, while existing line markers, tick/domain/category and geometry differences remain. No source follow-up pass was made after visual review.
 - cargo build --release passed in 11.84 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Exactly the six XY SVGs changed; all 416 other SVGs are byte-for-byte unchanged, including the four quadrant comparisons. Six source files edited in one pass; no test suite run or test files edited; git diff --check passed.
+
+## xyChart-data-labels-inside-bars — Pass 1 findings — 2026-10-07T02:35:22+00:00
+
+### Pass 1 — XY chart layout
+
+**Visual appearance**
+
+- Rust uses a 540×400 canvas instead of 700×500.
+- The plot occupies 74% of the width instead of 91%, with wider bars and smaller gaps.
+- Values are 6 px instead of 25 px. The title wraps into two lines instead of one.
+
+**Structural differences**
+
+- Rust draws a full plot border and six dashed guides; JS draws two axes with short ticks and 16 Y-axis labels.
+- Rust ignores the chart width, height, title size, and axis settings.
+
+**Visual defects**
+
+- The title’s second line at y=72 crosses the plot border at y=70.
+- Five gaps remain: canvas size, plot proportions, value-label size, title layout, and axis styling. Side by side, the charts still look different.
+
+- Validated Cargo.toml, both selected SVGs, reference source, and sibling Mermaid checkout. Latest changes were already committed as 2c39511; the working tree was clean. Read both raw SVGs and inspected the browser image. Retrieved the pinned Mermaid orchestrator and base-axis source from the sparse sibling checkout; read installed official Mermaid defaults, band/linear axes, chart title and bar/line builders plus D3 tick/scale algorithms.
+- Canvas aspect ratios are 1.35 / 1.4, a 3.6% difference. Both contain the same six vertical bars, but Rust plot bounds (100,70,400,250) leave much larger gutters than JS's approximately (60.69,43.10,639.31,423.90). Bar-width/category-step ratios are 0.8 / 0.564. The smallest bar's height is 16.67 / 35.19 px, driving the shared font size of 6 / 25 px. Numeric text width at the reference 25 px fits the 64.45 px reference bars; Rust values fit their bars but are difficult to read due to size.
+- Rust's title has 16 px lines at y=48 and 72 versus one JS 20 px line centered at y=21.55. The lower Rust title crosses the border y=70. Other labels fit the selected canvas, with no clipping, text-on-text overlap, connector/curve differences or bidirectional label pairs. Value fill #131300 on #ECECFF is high contrast; no invisible-text defect. Axis text/stroke color and font sizes differ as part of the axis styling gap.
+- Scope one source pass: configured canvas/title/axis sizing, measured text bounds, D3-style tick generation, reference point/bar scales and solid short axes/ticks. Related XY comparisons will be visually inspected after full regeneration.
+
+## xyChart-data-labels-inside-bars — Changes applied — 2026-10-07T02:41:38+00:00
+
+- src/config.rs — expose XY canvas dimensions/responsive sizing, title options, reserved plot space, and nested axis label/title/tick/line/rotation options with Mermaid defaults.
+- src/cli.rs — merge nested X/Y axis overrides while retaining config-file options omitted by frontmatter/init.
+- src/theme.rs — load XY title/background and individual axis text/tick/line colors, preserving the default dark chart text and custom palette/value color.
+- src/text_metrics.rs — provide a single-line SVG font-height estimate using installed font ascent/descent, rounded to browser pixel/half-pixel metrics. Existing text measurement behavior is unchanged.
+- src/layout/xychart.rs — size the vertical plot from measured title and axis text; allocate components in the reference order with reserved plot space; generate D3-style ten-target 1/2/5 ticks and fractional labels; use padded category endpoints, reference bar-width calculations and padded Y scaling. Restore numeric X ticks when categories are omitted; derive unspecified Y domains from data rather than forcing zero. Keep bars at the same category positions across series and retain uniform per-series numeric-label fitting.
+- src/layout/types.rs — retain resolved axis positions/visibility and series order for rendering, using unwrapped title strings.
+- src/render.rs — render one-line chart/axis titles with reference anchors/baselines, two solid axes and short ticks, optional rotated category labels, configured colors, responsive canvas, and plain line series without point circles. Render plots in declaration order so later bars obscure earlier plots as in JS.
+- Seven source files edited in one source pass. Related changes to multi-series bar overlap, line point circles, numeric-axis labels, and configured title color follow the same pinned layout/plot code paths. No horizontal-layout or legend implementation is claimed.
+- Local browser font inspection in a temporary HTML/SVG page confirmed 14 px category/tick text has a 16 px line box, 16 px axis titles approximately 18.5 px, and 20 px chart titles approximately 23.5 px. The stored golden's exact bounds differ slightly; font measurements are estimates from the installed face rather than fixture-specific coordinates. The first optional standalone SVG measurement process stalled and was closed; the temporary HTML measurement succeeded.
+
+## xyChart-data-labels-inside-bars — Pass 2 findings — 2026-10-07T02:43:34+00:00
+
+### Pass 2 — XY chart layout
+
+**Visual appearance**
+
+- **Visual match: yes** for the inside- and outside-label examples. Canvas, bar proportions, label sizes, title, and axes now look like the JS references.
+
+**Structural differences**
+
+- The selected chart’s coordinates differ by less than 0.6 px, due to text-bound measurements.
+
+**Visual defects**
+
+- The five reported gaps are addressed; the title overlap is gone.
+- The configured 900×600 example still has a roughly 7 px plot-gutter difference.
+
+All 422 Rust SVG/PNG pairs refreshed successfully. Only the six XY-chart SVGs changed.
+
+- Re-read the generated selected SVG and inspected all six side-by-side browser images. Selected inside/outside canvases now match at 700×500 (aspect 1.4), with Rust plot (60.184,43.5,639.816,423.5) versus JS approximately (60.688,43.102,639.312,423.898). Plot-width/canvas-width ratios are 91.40% / 91.33%; bar-width/category-step ratios are approximately 0.5633 / 0.5639. First bar x is 61.879 / 62.384, widths 64.441 / 64.452; smallest heights 35.167 / 35.193. These differences are under 0.6 px and do not change the visible layout.
+- All six values use 25 px dark #131300 text, the correct hanging/auto baselines and 10 px inside/outside offsets. Text fits the 64.44 px bars with margins; estimated two-digit width is 35 px, leaving more than 10% per side. Reference title is now one 20 px line at (350,21.75), versus JS (350,21.55); the old y=72 title/border collision is absent. Category labels are 14 px at y=479, Y labels 14 px for 30 through 0 in steps of 2, and Y title 16 px rotated 270. Two 2 px solid axes and 5 px ticks replace the full border/dashed guides. No new clipping, overlaps, invisible text or connector/bidirectional-label issues are observed.
+- Multi-series bars now overlap in the reference declaration order, preserving the exposed blue portions above the later green bars and hiding the early black line where bars cover it. Its X title/category rows are separate, with no previous overlap. Sales-revenue lines now have the reference plain M/L paths without circular markers. The simplest-line chart's inferred 1..4 X domain and -0.34..2.4 Y domain, fractional ticks and polyline agree with the reference within approximately 0.01 px.
+- Configured chart now honors 900×600 dimensions, red #ff0000 title, 12 px value labels and the plain gray line. A remaining text-measurement difference yields plot-left 82.209 / 74.969 px and bottom-axis y=568 / 570, with title center y=21.75 / 20. Its layout is substantially closer but this specific configured example is not pixel-identical. Exact browser font bounds under custom initialization remain a future comparison gap. Horizontal layouts, legends and explicit numeric X-axis parsing were not extended in this pass.
+- cargo build --release passed in 12.41 seconds with 33 existing warnings. All 422 SVG and 422 PNG exports succeeded. Only six XY SVGs changed; all 416 other SVGs are byte-for-byte unchanged. Seven source files edited, one source pass, no source follow-up after review, no test suite run or test files edited. git diff --check passed.

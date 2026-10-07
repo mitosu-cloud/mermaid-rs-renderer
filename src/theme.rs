@@ -101,6 +101,8 @@ impl RadarStyle {
 pub struct XYChartStyle {
     pub data_label_color: Option<String>,
     pub plot_color_palette: Option<String>,
+    pub text_color: Option<String>,
+    pub color_overrides: std::collections::BTreeMap<String, String>,
 }
 
 impl XYChartStyle {
@@ -117,6 +119,34 @@ impl XYChartStyle {
                 *target = Some(value.to_string());
             }
         }
+        for key in [
+            "backgroundColor",
+            "titleColor",
+            "xAxisTitleColor",
+            "xAxisLabelColor",
+            "xAxisTickColor",
+            "xAxisLineColor",
+            "yAxisTitleColor",
+            "yAxisLabelColor",
+            "yAxisTickColor",
+            "yAxisLineColor",
+        ] {
+            if let Some(color) = overrides
+                .get(key)
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+            {
+                self.color_overrides
+                    .insert(key.to_string(), color.to_string());
+            }
+        }
+    }
+
+    pub(crate) fn color<'a>(&'a self, key: &str, fallback: &'a str) -> &'a str {
+        self.color_overrides
+            .get(key)
+            .map(String::as_str)
+            .unwrap_or(fallback)
     }
 }
 
@@ -294,6 +324,7 @@ impl Theme {
             quadrant_color_overrides: Default::default(),
             xy_chart: XYChartStyle {
                 data_label_color: Some("#131300".to_string()),
+                text_color: Some("#131300".to_string()),
                 ..XYChartStyle::default()
             },
         }

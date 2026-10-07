@@ -245,6 +245,13 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             style_attr = format!(
                 " style=\"max-width: {viewbox_width}px; background-color: white;{preferred_ratio_style}\""
             );
+        } else if matches!(layout.diagram, DiagramData::XYChart(_)) && config.xy_chart.use_max_width
+        {
+            width_attr = "100%".to_string();
+            height_attr.clear();
+            style_attr = format!(
+                " style=\"max-width: {viewbox_width}px; background-color: white;{preferred_ratio_style}\""
+            );
         } else if matches!(layout.diagram, DiagramData::Radar(_)) {
             width_attr = "100%".to_string();
             height_attr.clear();
@@ -4340,146 +4347,220 @@ fn render_gantt(
     svg
 }
 
+fn xy_chart_text(
+    svg: &mut String,
+    text: &str,
+    x: f32,
+    y: f32,
+    size: f32,
+    color: &str,
+    anchor: &str,
+    baseline: &str,
+    rotation: f32,
+    theme: &Theme,
+) {
+    svg.push_str(&format!(
+        "<text x=\"0\" y=\"0\" fill=\"{}\" font-family=\"{}\" font-size=\"{}\" dominant-baseline=\"{}\" text-anchor=\"{}\" transform=\"translate({:.3}, {:.3}) rotate({})\">{}</text>",
+        escape_xml(color), normalize_font_family(&theme.font_family), size, baseline,
+        anchor, x, y, rotation, escape_xml(text),
+    ));
+}
+
 fn render_xychart(
     layout: &crate::layout::XYChartLayout,
     theme: &Theme,
     config: &LayoutConfig,
 ) -> String {
     let mut svg = String::new();
-
-    // Background
-    svg.push_str(&format!(
-        "<rect x=\"0\" y=\"0\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",
-        layout.width, layout.height, theme.background
-    ));
-
-    // Title
-    if let Some(ref title) = layout.title {
-        svg.push_str(&text_block_svg(
-            layout.width / 2.0,
-            layout.title_y,
-            title,
-            theme,
-            config,
-            false,
-            Some(theme.primary_text_color.as_str()),
-        ));
-    }
-
-    // Plot area border
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"none\" stroke=\"{}\" stroke-width=\"1\"/>",
-        layout.plot_x, layout.plot_y, layout.plot_width, layout.plot_height, theme.line_color
-    ));
-
-    // Y-axis ticks and labels
-    for (label, y) in &layout.y_axis_ticks {
-        // Tick line
-        svg.push_str(&format!(
-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1\" stroke-dasharray=\"2,2\"/>",
-            layout.plot_x, y, layout.plot_x + layout.plot_width, y, "#ccc"
-        ));
-        // Label
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"end\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
-            layout.plot_x - 5.0, y + theme.font_size / 3.0,
-            normalize_font_family(&theme.font_family), theme.font_size * 0.8,
-            theme.primary_text_color, escape_xml(label)
-        ));
-    }
-
-    // X-axis categories
-    for (label, x) in &layout.x_axis_categories {
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
-            x, layout.plot_y + layout.plot_height + 20.0,
-            normalize_font_family(&theme.font_family), theme.font_size * 0.9,
-            theme.primary_text_color, escape_xml(label)
-        ));
-    }
-
-    // Y-axis label
-    if let Some(ref y_label) = layout.y_axis_label {
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\" transform=\"rotate(-90, {:.2}, {:.2})\">{}</text>",
-            layout.y_axis_label_x, layout.plot_y + layout.plot_height / 2.0,
-            normalize_font_family(&theme.font_family), theme.font_size,
-            theme.primary_text_color,
-            layout.y_axis_label_x, layout.plot_y + layout.plot_height / 2.0,
-            escape_xml(&y_label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
-        ));
-    }
-
-    // X-axis label
-    if let Some(ref x_label) = layout.x_axis_label {
-        svg.push_str(&format!(
-            "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.1}\" fill=\"{}\">{}</text>",
-            layout.plot_x + layout.plot_width / 2.0, layout.x_axis_label_y,
-            normalize_font_family(&theme.font_family), theme.font_size,
-            theme.primary_text_color,
-            escape_xml(&x_label.lines.iter().map(|l| l.text().into_owned()).collect::<Vec<_>>().join(" "))
-        ));
-    }
-
-    // Bars
-    for bar in &layout.bars {
-        svg.push_str(&format!(
-            "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"none\"/>",
-            bar.x, bar.y, bar.width, bar.height, escape_xml(&bar.color)
-        ));
-    }
-
-    // Bar values use the series-wide font size resolved by the layout.
-    let outside = config.xy_chart.show_data_label_outside_bar;
-    let label_color = theme
-        .xy_chart
-        .data_label_color
+    let options = &config.xy_chart;
+    let style = &theme.xy_chart;
+    let text_color = style
+        .text_color
         .as_deref()
         .unwrap_or(&theme.primary_text_color);
-    for bar in &layout.bars {
-        if let Some(size) = bar.label_font_size.filter(|size| *size > 0.0) {
-            svg.push_str(&format!(
-                "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" dominant-baseline=\"{}\" font-family=\"{}\" font-size=\"{}px\" fill=\"{}\">{}</text>",
-                bar.x + bar.width / 2.0,
-                bar.y + if outside { -10.0 } else { 10.0 },
-                if outside { "auto" } else { "hanging" },
-                normalize_font_family(&theme.font_family),
-                size,
-                escape_xml(label_color),
-                bar.value,
-            ));
-        }
+    svg.push_str(&format!(
+        "<rect x=\"0\" y=\"0\" width=\"{:.3}\" height=\"{:.3}\" fill=\"{}\"/>",
+        layout.width,
+        layout.height,
+        escape_xml(style.color("backgroundColor", &theme.background)),
+    ));
+    if let Some(title) = &layout.title {
+        xy_chart_text(
+            &mut svg,
+            title,
+            layout.title_x,
+            layout.title_y,
+            options.title_font_size,
+            style.color("titleColor", text_color),
+            "middle",
+            "middle",
+            0.0,
+            theme,
+        );
     }
 
-    // Lines
-    for line in &layout.lines {
-        if line.points.len() >= 2 {
-            let path: String = line
+    // Preserve declaration order: later bars can obscure earlier lines/bars.
+    let series: std::collections::BTreeSet<usize> = layout
+        .bars
+        .iter()
+        .map(|bar| bar.series_index)
+        .chain(layout.lines.iter().map(|line| line.series_index))
+        .collect();
+    for index in series {
+        for bar in layout.bars.iter().filter(|bar| bar.series_index == index) {
+            svg.push_str(&format!(
+                "<rect x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"0\"/>",
+                bar.x, bar.y, bar.width, bar.height, escape_xml(&bar.color), escape_xml(&bar.color),
+            ));
+        }
+        for bar in layout.bars.iter().filter(|bar| bar.series_index == index) {
+            if let Some(size) = bar.label_font_size.filter(|size| *size > 0.0) {
+                let outside = options.show_data_label_outside_bar;
+                xy_chart_text(
+                    &mut svg,
+                    &bar.value.to_string(),
+                    bar.x + bar.width / 2.0,
+                    bar.y + if outside { -10.0 } else { 10.0 },
+                    size,
+                    style.data_label_color.as_deref().unwrap_or(text_color),
+                    "middle",
+                    if outside { "auto" } else { "hanging" },
+                    0.0,
+                    theme,
+                );
+            }
+        }
+        for line in layout
+            .lines
+            .iter()
+            .filter(|line| line.series_index == index)
+        {
+            let mut path: String = line
                 .points
                 .iter()
                 .enumerate()
-                .map(|(i, (x, y))| {
-                    if i == 0 {
-                        format!("M {:.2},{:.2}", x, y)
-                    } else {
-                        format!(" L {:.2},{:.2}", x, y)
-                    }
-                })
+                .map(|(i, (x, y))| format!("{} {:.3},{:.3}", if i == 0 { "M" } else { " L" }, x, y))
                 .collect();
-            svg.push_str(&format!(
-                "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
-                path, escape_xml(&line.color)
-            ));
-            // Draw points
-            for (x, y) in &line.points {
+            if line.points.len() == 1 {
+                path.push('Z');
+            }
+            if !path.is_empty() {
                 svg.push_str(&format!(
-                    "<circle cx=\"{:.2}\" cy=\"{:.2}\" r=\"4\" fill=\"{}\" stroke=\"white\" stroke-width=\"1\"/>",
-                    x, y, escape_xml(&line.color)
+                    "<path d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"2\"/>",
+                    path,
+                    escape_xml(&line.color),
                 ));
             }
         }
     }
 
+    let bottom = layout.plot_y + layout.plot_height;
+    let x_axis = &layout.x_axis;
+    let x_options = &options.x_axis;
+    let x_line_width = if x_axis.show_line {
+        x_options.axis_line_width
+    } else {
+        0.0
+    };
+    if x_axis.show_line {
+        svg.push_str(&format!(
+            "<path d=\"M {:.3},{:.3} L {:.3},{:.3}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>",
+            layout.plot_x, bottom + x_line_width / 2.0,
+            layout.plot_x + layout.plot_width, bottom + x_line_width / 2.0,
+            escape_xml(style.color("xAxisLineColor", text_color)), x_line_width,
+        ));
+    }
+    for (label, x) in &x_axis.ticks {
+        if x_axis.show_label {
+            xy_chart_text(
+                &mut svg,
+                label,
+                x + x_axis.label_offset,
+                x_axis.label_position,
+                x_options.label_font_size,
+                style.color("xAxisLabelColor", text_color),
+                "middle",
+                "text-before-edge",
+                x_axis.label_rotation,
+                theme,
+            );
+        }
+        if x_axis.show_tick {
+            svg.push_str(&format!(
+                "<path d=\"M {:.3},{:.3} L {:.3},{:.3}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>",
+                x, bottom + x_line_width, x, bottom + x_line_width + x_options.tick_length,
+                escape_xml(style.color("xAxisTickColor", text_color)), x_options.tick_width,
+            ));
+        }
+    }
+    if let Some(title) = &x_axis.title {
+        xy_chart_text(
+            &mut svg,
+            title,
+            layout.plot_x + layout.plot_width / 2.0,
+            x_axis.title_position,
+            x_options.title_font_size,
+            style.color("xAxisTitleColor", text_color),
+            "middle",
+            "text-before-edge",
+            0.0,
+            theme,
+        );
+    }
+
+    let y_axis = &layout.y_axis;
+    let y_options = &options.y_axis;
+    let y_line_width = if y_axis.show_line {
+        y_options.axis_line_width
+    } else {
+        0.0
+    };
+    if y_axis.show_line {
+        svg.push_str(&format!(
+            "<path d=\"M {:.3},{:.3} L {:.3},{:.3}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>",
+            layout.plot_x - y_line_width / 2.0, layout.plot_y,
+            layout.plot_x - y_line_width / 2.0, bottom,
+            escape_xml(style.color("yAxisLineColor", text_color)), y_line_width,
+        ));
+    }
+    for (label, y) in &y_axis.ticks {
+        if y_axis.show_label {
+            xy_chart_text(
+                &mut svg,
+                label,
+                y_axis.label_position,
+                *y,
+                y_options.label_font_size,
+                style.color("yAxisLabelColor", text_color),
+                "end",
+                "middle",
+                0.0,
+                theme,
+            );
+        }
+        if y_axis.show_tick {
+            svg.push_str(&format!(
+                "<path d=\"M {:.3},{:.3} L {:.3},{:.3}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>",
+                layout.plot_x - y_line_width, y,
+                layout.plot_x - y_line_width - y_options.tick_length, y,
+                escape_xml(style.color("yAxisTickColor", text_color)), y_options.tick_width,
+            ));
+        }
+    }
+    if let Some(title) = &y_axis.title {
+        xy_chart_text(
+            &mut svg,
+            title,
+            y_axis.title_position,
+            layout.plot_y + layout.plot_height / 2.0,
+            y_options.title_font_size,
+            style.color("yAxisTitleColor", text_color),
+            "middle",
+            "text-before-edge",
+            270.0,
+            theme,
+        );
+    }
     svg
 }
 

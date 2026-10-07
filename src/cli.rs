@@ -513,7 +513,17 @@ fn merge_init_config(mut config: Config, init: serde_json::Value) -> Config {
     if let Some(overrides) = init.get("xyChart").and_then(|v| v.as_object()) {
         if let Ok(mut value) = serde_json::to_value(&config.layout.xy_chart) {
             if let Some(options) = value.as_object_mut() {
-                options.extend(overrides.clone());
+                for (key, override_value) in overrides {
+                    if matches!(key.as_str(), "xAxis" | "yAxis")
+                        && let Some(axis_options) =
+                            options.get_mut(key).and_then(|v| v.as_object_mut())
+                        && let Some(axis_overrides) = override_value.as_object()
+                    {
+                        axis_options.extend(axis_overrides.clone());
+                    } else {
+                        options.insert(key.clone(), override_value.clone());
+                    }
+                }
             }
             if let Ok(xy_chart) = serde_json::from_value(value) {
                 config.layout.xy_chart = xy_chart;

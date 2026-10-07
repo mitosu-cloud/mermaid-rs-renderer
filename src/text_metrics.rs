@@ -29,6 +29,18 @@ pub fn centered_baseline_offset(font_size: f32, font_family: &str) -> Option<f32
     Some((ascent - descent) / 2.0)
 }
 
+/// Height of a single SVG text line using the browser's pixel-rounded metrics.
+pub(crate) fn svg_text_height(font_size: f32, font_family: &str) -> Option<f32> {
+    let mut guard = TEXT_MEASURER.lock().ok()?;
+    let font = guard.face(font_family)?;
+    let face = font.face.as_ref()?;
+    let scale = font_size / font.units_per_em as f32;
+    Some(
+        (face.ascender() as f32 * scale).round()
+            + (-face.descender() as f32 * scale * 2.0).round() / 2.0,
+    )
+}
+
 /// Compute the rendered width of a text string in pixels, mirroring the
 /// browser's `SVGTextContentElement.getComputedTextLength()` API.
 ///
