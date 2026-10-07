@@ -374,12 +374,14 @@ fn compute_flowchart_layout(
         effective_config.max_label_width_chars = effective_config.max_label_width_chars.max(32);
     }
     if graph.kind == crate::ir::DiagramKind::Er {
-        // ER diagrams are relationship-dense; tighter packing improves readability
-        // and significantly reduces long connector spans.
-        effective_config.node_spacing *= 0.80;
-        effective_config.rank_spacing *= 0.80;
-        // Extra rank-order sweeps reduce crossing-prone left/right inversions
-        // in dense relationship graphs.
+        // erRenderer-unified supplies different defaults from flowcharts.
+        let defaults = LayoutConfig::default();
+        if config.node_spacing == defaults.node_spacing {
+            effective_config.node_spacing = 140.0;
+        }
+        if config.rank_spacing == defaults.rank_spacing {
+            effective_config.rank_spacing = 80.0;
+        }
         effective_config.flowchart.order_passes = effective_config.flowchart.order_passes.max(10);
     }
     if graph.kind == crate::ir::DiagramKind::State {
@@ -564,10 +566,14 @@ fn compute_flowchart_layout(
         effective_config.flowchart.auto_spacing.min_spacing,
         effective_config.rank_spacing,
     );
-    if adaptive_node_spacing < effective_config.node_spacing {
+    if graph.kind != crate::ir::DiagramKind::Er
+        && adaptive_node_spacing < effective_config.node_spacing
+    {
         effective_config.node_spacing = adaptive_node_spacing;
     }
-    if adaptive_rank_spacing < effective_config.rank_spacing {
+    if graph.kind != crate::ir::DiagramKind::Er
+        && adaptive_rank_spacing < effective_config.rank_spacing
+    {
         effective_config.rank_spacing = adaptive_rank_spacing;
     }
     if let Some(scale) = hub_compaction_scale {
@@ -2430,7 +2436,36 @@ fn assign_positions_manual(
             } else {
                 config.rank_spacing
             };
-            main_cursor += max_main + gap;
+            // Dagre reserves the main-axis label extent between ER ranks.
+            let label_extent = if graph.kind == crate::ir::DiagramKind::Er {
+                layout_edges
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, edge)| {
+                        let lo = ranks
+                            .get(&edge.from)
+                            .copied()?
+                            .min(ranks.get(&edge.to).copied()?);
+                        let hi = ranks
+                            .get(&edge.from)
+                            .copied()?
+                            .max(ranks.get(&edge.to).copied()?);
+                        if lo <= rank_idx && rank_idx < hi {
+                            let label = edge_labels[index].as_ref()?;
+                            Some(if is_horizontal(graph.direction) {
+                                label.width * 0.875
+                            } else {
+                                label.height * 0.875
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .fold(0.0_f32, f32::max)
+            } else {
+                0.0
+            };
+            main_cursor += max_main + gap + label_extent;
         }
     }
 
@@ -7241,7 +7276,7 @@ fn apply_visual_objectives(
     theme: &Theme,
     config: &LayoutConfig,
 ) {
-    if !config.flowchart.objective.enabled {
+    if graph.kind == crate::ir::DiagramKind::Er || !config.flowchart.objective.enabled {
         return;
     }
     relax_edge_span_constraints(graph, layout_edges, nodes, theme, config);

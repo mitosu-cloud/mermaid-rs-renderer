@@ -6093,3 +6093,60 @@ warning: unused variable: `has_title`
 
 - Three groups remain: connection spacing, annotations, and dash styling.
 - **Visual match: partial.** Build and all 422 renders succeeded.
+
+## batch11-04-er-spacing — Pass 1 findings — 2026-10-07T05:44:14+00:00
+
+### Iteration 4/10 — Pass 1
+
+#### Visual appearance
+
+- The alias example still measures 195.58 × 278.95 versus 195.58 × 330.75.
+- Tables have matching proportions; their vertical gap is 0.38 of Person’s height in Rust versus 0.79 in JS.
+- Both connectors look straight. Labels fit, but the shorter gap crowds the annotations.
+
+#### Structural differences
+
+- Rust reduces ER spacing and later applies generic spacing adjustments. JS uses 80-pixel rank spacing plus the relationship label’s height.
+
+#### Visual defects
+
+- Two groups remain: connection spacing and annotations. This pass targets spacing.
+
+## batch11-04-er-spacing — Changes applied — 2026-10-07T05:44:14+00:00
+
+- `src/layout/mod.rs` — Use ER's 140px node/80px rank defaults, reserve relationship-label space between ranks, and retain those dimensions through generic compaction stages. Explicit nondefault spacing remains honored.
+
+## batch11-04-er-spacing — Pass 2 findings — 2026-10-07T05:45:17+00:00
+
+### Iteration 4/10 — Pass 2
+
+#### Visual appearance
+
+- The alias canvas now matches JS’s 195.58 × 330.75 size, including the 101-pixel connection gap.
+- Table placement and proportions align. The remaining conspicuous differences are the relationship label box and endpoint symbols.
+
+#### Structural differences
+
+- ER layout now preserves its own spacing defaults and label allowance.
+
+#### Visual defects
+
+- One annotation group remains.
+- **Visual match: partial.** Build and all 422 renders succeeded.
+
+## batch11-05-er-markers — Pass 1 findings — 2026-10-07T05:45:17+00:00
+
+### Iteration 5/10 — Pass 1
+
+#### Visual appearance
+
+- Layout and table geometry match, but Rust loses one “exactly one” bar beneath the table border.
+- The optional endpoint circle is smaller and too close to its table. JS places both symbols along the visible connector.
+
+#### Structural differences
+
+- Rust uses 12-pixel bars and radius-4 circles; JS uses 18-pixel bars and radius-6 circles with different start/end offsets.
+
+#### Visual defects
+
+- Two annotation subgroups: cardinality symbols and relationship labels. This pass targets the symbols.
