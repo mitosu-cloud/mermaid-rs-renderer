@@ -7049,3 +7049,43 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining visible gap groups. Visual match: yes.**
 - Build and all 422 renders passed.
+
+## batch13-06-flow-subroutine — Pass 1 findings — 2026-10-07T06:42:15+00:00
+
+### Iteration 6/10 — Pass 1
+
+#### Visual appearance
+
+- Rust’s subroutine box has rounded corners and dividers that stop short of its top and bottom. JS uses square corners and full-height dividers.
+- Rust’s canvas is 222.51 × 50 versus JS’s 231.91 × 55. The label fills 90% of Rust’s outer width versus 86% in JS.
+- The label fits, but the box and frame proportions visibly differ. There are no connections.
+
+#### Structural differences
+
+- Rust uses 6px corners and divider insets; JS uses 8px frames and zero corner radius.
+
+#### Visual defects
+
+- **1 gap group:** subroutine frame geometry and padding.
+
+## batch13-06-flow-subroutine — Changes applied — 2026-10-07T06:42:15+00:00
+
+- `src/layout/mod.rs` — Use the JS subroutine padding and two 8px frame widths.
+- `src/render.rs` — Draw square flowchart subroutine frames with full-height dividers inset 8px.
+
+## batch13-06-flow-subroutine — Pass 2 findings — 2026-10-07T06:43:17+00:00
+
+### Iteration 6/10 — Pass 2
+
+#### Visual appearance
+
+- The square frame, full-height dividers, and 231.91 × 55 canvas now closely match JS.
+
+#### Structural differences
+
+- Rust uses a rectangle and two lines; JS uses one polygon. Their visible geometry agrees.
+
+#### Visual defects
+
+- **0 remaining visible gap groups. Visual match: yes.**
+- Build and all 422 renders passed.

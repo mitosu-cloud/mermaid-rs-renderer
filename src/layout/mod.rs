@@ -8229,6 +8229,13 @@ fn shape_size(
         let height = label.height + config.node_padding_y * 1.5 * scale;
         return (label.width + config.node_padding_x * 0.75 * scale + height, height);
     }
+    if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Subroutine {
+        // subroutine.ts adds two 8px frames around the padded label box.
+        return (
+            label.width + config.node_padding_x * 0.75 + 16.0,
+            label.height + config.node_padding_y * 1.5,
+        );
+    }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Stadium {
         // stadium.ts adds one padding extent vertically and h/4 to width.
         let height = label.height + config.node_padding_y * 1.5;

@@ -7555,14 +7555,15 @@ fn shape_svg_inner(
         }
         crate::ir::NodeShape::Subroutine => {
             let stroke_width = node.style.stroke_width.unwrap_or(1.0);
-            let inset = if is_block { 8.0 } else { 6.0 };
-            let radius = if is_block { 0.0 } else { 6.0 };
+            let square_frame = is_block || kind == crate::ir::DiagramKind::Flowchart;
+            let inset = if square_frame { 8.0 } else { 6.0 };
+            let radius = if square_frame { 0.0 } else { 6.0 };
             let mut svg = format!(
                 "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{radius}\" ry=\"{radius}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}{join}/>",
                 x, y, w, h, fill, stroke, stroke_width
             );
-            let y1 = y + if is_block { 0.0 } else { 2.0 };
-            let y2 = y + h - if is_block { 0.0 } else { 2.0 };
+            let y1 = y + if square_frame { 0.0 } else { 2.0 };
+            let y2 = y + h - if square_frame { 0.0 } else { 2.0 };
             let x1 = x + inset;
             let x2 = x + w - inset;
             svg.push_str(&format!(
