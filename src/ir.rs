@@ -901,6 +901,7 @@ pub struct MindmapNode {
 pub struct MindmapData {
     pub nodes: Vec<MindmapNode>,
     pub root_id: Option<String>,
+    pub layout_algorithm: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

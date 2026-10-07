@@ -5584,3 +5584,48 @@ Review outcome: mindmap-icons improved from five visible gap groups to two; four
 - Build passed; all 422 pairs regenerated. Path fixtures now closely reproduce JS’s sideways offsets and spacing.
 
 Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical and JS goldens are unchanged. Mindmap icons canvas 92.17969 × 335.79352 versus JS 92.1875 × 335.79361; Markdown 162.0846 × 306.54163 versus JS 162.08469 × 306.54169; hexagon 179.27087 × 258.5315 versus JS 179.27866 × 258.53151. Re-read generated selected SVG and inspected the complete mindmap browser overview. No selected overlaps, clipping, crossings or invisible labels. The global tidy-tree selection was already ignored before this pass; it continues through the default force route and remains visually different. No source follow-up was made after build/review.
+
+## batch10-04-mindmap-tidy — Pass 1 findings — 2026-10-07T05:07:27+00:00
+
+### Iteration 4/10 — `mindmap-tidy-tree-layout`, Pass 1
+
+#### Visual appearance
+
+- Rust is 410.19 × 374.27 versus JS’s 452.72 × 211.33: a radial diagram versus a wide layout with two child columns.
+- JS places A/C left and B/D right, with a 20 px vertical gap / 34 px node height, or 0.59.
+- Rust’s four connectors are straight collinear cubics. JS uses horizontal departures and curved transitions into the child rows (`M/L/C/C/C/L`).
+- Labels fit, but the small text offset remains. These are visibly different pictures.
+
+#### Structural differences
+
+- Rust ignores `layout: tidy-tree`. Its root radius is also 95.94 px versus JS’s 95.66 px.
+
+#### Visual defects
+
+- Three gap groups: layout selection/placement, connector curves, and text alignment. This pass targets the first two and the root sizing difference.
+
+## batch10-04-mindmap-tidy — Changes applied — 2026-10-07T05:10:46+00:00
+
+- `src/ir.rs` and `src/parser.rs` — retain the global mindmap layout selection from frontmatter.
+- `src/layout/mindmap.rs` — place tidy-tree branches in alternating left/right columns and use horizontal departure/arrival control points. Deeper subtree spacing uses the existing height-based packing approximation.
+- `src/config.rs` — use Mermaid’s 10 px circle padding.
+- `src/render.rs` — render mindmap connections with D3 basis spline geometry.
+
+## batch10-04-mindmap-tidy — Pass 2 findings — 2026-10-07T05:11:33+00:00
+
+### Iteration 4/10 — `mindmap-tidy-tree-layout`, Pass 2
+
+#### Visual appearance
+
+- Rust now has the same two child columns and curved connections as JS.
+- Canvas dimensions are 452.71 × 211.33 versus 452.72 × 211.33. The child gap remains 20/34 = 0.59.
+- Labels fit; their vertical alignment differs slightly at enlarged scale. Side by side, these now look like the same diagram.
+
+#### Structural differences
+
+- The circle radius and connection geometry agree. Text uses SVG baselines rather than JS’s HTML labels.
+
+#### Visual defects
+
+- One minor text-alignment gap remains. **Visual match: yes**, with that small residual.
+- Build succeeded; all 422 Rust SVG/PNG pairs were refreshed. JS references stayed unchanged.

@@ -194,6 +194,7 @@ fn place_mindmap_children(
     subtree_heights: &HashMap<String, f32>,
     horizontal_gap: f32,
     vertical_gap: f32,
+    first_level_gap: f32,
 ) {
     if children.is_empty() {
         return;
@@ -210,8 +211,8 @@ fn place_mindmap_children(
         let child_height = subtree_heights.get(child_id).copied().unwrap_or(0.0);
         let child_width = nodes.get(child_id).map(|node| node.width).unwrap_or(0.0);
         let child_center_y = cursor + child_height / 2.0;
-        let child_center_x =
-            parent_center.0 + direction * (parent_width / 2.0 + child_width / 2.0 + horizontal_gap);
+        let child_center_x = parent_center.0
+            + direction * (parent_width / 2.0 + child_width / 2.0 + first_level_gap);
         assign_mindmap_positions(
             child_id,
             direction,
@@ -225,6 +226,55 @@ fn place_mindmap_children(
         );
         cursor += child_height + vertical_gap;
     }
+}
+
+fn place_mindmap_tidy(
+    root: &str,
+    info: &HashMap<String, MindmapNodeInfo>,
+    nodes: &mut BTreeMap<String, NodeLayout>,
+) -> bool {
+    let Some(root_info) = info.get(root) else {
+        return false;
+    };
+    let mut subtree_heights = HashMap::new();
+    mindmap_subtree_height(root, info, nodes, &mut subtree_heights, 20.0);
+    let Some(root_node) = nodes.get_mut(root) else {
+        return false;
+    };
+    root_node.x = -root_node.width / 2.0;
+    root_node.y = 20.0 - root_node.height / 2.0;
+    let root_width = root_node.width;
+    for (side, direction) in [(0, -1.0), (1, 1.0)] {
+        let children = root_info
+            .children
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| index % 2 == side)
+            .map(|(_, id)| id.clone())
+            .collect::<Vec<_>>();
+        // The reference's virtual root contributes 1 + 40 px, followed by
+        // 30 px tree spacing. Subsequent levels use its 40 px bottom padding.
+        place_mindmap_children(
+            &children,
+            direction,
+            (0.0, 0.0),
+            root_width,
+            info,
+            nodes,
+            &subtree_heights,
+            40.0,
+            20.0,
+            71.0,
+        );
+    }
+    // The transposed reference layout converts top coordinates back to
+    // centers after centering each side's first-level nodes.
+    for (id, node) in nodes.iter_mut() {
+        if id != root {
+            node.y += node.height / 2.0;
+        }
+    }
+    true
 }
 
 // Approximate COSE's vertical arrangement for a connected path, including a
@@ -450,11 +500,23 @@ pub(super) fn compute_mindmap_layout(
     horizontal_gap = (horizontal_gap * density_scale).max(theme.font_size * 1.1);
     vertical_gap = (vertical_gap * density_scale).max(theme.font_size * 0.9);
 
-    let placed_chain = root_id.is_some()
-        && config.mindmap.layout_algorithm == "cose-bilkent"
-        && (cose::place(graph, &mut nodes)
-            || place_mindmap_chain(&info_map, &mut nodes, vertical_gap));
-    if !placed_chain && let Some(root_id) = root_id.as_ref() {
+    let algorithm = graph
+        .mindmap
+        .layout_algorithm
+        .as_deref()
+        .unwrap_or(&config.mindmap.layout_algorithm);
+    let is_tidy = algorithm == "tidy-tree";
+    let placed = if is_tidy {
+        root_id
+            .as_ref()
+            .is_some_and(|root| place_mindmap_tidy(root, &info_map, &mut nodes))
+    } else {
+        root_id.is_some()
+            && algorithm == "cose-bilkent"
+            && (cose::place(graph, &mut nodes)
+                || place_mindmap_chain(&info_map, &mut nodes, vertical_gap))
+    };
+    if !placed && let Some(root_id) = root_id.as_ref() {
         mindmap_subtree_height(
             root_id,
             &info_map,
@@ -494,6 +556,7 @@ pub(super) fn compute_mindmap_layout(
             &subtree_heights,
             horizontal_gap,
             vertical_gap,
+            horizontal_gap,
         );
         place_mindmap_children(
             &left_children,
@@ -505,6 +568,7 @@ pub(super) fn compute_mindmap_layout(
             &subtree_heights,
             horizontal_gap,
             vertical_gap,
+            horizontal_gap,
         );
     }
 
@@ -524,6 +588,33 @@ pub(super) fn compute_mindmap_layout(
             to_layout.x + to_layout.width / 2.0,
             to_layout.y + to_layout.height / 2.0,
         );
+        let points = if is_tidy {
+            let section = info_map
+                .get(&edge.to)
+                .and_then(|node| node.section)
+                .unwrap_or(0);
+            let direction = if section.is_multiple_of(2) { -1.0 } else { 1.0 };
+            let start = (
+                from_center.0 + direction * from_layout.width / 2.0,
+                from_center.1,
+            );
+            let end = (to_center.0 - direction * to_layout.width / 2.0, to_center.1);
+            vec![
+                start,
+                (start.0 + direction * 30.0, start.1),
+                (end.0 - direction * 30.0, end.1),
+                end,
+            ]
+        } else {
+            vec![
+                from_center,
+                (
+                    (from_center.0 + to_center.0) / 2.0,
+                    (from_center.1 + to_center.1) / 2.0,
+                ),
+                to_center,
+            ]
+        };
         let mut override_style = crate::ir::EdgeStyleOverride::default();
         if let Some(child_info) = info_map.get(&edge.to)
             && let Some(section) = child_info.section
@@ -547,7 +638,7 @@ pub(super) fn compute_mindmap_layout(
             label_anchor: None,
             start_label_anchor: None,
             end_label_anchor: None,
-            points: vec![from_center, to_center],
+            points,
             directed: false,
             arrow_start: false,
             arrow_end: false,

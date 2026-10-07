@@ -132,7 +132,7 @@ impl Default for MindmapConfig {
             text_width_scale: 1.0,
             rounded_padding: 15.0,
             rect_padding: 10.0,
-            circle_padding: 10.271,
+            circle_padding: 10.0,
             hexagon_padding_multiplier: 2.0,
             default_corner_radius: 5.0,
             edge_depth_base_width: 17.0,

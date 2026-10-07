@@ -2852,6 +2852,11 @@ fn parse_mindmap_diagram(input: &str) -> Result<ParseOutput> {
     graph.kind = DiagramKind::Mindmap;
     graph.direction = Direction::LeftRight;
     let (lines, init_config) = preprocess_indented_input(input, true)?;
+    graph.mindmap.layout_algorithm = init_config
+        .as_ref()
+        .and_then(|config| config.get("layout"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
     let mut stack: Vec<(usize, String)> = Vec::new();
     let mut base_indent: Option<usize> = None;
     let mut node_index: HashMap<String, usize> = HashMap::new();

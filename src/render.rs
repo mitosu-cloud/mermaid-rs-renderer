@@ -1278,7 +1278,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let edge_curve = edge.curve.unwrap_or(config.flowchart.curve);
             let render_points = class_symbol_render_points(edge, layout.kind);
             let d = {
-                let raw = points_to_curved_path(&render_points, edge_curve);
+                let raw = if layout.kind == crate::ir::DiagramKind::Mindmap {
+                    curve_d3_basis(&render_points)
+                } else {
+                    points_to_curved_path(&render_points, edge_curve)
+                };
                 if config.look == crate::ir::DiagramLook::HandDrawn {
                     let seed = hand_drawn_seed(
                         render_points.first().map(|p| p.0).unwrap_or(0.0),
@@ -2038,6 +2042,39 @@ fn points_to_curved_path(points: &[(f32, f32)], curve: crate::ir::CurveType) -> 
             curve_cardinal(pts, 0.5)
         }
     }
+}
+
+/// D3's basis spline, preserving departure/arrival segments for mindmaps.
+fn curve_d3_basis(points: &[(f32, f32)]) -> String {
+    let points = dedupe_points(points);
+    if points.len() < 3 {
+        return points_to_path(&points);
+    }
+    let mut a = points[0];
+    let mut b = points[1];
+    let last = *points.last().unwrap();
+    let mut d = format!(
+        "M {:.3},{:.3} L {:.3},{:.3}",
+        a.0,
+        a.1,
+        (5.0 * a.0 + b.0) / 6.0,
+        (5.0 * a.1 + b.1) / 6.0
+    );
+    for c in points.iter().skip(2).copied().chain(std::iter::once(last)) {
+        d.push_str(&format!(
+            " C {:.3},{:.3} {:.3},{:.3} {:.3},{:.3}",
+            (2.0 * a.0 + b.0) / 3.0,
+            (2.0 * a.1 + b.1) / 3.0,
+            (a.0 + 2.0 * b.0) / 3.0,
+            (a.1 + 2.0 * b.1) / 3.0,
+            (a.0 + 4.0 * b.0 + c.0) / 6.0,
+            (a.1 + 4.0 * b.1 + c.1) / 6.0
+        ));
+        a = b;
+        b = c;
+    }
+    d.push_str(&format!(" L {:.3},{:.3}", last.0, last.1));
+    d
 }
 
 /// B-spline (basis) curve through points.
