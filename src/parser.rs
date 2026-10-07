@@ -7637,7 +7637,7 @@ fn parse_class_def(line: &str, graph: &mut Graph) {
     if class_name.is_empty() || rest.is_empty() {
         return;
     }
-    let style = parse_node_style(rest);
+    let style = parse_node_style(rest, graph.kind);
     graph.class_defs.insert(class_name.to_string(), style);
 }
 
@@ -7710,7 +7710,7 @@ fn parse_style_line(line: &str, graph: &mut Graph) {
     if node_id.is_empty() || rest.is_empty() {
         return;
     }
-    let style = parse_node_style(rest);
+    let style = parse_node_style(rest, graph.kind);
     for raw in node_id.split(',') {
         let id = raw.trim();
         if id.is_empty() {
@@ -7849,7 +7849,17 @@ fn parse_click_line(line: &str) -> Option<(String, crate::ir::NodeLink)> {
     Some((id, crate::ir::NodeLink { url, title, target }))
 }
 
-fn parse_node_style(input: &str) -> crate::ir::NodeStyle {
+fn parse_node_style(input: &str, kind: crate::ir::DiagramKind) -> crate::ir::NodeStyle {
+    // ER's style lexer skips whitespace, then concatenates style components.
+    // In particular, `stroke-dasharray: 5 5` becomes `stroke-dasharray:55`.
+    // The same grammar handles both inline styles and class definitions.
+    let compact = (kind == crate::ir::DiagramKind::Er).then(|| {
+        input
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>()
+    });
+    let input = compact.as_deref().unwrap_or(input);
     let mut style = crate::ir::NodeStyle::default();
     for part in input.split(',') {
         let mut kv = part.splitn(2, ':');

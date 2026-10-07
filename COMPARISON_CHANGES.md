@@ -7264,3 +7264,44 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 - Review gallery: `tests/mermaid-js-comparison/comparison-output/batch13-parity-review.html`, with twelve representative comparisons. Each pair was inspected before and after its targeted change; the final gallery was visually inspected.
 - Verification followed the svg-parity skill: release builds and SVG/image comparison. No test suites were run.
 - Previously documented ER sizing, edge bounds, inline dash styling, and complex routing gaps remain outside this batch.
+
+## er-inline-style-dash — Pass 1 findings — 2026-10-07T13:52:39+00:00
+
+### Pass 1 — ER inline styles
+
+#### Visual appearance
+
+- Rust draws short 5px dashes around `id2`; JS draws 55px dashes, leaving large gaps in the border.
+- Both canvases are 116 × 285. The entities have the same vertical arrangement, with a gap of 1.2 entity heights and the same curved relationship path.
+- Entity labels occupy 22% of their boxes and fit comfortably. Rust’s text sits about 0.5px lower.
+- These look like the same diagram, but the lower border pattern is visibly different.
+
+#### Structural differences
+
+- Rust preserves `stroke-dasharray: 5 5`; Mermaid’s ER grammar concatenates the tokens into `55`.
+
+#### Visual defects
+
+- **1 material gap group:** the inline dash pattern. No clipping or label overflow.
+
+## er-inline-style-dash — Changes applied — 2026-10-07T13:52:39+00:00
+
+- `src/parser.rs:7640`, `src/parser.rs:7713`, `src/parser.rs:7852` — Match Mermaid’s ER style token concatenation for inline styles and class definitions. Remove whitespace inside ER style declarations before parsing; other diagram styles retain their current whitespace handling.
+
+## er-inline-style-dash — Pass 2 findings — 2026-10-07T13:53:56+00:00
+
+### Pass 2 — ER inline styles
+
+#### Visual appearance
+
+- The lower entity’s long dashes and large border gaps now match JS.
+- Canvas size, spacing, relationship path, and label fit remain consistent. The small text baseline difference remains.
+
+#### Structural differences
+
+- Rust now emits `stroke-dasharray="55"`, matching JS’s effective style.
+
+#### Visual defects
+
+- **0 remaining material gap groups. Visual match: yes.**
+- Build passed; all 422 Rust SVG/PNG pairs regenerated successfully. JS references are unchanged.
