@@ -632,8 +632,8 @@ pub(super) fn shape_polygon_points(node: &NodeLayout) -> Option<Vec<(f32, f32)>>
             Some(vec![(cx, y), (x + w, cy), (cx, y + h), (x, cy)])
         }
         crate::ir::NodeShape::Hexagon => {
-            let x1 = x + w * 0.25;
-            let x2 = x + w * 0.75;
+            let x1 = x + h / 4.0;
+            let x2 = x + w - h / 4.0;
             let y_mid = y + h / 2.0;
             Some(vec![
                 (x1, y),

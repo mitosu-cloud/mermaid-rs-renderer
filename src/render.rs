@@ -7574,7 +7574,7 @@ fn shape_svg_inner(
             svg
         }
         crate::ir::NodeShape::Hexagon => {
-            let cut = if kind == crate::ir::DiagramKind::Mindmap {
+            let cut = if matches!(kind, crate::ir::DiagramKind::Mindmap | crate::ir::DiagramKind::Flowchart) {
                 h / 4.0
             } else {
                 w * 0.25

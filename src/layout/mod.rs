@@ -8209,6 +8209,11 @@ fn shape_size(
             + config.node_padding_y * 1.5;
         return (size, size);
     }
+    if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Hexagon {
+        // hexagon.ts reserves h/4 at each pointed end.
+        let height = label.height + config.node_padding_y * 1.5;
+        return (label.width + config.node_padding_x * 0.75 + height / 2.0, height);
+    }
     if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Stadium {
         // stadium.ts adds one padding extent vertically and h/4 to width.
         let height = label.height + config.node_padding_y * 1.5;

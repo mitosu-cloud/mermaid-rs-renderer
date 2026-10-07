@@ -6927,3 +6927,44 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - **0 remaining visible gap groups. Visual match: yes.**
 - Build and all 422 renders passed.
+
+## batch13-03-flow-hexagon — Pass 1 findings — 2026-10-07T06:37:54+00:00
+
+### Iteration 3/10 — Pass 1
+
+#### Visual appearance
+
+- Rust’s hexagon has long, shallow tips; JS has short, steep sides. Rust uses a 72px corner cut versus JS’s 15.75px.
+- The canvases are 304 × 90.8 versus 262.5 × 79. Rust’s label occupies 69% of the shape width versus 81% in JS; the same two-line text fits in both.
+- There are no connections. The outline proportions visibly differ.
+
+#### Structural differences
+
+- Rust derives the corner cut from width; JS uses one quarter of height and sizes the shape around that cut.
+
+#### Visual defects
+
+- **1 gap group:** hexagon dimensions and corner geometry.
+
+## batch13-03-flow-hexagon — Changes applied — 2026-10-07T06:38:21+00:00
+
+- `src/layout/mod.rs` — Size flowchart hexagons using padded label height and height-based corner cuts.
+- `src/render.rs`, `src/layout/routing.rs` — Use h/4 corner cuts in the visible outline and connection intersection polygon.
+
+## batch13-03-flow-hexagon — Pass 2 findings — 2026-10-07T06:39:31+00:00
+
+### Iteration 3/10 — Pass 2
+
+#### Visual appearance
+
+- The hexagon’s dimensions and steep corner cuts now match JS: 262.5 × 79 canvas, with 15.75px cuts.
+- The label fits without visible crowding.
+
+#### Structural differences
+
+- No material geometry difference remains in this fixture.
+
+#### Visual defects
+
+- **0 remaining visible gap groups. Visual match: yes.**
+- Build and all 422 renders passed.
