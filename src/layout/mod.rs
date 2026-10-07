@@ -7055,6 +7055,50 @@ fn align_disconnected_components(
     if visible_nodes.len() < 2 {
         return;
     }
+    // With no links every node belongs to the same rank. Dagre packs that
+    // rank across the flow direction, preserving declaration order.
+    if graph.edges.is_empty() {
+        visible_nodes.sort_by_key(|id| graph.node_order.get(id).copied().unwrap_or(usize::MAX));
+        let horizontal_flow = is_horizontal(graph.direction);
+        let main_start = visible_nodes
+            .iter()
+            .map(|id| {
+                let node = &nodes[id];
+                if horizontal_flow { node.x } else { node.y }
+            })
+            .fold(f32::MAX, f32::min);
+        let main_size = visible_nodes
+            .iter()
+            .map(|id| {
+                let node = &nodes[id];
+                if horizontal_flow {
+                    node.width
+                } else {
+                    node.height
+                }
+            })
+            .fold(0.0_f32, f32::max);
+        let mut cursor = visible_nodes
+            .iter()
+            .map(|id| {
+                let node = &nodes[id];
+                if horizontal_flow { node.y } else { node.x }
+            })
+            .fold(f32::MAX, f32::min);
+        for id in visible_nodes {
+            let node = nodes.get_mut(&id).unwrap();
+            if horizontal_flow {
+                node.x = main_start + (main_size - node.width) / 2.0;
+                node.y = cursor;
+                cursor += node.height + config.node_spacing;
+            } else {
+                node.x = cursor;
+                node.y = main_start + (main_size - node.height) / 2.0;
+                cursor += node.width + config.node_spacing;
+            }
+        }
+        return;
+    }
     visible_nodes.sort();
 
     let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();

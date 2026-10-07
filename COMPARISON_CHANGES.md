@@ -5629,3 +5629,46 @@ Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical 
 
 - One minor text-alignment gap remains. **Visual match: yes**, with that small residual.
 - Build succeeded; all 422 Rust SVG/PNG pairs were refreshed. JS references stayed unchanged.
+
+## batch10-05-flowchart-disconnected — Pass 1 findings — 2026-10-07T05:12:35+00:00
+
+### Iteration 5/10 — `flowchart-special-characters-in-nodes`, Pass 1
+
+#### Visual appearance
+
+- Rust stacks three disconnected nodes vertically on a 214.62 × 272 canvas; JS puts them in one horizontal row on a 742.13 × 94 canvas.
+- Rust’s boxes are smaller. The middle label occupies about 90% of its box width, versus 77% in JS.
+- There are no connections. The pictures visibly differ in arrangement and proportions.
+
+#### Structural differences
+
+- The component-placement step turns independent nodes into a column.
+- Label measurement and box padding also differ.
+
+#### Visual defects
+
+- Three gap groups: disconnected-node placement, box/text proportions, and text alignment. This pass targets placement.
+
+## batch10-05-flowchart-disconnected — Changes applied — 2026-10-07T05:12:39+00:00
+
+- `src/layout/mod.rs` — keep edgeless flowchart nodes on one rank, pack them across the flow direction in declaration order, and center differently sized boxes on that rank.
+
+## batch10-05-flowchart-disconnected — Pass 2 findings — 2026-10-07T05:13:25+00:00
+
+### Iteration 5/10 — `flowchart-special-characters-in-nodes`, Pass 2
+
+#### Visual appearance
+
+- Rust now places the nodes in one centered horizontal row, matching JS’s arrangement.
+- Rust is 642.37 × 84 versus JS’s 742.13 × 94. The 50 px gaps agree, but Rust’s middle box is still narrower.
+- Labels fit. The pictures are recognizably similar, with different box/text proportions.
+
+#### Structural differences
+
+- Declaration order and rank alignment now agree.
+- Label measurements, padding, and baselines still differ.
+
+#### Visual defects
+
+- Three gap groups decreased to two. **Visual match: partial**.
+- All 422 Rust pairs regenerated successfully; only the three edgeless flowchart SVGs changed. JS references stayed unchanged.
