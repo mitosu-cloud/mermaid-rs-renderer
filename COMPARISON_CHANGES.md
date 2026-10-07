@@ -5892,3 +5892,66 @@ Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical 
 
 - Three gap groups decreased to two: geometry proportions/label-box overlap, and label placement/measurement. **Visual match: partial**.
 - Build and all 422 Rust pairs succeeded; only the two orientation SVGs changed. JS references stayed unchanged.
+
+## batch11-01-er-tables — Pass 1 findings — 2026-10-07T05:36:38+00:00
+
+### Iteration 1/10 — `entityRelationshipDiagram-entity-name-aliases`, Pass 1
+
+#### Visual appearance
+
+- Rust is 213.96 × 289.90 versus JS’s 195.58 × 330.75. The connected tables have the same arrangement, but different proportions.
+- Rust puts attribute names before types; JS puts types first. Rust leaves unused space below short rows.
+- The connection gap/table-height ratio is 0.39 in Rust versus 0.79 in JS. Both connections appear straight despite different path commands.
+- Labels fit, but header colors, table borders, and relationship annotations differ. The pictures are recognizable but visibly different.
+
+#### Structural differences
+
+- Table size comes from measuring the combined text rather than separate columns and rows.
+
+#### Visual defects
+
+- Four gap groups: table geometry, table styling, connection spacing, and annotations. This pass targets table geometry.
+
+## batch11-01-er-tables — Changes applied — 2026-10-07T05:39:57+00:00
+
+- `src/er.rs` — Shared column and row measurements, type/name/key/comment cells, and browser-width rounding.
+- `src/layout/mod.rs` — Preserve ER attribute lines and size tables from their cells.
+- `src/render.rs` — Draw those same columns and full-height rows; keys and comments have separate plain-text cells.
+- `src/lib.rs` — Register the shared ER helper.
+
+## batch11-01-er-tables — Pass 2 findings — 2026-10-07T05:40:52+00:00
+
+### Iteration 1/10 — Pass 2
+
+#### Visual appearance
+
+- Table widths and heights now match JS: Person is 160.52 × 128.25; Customer Account is 179.58 × 85.50. Columns and row spacing align.
+- Rust’s canvas remains shorter: 278.95 versus 330.75, because the connection gap is 49.2 versus 101.
+- The pictures still differ in table colors, borders, label baselines, and relationship annotations.
+
+#### Structural differences
+
+- Attribute cells now use the same geometry for layout and drawing.
+- Rust still uses rounded tables and faint yellow grid lines.
+
+#### Visual defects
+
+- Three gap groups remain: table styling/baselines, connection spacing, and annotations.
+- **Visual match: partial.** Build succeeded; all 422 Rust SVG/PNG pairs regenerated; JS references unchanged.
+
+## batch11-02-er-table-style — Pass 1 findings — 2026-10-07T05:40:52+00:00
+
+### Iteration 2/10 — Pass 1
+
+#### Visual appearance
+
+- The same alias example has matching table geometry, but Rust’s yellow rounded headers and faint dividers differ visibly from JS’s square lavender tables and alternating rows.
+- Text sits about 1.5 pixels above the reference baseline. Connection spacing and annotations remain different.
+
+#### Structural differences
+
+- Table borders use 1.2-pixel strokes; JS uses 1.3. Grid lines use a separate color and reduced opacity.
+
+#### Visual defects
+
+- Three gap groups remain. This pass targets table styling and text placement.

@@ -486,7 +486,10 @@ fn compute_flowchart_layout(
         // and never auto-wrap on character count — only explicit <br/> / \n
         // breaks lines. Disable the 22-char auto-wrap for state nodes so
         // labels like "Your state with spaces in it" stay on one line.
-        let auto_wrap = graph.kind != crate::ir::DiagramKind::State;
+        let auto_wrap = !matches!(
+            graph.kind,
+            crate::ir::DiagramKind::State | crate::ir::DiagramKind::Er
+        );
         let label = if node.markdown_label {
             measure_markdown_label(&node.label, theme, &label_config)
         } else if has_html_formatting(&node.label) {
@@ -7973,6 +7976,12 @@ fn shape_size(
     theme: &Theme,
     kind: crate::ir::DiagramKind,
 ) -> (f32, f32) {
+    if kind == crate::ir::DiagramKind::Er {
+        let table = crate::er::table(&label.lines, theme, config.label_line_height);
+        if !table.rows.is_empty() {
+            return (table.width, table.height);
+        }
+    }
     if kind == crate::ir::DiagramKind::Block
         && let Some(size) = crate::block_shapes::natural_size(shape, label)
     {

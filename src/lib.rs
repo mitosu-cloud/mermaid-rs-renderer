@@ -97,6 +97,7 @@ mod block_shapes;
 #[cfg(feature = "cli")]
 pub mod cli;
 pub mod config;
+mod er;
 pub mod icons;
 pub mod ir;
 pub mod layout;

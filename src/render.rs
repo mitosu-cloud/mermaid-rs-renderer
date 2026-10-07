@@ -6468,124 +6468,20 @@ fn divider_lines_svg(
     svg
 }
 
-#[derive(Debug, Clone)]
-struct ErAttribute {
-    name: String,
-    data_type: String,
-    keys: Vec<String>,
-}
-
-fn parse_er_attributes(lines: &[crate::layout::TextLine]) -> (String, Vec<ErAttribute>) {
-    let mut title = lines
-        .first()
-        .map(|s| s.text().trim().to_string())
-        .unwrap_or_default();
-    let mut attrs = Vec::new();
-    let mut in_body = false;
-    for line in lines.iter().skip(1) {
-        let line_str = line.text();
-        if is_divider_line(&line_str) {
-            in_body = true;
-            continue;
-        }
-        if !in_body {
-            if !line_str.trim().is_empty() {
-                title = line_str.trim().to_string();
-            }
-            continue;
-        }
-        let trimmed = line_str.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let mut keys = Vec::new();
-        let mut parts: Vec<String> = Vec::new();
-        for token in trimmed.split_whitespace() {
-            let cleaned = token
-                .trim_matches(|ch: char| ch == ',' || ch == ';')
-                .to_ascii_uppercase();
-            if cleaned == "PK" || cleaned == "FK" || cleaned == "UK" {
-                keys.push(cleaned);
-                continue;
-            }
-            if cleaned.contains(',') {
-                let mut handled = false;
-                for piece in cleaned.split(',') {
-                    if piece == "PK" || piece == "FK" || piece == "UK" {
-                        keys.push(piece.to_string());
-                        handled = true;
-                    }
-                }
-                if handled {
-                    continue;
-                }
-            }
-            parts.push(token.to_string());
-        }
-        if parts.is_empty() {
-            continue;
-        }
-        let (data_type, name) = if parts.len() >= 2 {
-            (parts[0].clone(), parts[1..].join(" "))
-        } else {
-            (String::new(), parts[0].clone())
-        };
-        attrs.push(ErAttribute {
-            name,
-            data_type,
-            keys,
-        });
-    }
-    (title, attrs)
-}
-
-fn er_badge_svg(
-    x: f32,
-    y: f32,
-    text: &str,
-    font_size: f32,
-    fill: &str,
-    text_color: &str,
-    font_family: &str,
-) -> (String, f32) {
-    let font_family = normalize_font_family(font_family);
-    let pad_x = (font_size * 0.45).max(4.0);
-    let text_width = text_metrics::measure_text_width(text, font_size * 0.72, &font_family)
-        .unwrap_or(font_size * 0.9);
-    let width = text_width + pad_x * 2.0;
-    let height = (font_size * 0.9).max(10.0);
-    let rect_y = y - height / 2.0;
-    let rx = (height / 2.0).max(4.0);
-    let mut svg = String::new();
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\"/>",
-        x, rect_y, width, height, rx, rx, fill
-    ));
-    svg.push_str(&format!(
-        "<text x=\"{:.2}\" y=\"{:.2}\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{:.2}\" font-weight=\"600\" fill=\"{}\">{}</text>",
-        x + width / 2.0,
-        y + font_size * 0.26,
-        font_family,
-        font_size * 0.72,
-        text_color,
-        escape_xml(text)
-    ));
-    (svg, width)
-}
-
 fn render_er_node(
     node: &crate::layout::NodeLayout,
     theme: &Theme,
     config: &LayoutConfig,
 ) -> String {
-    let (title, attrs) = parse_er_attributes(&node.label.lines);
+    let table = crate::er::table(&node.label.lines, theme, config.label_line_height);
+    let title = &table.title;
     let dash = node
         .style
         .stroke_dasharray
         .as_deref()
         .map(|value| format!(" stroke-dasharray=\"{}\"", escape_xml(value)))
         .unwrap_or_default();
-    if attrs.is_empty() {
+    if table.rows.is_empty() {
         let mut svg = format!(
             "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}/>",
             node.x,
@@ -6603,7 +6499,7 @@ fn render_er_node(
             node.style.stroke_width.unwrap_or(1.2)
         );
         let label = TextBlock {
-            lines: vec![crate::layout::TextLine::plain(title)],
+            lines: vec![crate::layout::TextLine::plain(title.clone())],
             width: 0.0,
             height: 0.0,
         };
@@ -6623,243 +6519,89 @@ fn render_er_node(
         ));
         return svg;
     }
-    let font_size = theme.font_size;
-    let line_height = font_size * config.label_line_height;
-    let header_height = if attrs.is_empty() {
-        node.height
-    } else {
-        (line_height + font_size * 0.6)
-            .min(node.height * 0.5)
-            .max(line_height + 6.0)
-    };
-
     let border = node
         .style
         .stroke
-        .as_ref()
+        .as_deref()
         .unwrap_or(&theme.primary_border_color);
-    let body_fill = node.style.fill.as_ref().unwrap_or(&theme.background);
+    let body_fill = node.style.fill.as_deref().unwrap_or(&theme.background);
     let header_fill = node
         .style
         .fill
         .as_deref()
         .unwrap_or(&theme.cluster_background);
-    let grid_color = theme.cluster_border.as_str();
-    let header_text_color = node
+    let text_color = node
         .style
         .text_color
         .as_deref()
         .unwrap_or(&theme.primary_text_color);
-    let name_text_color = header_text_color;
-    let type_text_color = node
-        .style
-        .text_color
-        .as_deref()
-        .unwrap_or(&theme.line_color);
-
+    let grid_color = &theme.cluster_border;
+    let stroke_width = node.style.stroke_width.unwrap_or(1.2);
     let x = node.x;
     let y = node.y;
     let w = node.width;
     let h = node.height;
-    let radius = 6.0;
-
-    let mut svg = String::new();
+    let row_height = table.row_height;
+    let mut svg = format!(
+        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"6\" fill=\"{body_fill}\" stroke=\"{border}\" stroke-width=\"{stroke_width}\"{dash}/>"
+    );
     svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\" stroke=\"{}\" stroke-width=\"{}\"{dash}/>",
-        x,
-        y,
-        w,
-        h,
-        radius,
-        radius,
-        body_fill,
-        border,
-        node.style.stroke_width.unwrap_or(1.2)
+        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{row_height:.2}\" rx=\"6\" fill=\"{header_fill}\"/>"
     ));
-
-    svg.push_str(&format!(
-        "<rect x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" rx=\"{:.2}\" ry=\"{:.2}\" fill=\"{}\"/>",
-        x,
-        y,
-        w,
-        header_height,
-        radius,
-        radius,
-        header_fill
-    ));
-
-    let header_label = TextBlock {
+    let header = TextBlock {
         lines: vec![crate::layout::TextLine::plain(title.clone())],
         width: 0.0,
         height: 0.0,
     };
-    let header_y = y + header_height / 2.0;
     svg.push_str(&text_block_svg_anchor(
         x + w / 2.0,
-        header_y,
-        &header_label,
+        y + row_height / 2.0,
+        &header,
         theme,
         config,
         "middle",
-        Some(header_text_color),
+        Some(text_color),
     ));
-
-    if attrs.is_empty() {
-        return svg;
-    }
-
-    let pad_x = (font_size * 0.8).max(10.0);
-    let mut max_type_width = 0.0f32;
-    let mut max_name_width = 0.0f32;
-    let mut max_badge_width = 0.0f32;
-    for attr in &attrs {
-        if !attr.data_type.is_empty() {
-            if let Some(width) =
-                text_metrics::measure_text_width(&attr.data_type, font_size, &theme.font_family)
-            {
-                max_type_width = max_type_width.max(width);
-            }
-        }
-        if let Some(width) =
-            text_metrics::measure_text_width(&attr.name, font_size, &theme.font_family)
-        {
-            max_name_width = max_name_width.max(width);
-        }
-        if !attr.keys.is_empty() {
-            let mut row_badge_width = 0.0f32;
-            for key in attr.keys.iter().take(2) {
-                let text_width =
-                    text_metrics::measure_text_width(key, font_size * 0.72, &theme.font_family)
-                        .unwrap_or(font_size * 0.9);
-                let badge_width = text_width + (font_size * 0.45).max(4.0) * 2.0;
-                row_badge_width += badge_width + font_size * 0.4;
-            }
-            if row_badge_width > 0.0 {
-                row_badge_width -= font_size * 0.4;
-            }
-            max_badge_width = max_badge_width.max(row_badge_width);
-        }
-    }
-
-    let type_col_pad = font_size * 0.9;
-    let available = (w - pad_x * 2.0).max(font_size * 4.0);
-    let mut type_col_width = if max_type_width > 0.0 {
-        (max_type_width + type_col_pad * 2.0).min(available * 0.45)
-    } else {
-        0.0
-    };
-    let min_name_width = (max_name_width + font_size * 0.6).min(available * 0.7);
-    let min_type_width = if max_type_width > 0.0 {
-        (font_size * 2.8).max(36.0)
-    } else {
-        0.0
-    };
-    if type_col_width < min_type_width {
-        type_col_width = min_type_width;
-    }
-    let mut col_x = x + w - pad_x - type_col_width;
-    let min_col_x = x + pad_x + max_badge_width + min_name_width;
-    if col_x < min_col_x {
-        col_x = min_col_x;
-    }
-    let show_type_col = type_col_width > 0.0 && col_x < x + w - pad_x - 8.0;
-
-    svg.push_str(&format!(
-        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.0\" stroke-opacity=\"0.6\"/>",
-        x,
-        y + header_height,
-        x + w,
-        y + header_height,
-        grid_color
-    ));
-
-    if show_type_col {
+    for (index, row) in table.rows.iter().enumerate() {
+        let row_top = y + row_height * (index + 1) as f32;
         svg.push_str(&format!(
-            "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.0\" stroke-opacity=\"0.45\"/>",
-            col_x,
-            y + header_height,
-            col_x,
-            y + h,
-            grid_color
-        ));
-    }
-
-    let mut row_height = line_height;
-    let body_height = (h - header_height).max(line_height);
-    if !attrs.is_empty() {
-        let needed = attrs.len() as f32 * row_height;
-        if needed > body_height {
-            row_height = body_height / attrs.len() as f32;
-        }
-    }
-    for (idx, attr) in attrs.iter().enumerate() {
-        let row_top = y + header_height + idx as f32 * row_height;
-        let row_center = row_top + row_height / 2.0;
-        if idx > 0 {
-            svg.push_str(&format!(
-                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"1.0\" stroke-opacity=\"0.35\"/>",
-                x,
-                row_top,
-                x + w,
-                row_top,
-                grid_color
-            ));
-        }
-
-        let mut cursor_x = x + pad_x;
-        for key in attr.keys.iter().take(2) {
-            let fill = match key.as_str() {
-                "PK" => "#1D4ED8",
-                "FK" => "#0F766E",
-                "UK" => "#7C3AED",
-                _ => "#475569",
-            };
-            let (badge_svg, badge_width) = er_badge_svg(
-                cursor_x,
-                row_center,
-                key,
-                font_size,
-                fill,
-                "#FFFFFF",
-                &theme.font_family,
-            );
-            svg.push_str(&badge_svg);
-            cursor_x += badge_width + font_size * 0.4;
-        }
-
-        let name_label = TextBlock {
-            lines: vec![crate::layout::TextLine::plain(attr.name.clone())],
-            width: 0.0,
-            height: 0.0,
-        };
-        svg.push_str(&text_block_svg_anchor(
-            cursor_x,
-            row_center,
-            &name_label,
-            theme,
-            config,
-            "start",
-            Some(name_text_color),
-        ));
-
-        if show_type_col && !attr.data_type.is_empty() {
-            let type_label = TextBlock {
-                lines: vec![crate::layout::TextLine::plain(attr.data_type.clone())],
+            "<line x1=\"{x:.2}\" y1=\"{row_top:.2}\" x2=\"{:.2}\" y2=\"{row_top:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\" stroke-opacity=\"0.6\"/>", x + w));
+        let mut cursor = x;
+        for (column, value) in row.iter().enumerate() {
+            let width = table.columns[column];
+            if width <= 0.0 {
+                continue;
+            }
+            let label = TextBlock {
+                lines: vec![crate::layout::TextLine::plain(value.clone())],
                 width: 0.0,
                 height: 0.0,
             };
             svg.push_str(&text_block_svg_anchor(
-                x + w - pad_x,
-                row_center,
-                &type_label,
+                cursor + table.padding / 2.0,
+                row_top + row_height / 2.0,
+                &label,
                 theme,
                 config,
-                "end",
-                Some(type_text_color),
+                "start",
+                Some(text_color),
             ));
+            cursor += width;
         }
     }
-
+    let mut cursor = x;
+    for width in table.columns.iter().filter(|width| **width > 0.0).take(
+        table
+            .columns
+            .iter()
+            .filter(|width| **width > 0.0)
+            .count()
+            .saturating_sub(1),
+    ) {
+        cursor += width;
+        svg.push_str(&format!(
+            "<line x1=\"{cursor:.2}\" y1=\"{:.2}\" x2=\"{cursor:.2}\" y2=\"{:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\" stroke-opacity=\"0.45\"/>", y + row_height, y + h));
+    }
     svg
 }
 
