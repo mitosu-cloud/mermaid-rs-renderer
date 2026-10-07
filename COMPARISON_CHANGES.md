@@ -6757,3 +6757,95 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 
 - Zero remaining gap groups in these fixtures.
 - **Visual match: yes.** All 422 renders succeeded with JS unchanged.
+
+## batch12-10-flow-stadium — Pass 1 findings — 2026-10-07T06:22:19+00:00
+
+### Iteration 10/10 — Pass 1
+
+#### Visual appearance
+
+- In `flowchart-stadium-shaped-node`, Rust is 218.1 × 50 versus JS’s 225.6 × 55.
+- Rust’s capsule is flatter, its label sits closer to the curved ends, and its outline is thinner.
+- The label fits, but the shape height is only 1.4 label heights versus JS’s 1.6. There are no connections in this fixture.
+
+#### Structural differences
+
+- Rust uses generic padding factors instead of JS’s height-based width formula and 1.3-pixel outline.
+
+#### Visual defects
+
+- One gap group: stadium geometry and outline.
+
+## batch12-10-flow-stadium — Changes applied — 2026-10-07T06:22:19+00:00
+
+- `src/layout/mod.rs`, `src/render.rs` — Use JS’s stadium height and height-dependent width formula, with the default 1.3px outline. The Rust capsule remains a native smooth SVG rectangle; JS samples its semicircles into a path.
+
+## batch12-10-flow-stadium — Pass 2 findings — 2026-10-07T06:24:00+00:00
+
+### Iteration 10/10 — Pass 2
+
+#### Visual appearance
+
+- Capsule proportions and label fit now closely match: Rust is 225.7 × 55 versus JS’s 225.6 × 55.
+- Rust’s outline is now visibly heavier. JS’s stylesheet overrides the 1.3-pixel path attribute with a thinner stroke.
+
+#### Structural differences
+
+- Rust matches the raw stroke attribute but misses the effective CSS stroke width.
+
+#### Visual defects
+
+- One remaining gap group: outline weight.
+- **Visual match: partial.** All 422 renders succeeded with JS unchanged. I’ll correct this regression in a separate follow-up pass before the final commit.
+
+## batch12-stadium-outline-recovery — Pass 1 findings — 2026-10-07T06:24:21+00:00
+
+### Stadium outline follow-up — Pass 1
+
+#### Visual appearance
+
+- Capsule dimensions and label fit are close, but Rust’s 1.3-pixel outline looks heavier than JS’s effective 1-pixel outline.
+- The single-node arrangement has no connections or clipping.
+
+#### Structural differences
+
+- JS’s `.node path` CSS overrides its raw stroke attribute.
+
+#### Visual defects
+
+- One gap group: outline weight. This pass restores the effective 1-pixel default.
+
+## batch12-stadium-outline-recovery — Changes applied — 2026-10-07T06:24:21+00:00
+
+- `src/render.rs` — Restore the flowchart stadium default stroke to 1px, matching the CSS cascade in the JS reference. Explicit stroke styles and the corrected stadium geometry are preserved.
+
+## batch12-stadium-outline-recovery — Pass 2 findings — 2026-10-07T06:26:09+00:00
+
+### Stadium outline follow-up — Pass 2
+
+#### Visual appearance
+
+- Outline weight, capsule proportions, and label placement now closely match JS.
+- Rust is 225.66 × 55 versus JS’s 225.64 × 55; the tiny width difference comes from JS’s sampled arc bounds.
+
+#### Structural differences
+
+- Rust uses a smooth capsule; JS uses sampled arc segments. There is no meaningful visible difference in this fixture.
+
+#### Visual defects
+
+- Zero remaining visible gap groups in the selected example.
+- **Visual match: yes.** Build and all 422 renders succeeded; JS references were unchanged.
+
+## batch12 — Batch summary — 2026-10-07T06:26:09+00:00
+
+### Batch 12 summary
+
+- Ten requested iterations, plus a separate stadium outline follow-up after the visual review caught a CSS override. Eight source files changed.
+- All eleven release builds and full Rust SVG/PNG regeneration runs succeeded. Each run rendered all 422 fixtures; no JS SVG references changed.
+- Net result: 63 Rust SVGs changed from the batch start. All 422 Rust SVG and PNG outputs are refreshed.
+- Nine commits cover the batch: iteration 3's coordinate-solver regression was corrected in iteration 4 before committing; iteration 10's stroke regression was corrected in the outline follow-up before committing.
+- Improvements: ER entity colors/borders, alternating class-filled rows and header outlines, centered ranks and sibling ordering, simple fork/join basis curves and label anchors; git text metrics, branch offsets, frontmatter titles, rotated canvas bounds; flowchart rounded rectangles, circles/double circles, and stadiums.
+- Overall visual match: partial. ER PERSON width, extra edge bounds, and some inline dash patterns still differ. Complex ER fans/long edges/cycles retain the existing routing. Git connection strokes remain 6px versus the 8px JS reference. The selected rounded rectangle, circle family, and stadium examples visibly match JS.
+- Review gallery: `tests/mermaid-js-comparison/comparison-output/batch12-parity-review.html` (ten representative comparisons, visually inspected).
+- Verification follows the svg-parity skill: release builds and visual comparisons; no test suites were run.

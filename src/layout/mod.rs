@@ -8202,6 +8202,14 @@ fn shape_size(
         let diameter = (label.width + config.node_padding_x * scale).max(1.0);
         return (diameter, diameter);
     }
+    if kind == crate::ir::DiagramKind::Flowchart && shape == crate::ir::NodeShape::Stadium {
+        // stadium.ts adds one padding extent vertically and h/4 to width.
+        let height = label.height + config.node_padding_y * 1.5;
+        return (
+            label.width + height / 4.0 + config.node_padding_x * 0.75,
+            height,
+        );
+    }
     if kind == crate::ir::DiagramKind::Block
         && let Some(size) = crate::block_shapes::natural_size(shape, label)
     {
