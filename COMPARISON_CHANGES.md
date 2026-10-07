@@ -5955,3 +5955,99 @@ Verification: all 14 mindmap SVGs changed; 408 other SVGs remain byte-identical 
 #### Visual defects
 
 - Three gap groups remain. This pass targets table styling and text placement.
+
+## batch11-02-er-table-style — Changes applied — 2026-10-07T05:41:25+00:00
+
+- `src/render.rs` — Use square ER tables, primary-theme headers, alternating row fills, consistent 1.3px table/grid strokes, and a font-metric baseline adjustment.
+
+## batch11-02-er-table-style — Build failed — 2026-10-07T05:41:54+00:00
+
+   Compiling mermaid-rs-renderer v0.2.1 (/Volumes/FlashSabrent/work/mermaid-rs-renderer)
+error[E0369]: cannot subtract `f32` from `std::option::Option<f32>`
+    --> src/render.rs:6545:13
+     |
+6544 |         text_metrics::centered_baseline_offset(theme.font_size, &theme.font_family)
+     |         --------------------------------------------------------------------------- std::option::Option<f32>
+6545 |             - theme.font_size * 0.25;
+     |             ^ ---------------------- f32
+     |
+note: `std::option::Option<f32>` does not implement `Sub<f32>`
+    --> /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/option.rs:598:0
+     |
+     = note: `std::option::Option<f32>` is defined in another crate
+
+warning: unused variable: `config`
+  --> src/layout/ishikawa.rs:14:5
+   |
+14 |     config: &LayoutConfig,
+   |     ^^^^^^ help: if this is intentional, prefix it with an underscore: `_config`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `total_desc`
+  --> src/layout/ishikawa.rs:54:9
+   |
+54 |     let total_desc = (upper_desc + lower_desc).max(1);
+   |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_desc`
+
+warning: unused variable: `t_w`
+   --> src/layout/network_simplex.rs:332:31
+    |
+332 |         let (t_from, t_to, _, t_w) = &edges[t_idx];
+    |                               ^^^ help: if this is intentional, prefix it with an underscore: `_t_w`
+
+warning: unused variable: `cy`
+    --> src/layout/sequence.rs:1105:35
+     |
+1105 |             let y1 = if let Some(&cy) = lifecycle_create.get(&node.id) {
+     |                                   ^^ help: if this is intentional, prefix it with an underscore: `_cy`
+
+warning: unused variable: `to_x`
+    --> src/layout/sequence.rs:1288:21
+     |
+1288 |                 let to_x = nodes
+     |                     ^^^^ help: if this is intentional, prefix it with an underscore: `_to_x`
+
+warning: unused variable: `has_title`
+  --> src/layout/timeline.rs:31:9
+   |
+31 |     let has_title = data.title.is_some();
+
+## batch11-02b-er-table-style — Pass 1 findings — 2026-10-07T05:41:54+00:00
+
+### Iteration 2/10 — Recovery pass, Pass 1
+
+#### Visual appearance
+
+- The last successfully rendered alias example is still 195.58 × 278.95 versus JS’s 195.58 × 330.75. Table geometry aligns; yellow rounded headers, faint grid lines, and elevated text differ visibly.
+- Connections are compressed and relationship annotations differ. Neither label overflows its table.
+
+#### Structural differences
+
+- The attempted styling changes have not produced a new binary: the font baseline helper returns an optional value.
+
+#### Visual defects
+
+- Three groups remain: table styling/baselines, connection spacing, and annotations. This fresh pass handles the baseline fallback and validates the styling changes.
+
+## batch11-02b-er-table-style — Changes applied — 2026-10-07T05:41:55+00:00
+
+- `src/render.rs` — Supply a baseline fallback when font metrics are unavailable; validate the previous square-border, alternating-fill, and baseline styling changes.
+
+## batch11-02b-er-table-style — Pass 2 findings — 2026-10-07T05:42:54+00:00
+
+### Iteration 2/10 — Recovery pass, Pass 2
+
+#### Visual appearance
+
+- Square lavender headers, alternating rows, purple dividers, and text baselines now closely match JS.
+- The 49.2-pixel connection gap still compresses the picture; JS uses 101 pixels.
+
+#### Structural differences
+
+- Table strokes and fills now follow the reference’s theme calculations.
+
+#### Visual defects
+
+- Two groups remain: connection spacing and annotations.
+- **Visual match: partial.** Build and all 422 comparison renders succeeded.

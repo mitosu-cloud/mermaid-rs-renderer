@@ -6496,7 +6496,7 @@ fn render_er_node(
                 .stroke
                 .as_deref()
                 .unwrap_or(&theme.primary_border_color),
-            node.style.stroke_width.unwrap_or(1.2)
+            node.style.stroke_width.unwrap_or(1.3)
         );
         let label = TextBlock {
             lines: vec![crate::layout::TextLine::plain(title.clone())],
@@ -6524,30 +6524,42 @@ fn render_er_node(
         .stroke
         .as_deref()
         .unwrap_or(&theme.primary_border_color);
-    let body_fill = node.style.fill.as_deref().unwrap_or(&theme.background);
-    let header_fill = node
-        .style
-        .fill
-        .as_deref()
-        .unwrap_or(&theme.cluster_background);
+    let odd_fill = crate::theme::adjust_color(&theme.primary_color, 0.0, 0.0, 75.0);
+    let even_fill = crate::theme::adjust_color(&theme.primary_color, 0.0, 0.0, 1.0);
+    let body_fill = node.style.fill.as_deref().unwrap_or(&theme.primary_color);
+    let header_fill = node.style.fill.as_deref().unwrap_or(&theme.primary_color);
     let text_color = node
         .style
         .text_color
         .as_deref()
         .unwrap_or(&theme.primary_text_color);
-    let grid_color = &theme.cluster_border;
-    let stroke_width = node.style.stroke_width.unwrap_or(1.2);
+    let grid_color = border;
+    let stroke_width = node.style.stroke_width.unwrap_or(1.3);
     let x = node.x;
     let y = node.y;
     let w = node.width;
     let h = node.height;
     let row_height = table.row_height;
+    let baseline_adjustment =
+        text_metrics::centered_baseline_offset(theme.font_size, &theme.font_family)
+            .unwrap_or(theme.font_size * 0.25)
+            - theme.font_size * 0.25;
+
     let mut svg = format!(
-        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" rx=\"6\" fill=\"{body_fill}\" stroke=\"{border}\" stroke-width=\"{stroke_width}\"{dash}/>"
+        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{body_fill}\" stroke=\"{border}\" stroke-width=\"{stroke_width}\"{dash}/>"
     );
     svg.push_str(&format!(
-        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{row_height:.2}\" rx=\"6\" fill=\"{header_fill}\"/>"
+        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{row_height:.2}\" fill=\"{header_fill}\"/>"
     ));
+    for (index, _) in table.rows.iter().enumerate() {
+        let row_y = y + row_height * (index + 1) as f32;
+        let fill = node.style.fill.as_deref().unwrap_or(if index % 2 == 0 {
+            &odd_fill
+        } else {
+            &even_fill
+        });
+        svg.push_str(&format!("<rect x=\"{x:.2}\" y=\"{row_y:.2}\" width=\"{w:.2}\" height=\"{row_height:.2}\" fill=\"{fill}\" stroke=\"{border}\" stroke-width=\"{stroke_width}\"{dash}/>"));
+    }
     let header = TextBlock {
         lines: vec![crate::layout::TextLine::plain(title.clone())],
         width: 0.0,
@@ -6555,7 +6567,7 @@ fn render_er_node(
     };
     svg.push_str(&text_block_svg_anchor(
         x + w / 2.0,
-        y + row_height / 2.0,
+        y + row_height / 2.0 + baseline_adjustment,
         &header,
         theme,
         config,
@@ -6565,7 +6577,7 @@ fn render_er_node(
     for (index, row) in table.rows.iter().enumerate() {
         let row_top = y + row_height * (index + 1) as f32;
         svg.push_str(&format!(
-            "<line x1=\"{x:.2}\" y1=\"{row_top:.2}\" x2=\"{:.2}\" y2=\"{row_top:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\" stroke-opacity=\"0.6\"/>", x + w));
+            "<line x1=\"{x:.2}\" y1=\"{row_top:.2}\" x2=\"{:.2}\" y2=\"{row_top:.2}\" stroke=\"{grid_color}\" stroke-width=\"{stroke_width}\"/>", x + w));
         let mut cursor = x;
         for (column, value) in row.iter().enumerate() {
             let width = table.columns[column];
@@ -6579,7 +6591,7 @@ fn render_er_node(
             };
             svg.push_str(&text_block_svg_anchor(
                 cursor + table.padding / 2.0,
-                row_top + row_height / 2.0,
+                row_top + row_height / 2.0 + baseline_adjustment,
                 &label,
                 theme,
                 config,
@@ -6600,7 +6612,7 @@ fn render_er_node(
     ) {
         cursor += width;
         svg.push_str(&format!(
-            "<line x1=\"{cursor:.2}\" y1=\"{:.2}\" x2=\"{cursor:.2}\" y2=\"{:.2}\" stroke=\"{grid_color}\" stroke-width=\"1\" stroke-opacity=\"0.45\"/>", y + row_height, y + h));
+            "<line x1=\"{cursor:.2}\" y1=\"{:.2}\" x2=\"{cursor:.2}\" y2=\"{:.2}\" stroke=\"{grid_color}\" stroke-width=\"{stroke_width}\"/>", y + row_height, y + h));
     }
     svg
 }
