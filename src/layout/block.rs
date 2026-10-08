@@ -58,6 +58,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
             acc_descr: None,
             diagram: DiagramData::Graph {
                 usecase: None,
+                agentflow: None,
                 state_notes: Vec::new(),
             },
         };
@@ -182,6 +183,7 @@ pub(super) fn compute_block_layout(graph: &Graph, theme: &Theme, config: &Layout
         acc_descr: None,
         diagram: DiagramData::Graph {
             usecase: None,
+            agentflow: None,
             state_notes: Vec::new(),
         },
     }

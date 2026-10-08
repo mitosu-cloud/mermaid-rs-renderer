@@ -6308,6 +6308,7 @@ fn parse_state_diagram(input: &str) -> Result<ParseOutput> {
                 graph.subgraph_styles.insert(
                     id,
                     NodeStyle {
+                        corner_radius: None,
                         fill: Some("none".to_string()),
                         er_odd_row_fill: None,
                         stroke: Some("#9370DB".to_string()),

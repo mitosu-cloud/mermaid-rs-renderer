@@ -15,6 +15,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::path::Path;
 
+mod agentflow;
 mod kanban;
 mod packet;
 mod radar;
@@ -51,6 +52,18 @@ fn edge_dom_id(edge_idx: usize) -> String {
 }
 
 pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> String {
+    let agent_theme = match &layout.diagram {
+        DiagramData::Graph {
+            agentflow: Some(options),
+            ..
+        } => Some(crate::agentflow::theme(options, theme)),
+        DiagramData::Graph {
+            usecase: Some(data),
+            ..
+        } => Some(crate::usecase::diagram_theme(data, theme)),
+        _ => None,
+    };
+    let theme = agent_theme.as_ref().unwrap_or(theme);
     let mut svg = String::new();
     let state_font_size = if layout.kind == crate::ir::DiagramKind::State {
         theme.font_size * 0.85
@@ -1764,7 +1777,16 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 }
                 continue;
             }
-            svg.push_str(&shape_svg(node, theme, config, layout.kind));
+            let agent_shape = match &layout.diagram {
+                DiagramData::Graph {
+                    agentflow: Some(options),
+                    ..
+                } => agentflow::shape(node, theme, options),
+                _ => None,
+            };
+            svg.push_str(
+                &agent_shape.unwrap_or_else(|| shape_svg(node, theme, config, layout.kind)),
+            );
             if layout.kind != crate::ir::DiagramKind::Er {
                 let divider_line_height = if layout.kind == crate::ir::DiagramKind::Class {
                     theme.font_size * config.class_label_line_height()
@@ -7625,7 +7647,9 @@ fn shape_svg_inner(
             fill,
             stroke,
             node.style.stroke_width.unwrap_or(1.0),
-            radius = if kind == crate::ir::DiagramKind::Mindmap {
+            radius = if let Some(radius) = node.style.corner_radius {
+                radius.max(0.0).min(w.min(h) / 2.0)
+            } else if kind == crate::ir::DiagramKind::Mindmap {
                 config
                     .mindmap
                     .default_corner_radius

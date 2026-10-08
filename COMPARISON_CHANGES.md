@@ -7381,3 +7381,330 @@ Review files (generated, ignored): tests/mermaid-js-comparison/comparison-output
 Gallery: tests/mermaid-js-comparison/comparison-output/index.html
 
 Final image sizing review: the unconstrained fixture now uses Mermaid 12's 120 px wrapping-width floor (RS viewBox 136×108; JS 136×109). The constrained fixture uses intrinsic 2:1 sizing at 200×100. The final native refresh rendered all 458 SVG/PNG pairs with zero failures and left the latest JS references unchanged. Recorded 2026-10-07T15:46:49+00:00.
+
+## agentflow-configuration — Pass 1 findings (iteration 1/10) — 2026-10-08T05:15:45+00:00
+
+### Visual appearance
+- Canvas: RS 55.44×194; JS 166×158. RS is a narrow portrait while JS is nearly square.
+- Topology: A above B in both; straight M/L edge in both.
+- RS label boxes have no minimum width: node A 39.44×54 versus JS 150×51. Edge gap/node height is 1.30 versus 0.78; label fit is adequate but the shapes have the wrong proportions.
+- These do not look like the same picture because of node width, gap and theme.
+### Structural differences
+- Missing diagram-level minNodeWidth support (JS default 120 for label boxes).
+- RS font 16 Trebuchet and classic palette versus JS 14 Open Sans and neo.
+### Visual defects
+- No label overflow in this fixture; dominant defect is the tall narrow composition.
+
+## agentflow-configuration — Changes applied (iteration 1/10) — 2026-10-08T05:16:05+00:00
+
+- src/ir.rs, src/parser/agentflow.rs — retain agentflow namespace options through shared flowchart layout.
+- src/layout/mod.rs — apply Mermaid's 120 px default minimum label width, honoring finite nonnegative minNodeWidth overrides.
+
+## agentflow-configuration — Pass 2 findings (iteration 1/10) — 2026-10-08T05:16:42+00:00
+
+### Visual appearance
+- RS canvas 166×194 versus JS 166×158; widths now agree and both show stacked horizontal rectangles.
+- Both node widths are 150; height remains 54 versus 51. Edge gap/node height remains 1.30 versus 0.78.
+- M/L vertical edge topology matches; arrow geometry and neo rounding differ.
+- Visual match: partial — proportions improved, but RS remains taller and uses a different font/palette.
+### Structural differences
+- RS font 16 Trebuchet versus JS 14 Recursive; radius 5 versus 12; classic versus neo color/stroke.
+### Visual defects
+- No overflow; excess inter-node gap remains.
+- Build succeeded; 458 SVG + 458 PNG native renders succeeded; only 12 agentflow SVGs changed; JS unchanged.
+
+## agentflow-configuration — Pass 1 findings (iteration 2/10) — 2026-10-08T05:16:42+00:00
+
+### Visual appearance
+- Current RS 166×194 versus JS 166×158; same two-node stack, straight M/L edge, gap/height 1.30 versus 0.78.
+- Label fits both boxes; RS text is 16 px Trebuchet versus JS 14 px Recursive. RS nodes are 54 high versus 51, partly from font measurement.
+- Visual match: partial; typography, spacing and neo styling differ.
+### Structural differences
+- Latest default theme typography is missing from agentflow's measurement and rendering.
+### Visual defects
+- No overlapping labels in this fixture; long labels in agentflow examples also use the wrong font metrics.
+
+## agentflow-configuration — Changes applied (iteration 2/10) — 2026-10-08T05:17:54+00:00
+
+- src/agentflow.rs — resolve the Redux default font (Recursive Variable, 14 px) and authored themeVariables overrides.
+- src/layout/mod.rs, src/render.rs and graph layout data — use the same typography for native measurement and rendering; explicit classic/default themes retain their font settings.
+- src/parser/agentflow.rs — preserve the full resolved init configuration for these settings.
+
+## agentflow-configuration — Pass 2 findings (iteration 2/10) — 2026-10-08T05:18:55+00:00
+
+### Visual appearance
+- RS 166×188 versus JS 166×158. Nodes now 150×51 in both, same vertical topology and M/L edge.
+- Gap/node height 1.37 versus 0.78, so the native canvas remains taller.
+- Font family declaration and size now agree (Recursive Variable, Arial fallback, 14 px); fallback font availability may still affect glyph appearance.
+- Visual match: partial — node dimensions and font settings improved, but gap, radius, palette, strokes and arrows differ.
+### Structural differences
+- Native radius 5 versus 12 and classic colors; ELK spacing absent.
+### Visual defects
+- No overflow in the reviewed fixture. All 458 native SVG/PNG pairs regenerated without failures; JS unchanged.
+
+## usecase-actors-and-use-cases — Pass 1 findings (iteration 3/10) — 2026-10-08T05:18:55+00:00
+
+### Visual appearance
+- usecase-actors-and-use-cases: RS 305.87×417.09 versus JS 400×441. Same two actor/case rows, but isolated Reset password is above rather than below.
+- Sign in ellipse RS 76.7×58 versus JS 160×58; Generate report rectangle RS 104.7×38 versus JS 152×42.
+- Edge-0 RS M/C versus JS M/L; edge-1 M/L in both. Layout row order and edge routing remain different.
+- Labels fit, but the short ellipse label occupies 48% width versus 23% in JS. Native horizontal gap/ellipse height about 0.86 versus JS 0.69.
+- Visual match: no — sizing and disconnected component placement differ visibly.
+### Structural differences
+- Missing 120 px minimum width on non-actor labels; wrong rectangle padding.
+### Visual defects
+- No clipping; compact shape proportions and isolated-node placement dominate.
+
+## usecase-actors-and-use-cases — Changes applied (iteration 3/10) — 2026-10-08T05:19:25+00:00
+
+- src/layout/mod.rs — honor usecase.minNodeWidth (default 120) for non-actor label boxes.
+- src/usecase.rs — use Mermaid rectangle padding of 16 px horizontally and 12 px vertically; preserve ellipse padding of 20 px per side and actor footprints.
+
+## usecase-actors-and-use-cases — Pass 2 findings (iteration 3/10) — 2026-10-08T05:20:45+00:00
+
+### Visual appearance
+- RS 386×417.07 versus JS 400×441. Sign in ellipse now 160×58 and Generate report rectangle 152×42, matching JS shape dimensions.
+- Actor captions remain unwrapped; isolated Reset password remains above rather than below. Edge-0 native M/C versus JS M/L, with a much longer native gap.
+- Visual match: no — local shape proportions improved but disconnected layout and captions still differ.
+### Structural differences
+- Classic usecase fonts/colors and native graph ordering remain; modern minimum width now applied.
+### Visual defects
+- No clipping, but Main administrator is one line instead of two.
+- Release build and all 458 SVG/PNG renders succeeded; JS unchanged.
+
+## usecase-labels-2 — Pass 1 findings (iteration 4/10) — 2026-10-08T05:20:45+00:00
+
+### Visual appearance
+- Topology differs: JS Formatted above Literal above Quoted, native Literal above Quoted above Formatted.
+- Formatted native label uses 16 px measurement despite 12 px rendering, with two lines versus JS three wrapped lines inside a 160 px ellipse.
+- Native diagonal M/L edges versus JS orthogonal rounded M/L/Q edges. Relation label native is below the actor rather than above.
+- Native Formatted shape is much wider than the other ellipses; text fit is adequate but proportions differ. JS keeps all three shapes about the same width.
+- These do not look like the same picture because of branch order, edge routing and inconsistent label widths.
+### Structural differences
+- Missing pixel-based wrappingWidth support on new diagram labels; Markdown font-size floor inflates measurement.
+### Visual defects
+- No clipping; labels force wide native shapes and actor captions remain overlong.
+
+## usecase-labels-2 — Changes applied (iteration 4/10) — 2026-10-08T05:21:16+00:00
+
+- src/usecase.rs — measure and word-wrap parsed spans using the role font size and pixel wrappingWidth, preserving bold/italic formatting and physical newlines.
+- src/layout/mod.rs — apply the 120 px default wrapping width (or authored override) to use case and agentflow labels; width accounting now follows the measured wrapping box.
+
+## usecase-labels-2 — Pass 2 findings (iteration 4/10) — 2026-10-08T05:22:31+00:00
+
+### Visual appearance
+- Formatted now wraps to three lines at 12 px, matching JS line count and 120 px label box. Markdown spans remain intact.
+- Native branch order (Literal, Quoted, Formatted) still differs from JS (Formatted, Literal, Quoted); diagonal M/L versus rounded orthogonal M/L/Q paths.
+- Label fits with 20 px ellipse padding. Some actor captions still measure narrower under system fallback fonts than JS embedded Open Sans.
+- Visual match: no — label wrapping improved but layout remains different.
+### Structural differences
+- JS embeds Open Sans/Recursive; native uses available system fonts. Edge label/shape theme still differs.
+### Visual defects
+- No label clipping after wrapping; edge-label placement still differs.
+- Release build and all 458 SVG/PNG native renders succeeded; JS unchanged.
+
+## usecase-json-tables — Pass 1 findings (iteration 5/10) — 2026-10-08T05:22:31+00:00
+
+### Visual appearance
+- RS canvas 426.08×330 versus JS 494.55×392; same left ellipse / right table topology and straight M/L association.
+- Native table 200.08×314 versus JS 254.55×352; rows 26 versus 29 high. Text fits but cell widths and table height differ.
+- Native table purple (#ECECFF) versus JS white; native table text 12 px Open Sans versus JS 14 px Recursive.
+- Visual match: partial — row content and topology agree, but table appearance and dimensions differ.
+### Structural differences
+- Border inset fixed at 1 despite authored 2 px stroke; table lacks inner cell perimeter shown by JS.
+### Visual defects
+- No missing rows or label overlap; wrong fill and compressed cells are visible.
+
+## usecase-json-tables — Changes applied (iteration 5/10) — 2026-10-08T05:23:18+00:00
+
+- src/usecase.rs — JSON captions/cells use global theme typography (Redux defaults 14 px Recursive); measured border width contributes to the table footprint.
+- src/render/usecase.rs — table uses the theme main background instead of use case fill and renders the inner cell perimeter at the authored border inset.
+- src/parser/usecase.rs — retain root theme/look/themeVariables options; classic rectangle padding remains 20 px horizontally and 10 px vertically.
+
+## usecase-json-tables — Pass 2 findings (iteration 5/10) — 2026-10-08T05:23:43+00:00
+
+### Visual appearance
+- RS 455.76×368 versus JS 494.55×392; same ellipse/table horizontal composition and straight M/L edge.
+- Table height now 352 in both, rows 29 high in both; native width 229.76 versus JS 254.55 because native Recursive falls back to system Arial.
+- White table fill and 2 px inner border inset now agree. Labels have cell padding and no clipping.
+- Visual match: partial — table proportions, fill and border improved; fonts, ellipse palette, arrow geometry and canvas padding differ.
+### Structural differences
+- Embedded JS fonts remain unavailable in native output.
+### Visual defects
+- No row overlap/overflow; differing font advances produce narrower native columns.
+- Release build, 458 SVG and 458 PNG native renders passed; JS unchanged.
+
+## usecase-styling — Pass 1 findings (iteration 6/10) — 2026-10-08T05:23:43+00:00
+
+### Visual appearance
+- RS 696.68×193 versus JS 762.05×169.5. Both run Customer → Checkout → Account/Profile → Session left to right, but native boundary is much taller and displaced upward.
+- Native diagonal M/L edges versus JS aligned horizontal M/L; label fit adequate in each shape.
+- Customer and Session native strokes remain purple despite classDef default stroke #7f8ea3; boundary default classes also skipped.
+- Visual match: partial — recognizable chain but boundary sizing, fonts and styling differ.
+### Structural differences
+- Default class not merged into usecase/agentflow node and subgraph styles; anonymous edges skip the shared class style cascade.
+### Visual defects
+- No clipping, but default stroke color is ignored on unclassified elements.
+
+## usecase-styling — Changes applied (iteration 6/10) — 2026-10-08T05:24:24+00:00
+
+- src/layout/mod.rs — merge classDef default before named classes and inline styles for usecase/agentflow nodes and boundaries.
+- src/parser/extended.rs — anonymous extended-diagram relationships now inherit the default class instead of being skipped.
+
+## usecase-styling — Pass 2 findings (iteration 6/10) — 2026-10-08T05:26:06+00:00
+
+### Visual appearance
+- RS 696.68×193 versus JS 762.05×169.5. Same chain and native boundary remains taller and higher.
+- Default stroke #7f8ea3 now reaches Customer/Profile/Session and relationships. Checkout keeps authored #c33/4px; Account keeps inline #536878.
+- Native M/L diagonals versus JS horizontal edges and legacy fills versus neo fills remain. Labels fit all reviewed shapes.
+- Visual match: partial — class precedence improved; boundary geometry, fonts and palette still differ.
+### Structural differences
+- Default class cascade now present on extended nodes, boundaries and anonymous relationships.
+### Visual defects
+- No new overlaps or clipping. All 458 native SVG/PNG renders passed; JS unchanged.
+
+## usecase-colors — Pass 1 findings (iteration 7/10) — 2026-10-08T05:26:06+00:00
+
+### Visual appearance
+- JS wide horizontal chain has violet actor, teal cases and fuchsia/teal boundaries; native uses purple nodes and yellow boundaries.
+- Native boundary positions and heights differ; include association takes a different route. JS rounded orthogonal M/L/Q paths versus native M/L/C paths.
+- Label fit is adequate; different container room and inter-rank gaps change the composition.
+- Visual match: no — both styling and layout differ visibly.
+### Structural differences
+- Missing Redux role palette, boundary color slots and theme text/line colors. Explicit class/inline overrides must retain precedence.
+### Visual defects
+- Wrong large-area background fills dominate the mismatch; no text clipping in this fixture.
+
+## usecase-colors — Changes applied (iteration 7/10) — 2026-10-08T05:26:42+00:00
+
+- src/usecase.rs — add Redux actor/usecase/note/table colors, global text/line colors and declaration-order boundary palette slots with themeVariables overrides.
+- src/layout/mod.rs — seed these theme styles before class and inline declarations, and use the global theme font for boundary measurement.
+- src/render.rs, src/render/usecase.rs — render the same role/theme colors and stroke weights; preserve the table's authored-border versus theme-stroke distinction.
+- Opt-in per-element color rotation, embedded fonts and neo shadows remain gaps.
+
+## usecase-colors — Pass 2 findings (iteration 7/10) — 2026-10-08T05:28:23+00:00
+
+### Visual appearance
+- RS 520.68×342 versus JS 730.05×177.5. Native boundary chain forms a zigzag; JS is a wide aligned row.
+- Role fills/outlines now match: violet actor, teal cases, fuchsia Catalogue and teal Payment boundary. Authored style overrides remain visible in usecase-styling.
+- Native diagonal M/L and curved M/C edges still differ from JS orthogonal M/L/Q. Include relationship color and route remain different.
+- Labels fit, but native containers have too much vertical room and the aspect ratio is over 30% different.
+- Visual match: no — styling improved; gross layout still differs.
+### Structural differences
+- Opt-in per-element rotation, neo shadows and embedded fonts remain unsupported.
+### Visual defects
+- No clipping; label position near Payment remains different from JS's inter-boundary label.
+- Build and all 458 native SVG/PNG renders passed; JS unchanged.
+
+## agentflow-nodes-and-shapes — Pass 1 findings (iteration 8/10) — 2026-10-08T05:28:23+00:00
+
+### Visual appearance
+- RS 796×161.97 versus JS 843.2×185.49; both show input → task → tool → action, but RS refdoc is below input and JS refdoc is below tool.
+- Native connecting chain is straight M/L; JS task/tool branches have rounded orthogonal M/L/Q bends. Labels fit all shapes.
+- Every native node is purple; JS uses cyan input, teal task, fuchsia tool, green refdoc and red action.
+- Visual match: partial — main chain recognizable, but branch placement and appearance differ.
+### Structural differences
+- Missing domain palette; rounded task radius 5 versus JS 12; native outline width 1 versus 2.
+### Visual defects
+- No clipped labels; wrong domain colors obscure distinctions between node kinds.
+
+## agentflow-nodes-and-shapes — Build repair (iteration 8/10) — 2026-10-08T05:28:58+00:00
+
+- First build reported E0063: an existing NodeStyle initializer at src/parser.rs:6310 needed corner_radius: None. Added that neutral default; continuing this requested batch with the corrected initializer.
+
+## agentflow-nodes-and-shapes — Changes applied (iteration 8/10) — 2026-10-08T05:28:58+00:00
+
+- src/agentflow.rs — Redux theme colors and per-kind palette slots, with configured palette and radius overrides; explicit classic/default theme remains unchanged.
+- src/parser/agentflow.rs — retain connector identity separately from its rounded shape.
+- src/ir.rs, src/layout/mod.rs, src/render.rs — carry corner radius in resolved node styles; default radius 12, outlines 2 px for Redux agentflow.
+- Source-order container colors and collapsed-container geometry are addressed separately.
+
+## agentflow-nodes-and-shapes — Pass 2 findings (iteration 8/10) — 2026-10-08T05:30:33+00:00
+
+### Visual appearance
+- RS 796×161.97 versus JS 843.2×185.49. Main chain preserved; native refdoc still below input rather than below tool.
+- Domain palette now agrees: cyan input, teal task, fuchsia tool, green refdoc, red action. Task radius 12 and 2 px outlines agree.
+- Native action 153×36 versus JS 204×91; refdoc wave and branch topology differ. Native M/L/C paths versus JS M/L/Q.
+- Labels fit; visual match: partial — node identity/style improved, branch placement and some shape dimensions remain different.
+### Structural differences
+- Neo shadows, exact font glyphs and container palette not yet implemented.
+### Visual defects
+- No label clipping. Repaired initializer build succeeded; all 458 SVG/PNG native renders passed; JS unchanged.
+
+## usecase-actor-variants — Pass 1 findings (iteration 9/10) — 2026-10-08T05:30:33+00:00
+
+### Visual appearance
+- RS 366×842 versus JS 400×826; both show five actor variants feeding Manage, native spread/curved M/C paths versus JS compact rounded orthogonal M/L/Q fan-in.
+- Native Missing icon fallback displays not-registered:user as a wide text glyph; JS uses a 52 px frame and 42 px blue question mark.
+- The identifier is wider than the glyph footprint, overflowing the transparent actor layout box. Native fa:user has no frame; JS has a frame but falls back because the JS run has no registered icon pack.
+- Visual match: no — icon fallback/overflow and edge geometry differ visibly.
+### Structural differences
+- Icon frame and bounded unknown-icon symbol absent.
+### Visual defects
+- Fallback identifier spills outside its actor glyph bounds; known icon and fallback sizes differ from the 42 px golden symbol.
+
+## usecase-actor-variants — Changes applied (iteration 9/10) — 2026-10-08T05:31:23+00:00
+
+- src/render/usecase.rs — render all icon actors inside Mermaid's 52 px frame with a 42 px symbol centered at y=-2.
+- Missing native icons use Mermaid's bounded blue question-mark symbol; arbitrary icon identifiers no longer become visible fallback text.
+- Native built-in FontAwesome icons remain available, so fa:user still differs from this JS run's unregistered-pack fallback.
+
+## usecase-actor-variants — Pass 2 findings (iteration 9/10) — 2026-10-08T05:33:43+00:00
+
+### Visual appearance
+- RS 366×842 versus JS 400×826; five-actor column remains, but native diagonal/curved fan-in differs from JS orthogonal rounded fan-in.
+- Missing icon now has matching 52 px frame and 42 px question-mark footprint, with caption wrapped to two lines. No identifier spill.
+- Native fa:user is an available built-in and renders a framed user glyph, while this JS run has no registered pack and renders a question mark.
+- Visual match: partial — glyph sizing/fallback improved; known-icon availability and edge routes still differ.
+### Structural differences
+- Native available icon subset and JS icon registration differ; native neo shadow absent.
+### Visual defects
+- Fallback overflow removed; no new label clipping.
+- Build and all 458 native SVG/PNG renders passed; JS unchanged.
+
+## agentflow-collapsing-a-container — Pass 1 findings (iteration 10/10) — 2026-10-08T05:33:43+00:00
+
+### Visual appearance
+- RS 229×315 versus JS 268×452; both show Intake, collapsed Processing, Output vertically, but RS edges slant and JS is center aligned.
+- Processing native width 160 versus JS 91.47; task minimum label width incorrectly applies to the collapsed container title. Height 70 versus JS 65.
+- Publish native 153×36 versus JS 204×91; native action is too flat and Output is correspondingly too short.
+- Container colors missing; Intake/Output both yellow in native rather than separate palette slots. Separator/dots use node outline instead of gray indicator styling.
+- Native edge M/L and JS M/L, but endpoints/column alignment differ; labels fit with sufficient padding.
+- Visual match: partial — topology recognizable, but shape proportions and spacing differ substantially.
+### Structural differences
+- Missing dedicated collapsed shape sizing, neo action sizing, and retained source container palette index.
+### Visual defects
+- Output title is crossed by the slanted edge; native container headers sit closer to children than JS.
+
+## agentflow-collapsing-a-container — Changes applied (iteration 10/10) — 2026-10-08T05:34:30+00:00
+
+- src/agentflow.rs, src/layout/mod.rs — collapsed title footprint is max(80, label+16) by label+44, without task minNodeWidth; neo actions use the upstream 70/32 px padding and h/3.5 side cut (classic h/4).
+- src/parser/agentflow.rs — retain container declaration index before collapsing/removing descendants.
+- src/agentflow.rs, src/layout/mod.rs — apply container palette slots 7 onward to expanded and collapsed containers with authored overrides taking precedence.
+- src/render/agentflow.rs, src/render.rs — draw action geometry, exact collapsed separator/indicator row positions, gray separator and half-opacity indicator dots.
+
+## agentflow-collapsing-a-container — Pass 2 findings (iteration 10/10) — 2026-10-08T05:38:35+00:00
+
+### Visual appearance
+- RS 262×366 versus JS 268×452. Both show Intake, collapsed Processing, Output vertically, but native Processing is offset left and its edges slant; JS keeps the column centered.
+- Processing is now 85.25×65 versus JS 91.47×65; height matches, and the remaining width difference comes from label measurement. Publish is now 204×91, matching JS.
+- Intake yellow, Processing indigo and Output lime now agree. The collapsed separator is gray and its dots have half opacity.
+- Native container headers remain close to children; native edge/header contact remains. JS has more vertical room and neo shadows. Labels fit their shapes.
+- Native M/L routes remain diagonal where JS M/L routes are vertical.
+- Visual match: partial — shape proportions, palette and indicators improved, but column alignment, container spacing, fonts and shadows still differ.
+### Structural differences
+- Native system font fallback differs from JS embedded Recursive; neo shadows remain absent.
+- Follow-up review of agentflow-nodes-and-shapes: RS 847×181.91 versus JS 843.2×185.49, with matching 204×91 action. Native refdoc is still below input rather than below tool and uses a different branch route.
+### Visual defects
+- Output header contact and compressed header/child spacing remain; no new label overflow observed.
+- Release build and all 458 native SVG/PNG renders passed; JS SVG references unchanged.
+
+## requested-next-10 — Final verification — 2026-10-08T05:39:06+00:00
+
+- Completed the 10 requested source passes, with a release build and all 458 native SVG/PNG renders after each pass.
+- Final audit: 458 SVGs and 458 PNGs for each engine; every SVG has a valid positive viewBox and every PNG has a valid positive-size IHDR.
+- All 36 UseCase/Agentflow native SVGs changed across this batch. The original 422 native SVGs and all 458 JS SVG references are byte-identical to the batch baseline.
+- Zero render failures across the ten complete corpus refreshes.
+- Final cargo check --no-default-features --lib passed (20 compiler warnings); git diff --check passed. No tests were run under the svg-parity workflow.
+- Classic appearance review (agentflow-the-previous-appearance) preserves legacy colors, but visual match is no: native is spread across columns with Publish at upper left, while JS is a centered vertical stack with Publish below Review Agent. That layout gap remains.
+- Overall visual match remains partial, with several fixtures still visibly different in topology, edge routing, container spacing and font glyphs.

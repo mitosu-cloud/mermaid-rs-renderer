@@ -14,7 +14,14 @@ pub(super) fn parse(input: &str) -> Result<ParseOutput> {
         .as_ref()
         .and_then(|value| value.get("usecase"))
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(root) = init_config.as_ref() {
+        for key in ["theme", "look", "themeVariables"] {
+            if let Some(value) = root.get(key) {
+                graph.usecase.config[key] = value.clone();
+            }
+        }
+    }
     let mut boundary = None;
     let mut declared = HashMap::<String, &'static str>::new();
     let mut relationships = Vec::new();

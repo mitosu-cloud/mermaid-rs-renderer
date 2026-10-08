@@ -311,13 +311,25 @@ pub fn compute_layout_with_metrics(
         crate::ir::DiagramKind::Agentflow => {
             let mut flowchart = graph.clone();
             flowchart.kind = crate::ir::DiagramKind::Flowchart;
-            let mut layout =
-                compute_flowchart_layout(&flowchart, theme, config, Some(&mut stage_metrics));
+            let agent_theme = crate::agentflow::theme(
+                graph
+                    .agentflow_config
+                    .as_ref()
+                    .unwrap_or(&serde_json::Value::Null),
+                theme,
+            );
+            let mut layout = compute_flowchart_layout(
+                &flowchart,
+                &agent_theme,
+                config,
+                Some(&mut stage_metrics),
+            );
             layout.kind = graph.kind;
             layout
         }
         crate::ir::DiagramKind::UseCase => {
-            compute_flowchart_layout(graph, theme, config, Some(&mut stage_metrics))
+            let case_theme = crate::usecase::diagram_theme(&graph.usecase, theme);
+            compute_flowchart_layout(graph, &case_theme, config, Some(&mut stage_metrics))
         }
         crate::ir::DiagramKind::Class
         | crate::ir::DiagramKind::State
@@ -532,9 +544,43 @@ fn compute_flowchart_layout(
                 )
             }
         };
+        let extended_options = if graph.kind == crate::ir::DiagramKind::UseCase {
+            Some(&graph.usecase.config)
+        } else {
+            graph
+                .agentflow_config
+                .as_ref()
+                .map(crate::agentflow::options)
+        };
+        if let Some(options) = extended_options {
+            let limit = options
+                .get("wrappingWidth")
+                .and_then(|value| value.as_f64())
+                .filter(|value| value.is_finite() && *value > 0.0)
+                .unwrap_or(120.0) as f32;
+            crate::usecase::wrap_label(&mut label, limit, theme, &label_config);
+        }
         let label_empty = label.lines.len() == 1 && label.lines[0].text().trim().is_empty();
+        if !label_empty
+            && node.shape != crate::ir::NodeShape::CollapsedGroup
+            && let Some(options) = graph.agentflow_config.as_ref()
+        {
+            let options = crate::agentflow::options(options);
+            // Mermaid widens the measured label, then lets each shape add its padding.
+            let minimum = options
+                .get("minNodeWidth")
+                .and_then(|value| value.as_f64())
+                .filter(|value| value.is_finite() && *value >= 0.0)
+                .unwrap_or(120.0) as f32;
+            label.width = label.width.max(minimum);
+        }
         let (mut width, mut height) =
             shape_size(node.shape, &label, &effective_config, theme, graph.kind);
+        if let Some(options) = graph.agentflow_config.as_ref()
+            && let Some(size) = crate::agentflow::node_size(node.shape, &label, options)
+        {
+            (width, height) = size;
+        }
         let mut stereotype = graph
             .usecase
             .nodes
@@ -553,6 +599,22 @@ fn compute_flowchart_layout(
                     crate::usecase::measure_bold(stereotype, theme);
                 }
             }
+            if !label_empty
+                && graph
+                    .usecase
+                    .nodes
+                    .get(&node.id)
+                    .is_none_or(|details| details.actor_type.is_none())
+            {
+                let minimum = graph
+                    .usecase
+                    .config
+                    .get("minNodeWidth")
+                    .and_then(|value| value.as_f64())
+                    .filter(|value| value.is_finite() && *value >= 0.0)
+                    .unwrap_or(120.0) as f32;
+                label.width = label.width.max(minimum);
+            }
             (width, height) = crate::usecase::node_size(
                 &graph.usecase,
                 &node.id,
@@ -561,6 +623,9 @@ fn compute_flowchart_layout(
                 stereotype.as_ref(),
                 theme,
                 &label_config,
+                resolve_node_style(&node.id, graph)
+                    .stroke_width
+                    .unwrap_or(1.0),
             );
         }
         if graph.kind == crate::ir::DiagramKind::State
@@ -2152,6 +2217,7 @@ fn compute_flowchart_layout(
         acc_descr: None,
         diagram: DiagramData::Graph {
             state_notes,
+            agentflow: graph.agentflow_config.clone(),
             usecase: (graph.kind == crate::ir::DiagramKind::UseCase).then(|| graph.usecase.clone()),
         },
     }
@@ -5636,8 +5702,26 @@ fn normalize_layout_with_padding(
 }
 
 fn resolve_node_style(node_id: &str, graph: &Graph) -> crate::ir::NodeStyle {
-    let mut style = crate::ir::NodeStyle::default();
-    if graph.kind == crate::ir::DiagramKind::Er {
+    let mut style = if graph.kind == crate::ir::DiagramKind::UseCase {
+        crate::usecase::node_style(
+            &graph.usecase,
+            node_id,
+            graph
+                .nodes
+                .get(node_id)
+                .map(|node| node.shape)
+                .unwrap_or(crate::ir::NodeShape::Ellipse),
+        )
+    } else if graph.agentflow_config.is_some() {
+        crate::agentflow::node_style(graph, node_id)
+    } else {
+        crate::ir::NodeStyle::default()
+    };
+    if matches!(
+        graph.kind,
+        crate::ir::DiagramKind::Er | crate::ir::DiagramKind::UseCase
+    ) || graph.agentflow_config.is_some()
+    {
         if let Some(default_style) = graph.class_defs.get("default") {
             merge_node_style(&mut style, default_style);
         }
@@ -5735,7 +5819,25 @@ fn build_graph_node_layouts(
 }
 
 fn resolve_subgraph_style(sub: &crate::ir::Subgraph, graph: &Graph) -> crate::ir::NodeStyle {
-    let mut style = crate::ir::NodeStyle::default();
+    let mut style = if graph.kind == crate::ir::DiagramKind::UseCase {
+        crate::usecase::boundary_style(
+            &graph.usecase,
+            graph
+                .subgraphs
+                .iter()
+                .position(|candidate| candidate.id == sub.id)
+                .unwrap_or(0),
+        )
+    } else if graph.agentflow_config.is_some() {
+        crate::agentflow::container_style(graph, sub.id.as_deref().unwrap_or(""))
+    } else {
+        crate::ir::NodeStyle::default()
+    };
+    if (graph.kind == crate::ir::DiagramKind::UseCase || graph.agentflow_config.is_some())
+        && let Some(default_style) = graph.class_defs.get("default")
+    {
+        merge_node_style(&mut style, default_style);
+    }
     let Some(id) = sub.id.as_ref() else {
         return style;
     };
@@ -8195,6 +8297,9 @@ fn build_subgraph_layouts(
 }
 
 fn merge_node_style(target: &mut crate::ir::NodeStyle, source: &crate::ir::NodeStyle) {
+    if source.corner_radius.is_some() {
+        target.corner_radius = source.corner_radius;
+    }
     if source.fill.is_some() {
         target.fill = source.fill.clone();
     }

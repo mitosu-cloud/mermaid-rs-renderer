@@ -788,6 +788,8 @@ pub struct Graph {
     pub event_modeling: EventModelingData,
     pub railroad: RailroadData,
     pub usecase: UseCaseData,
+    /// Agentflow options retained when its graph uses the shared flowchart layout.
+    pub agentflow_config: Option<serde_json::Value>,
     /// Metadata attached to nodes, edges, and containers by extended diagrams.
     pub element_metadata: BTreeMap<String, serde_json::Value>,
 }
@@ -1082,6 +1084,7 @@ impl Graph {
             event_modeling: EventModelingData::default(),
             railroad: RailroadData::default(),
             usecase: UseCaseData::default(),
+            agentflow_config: None,
             element_metadata: BTreeMap::new(),
         }
     }
@@ -1129,6 +1132,7 @@ impl Graph {
 
 #[derive(Debug, Clone, Default)]
 pub struct NodeStyle {
+    pub corner_radius: Option<f32>,
     pub fill: Option<String>,
     /// ER odd rows accept inline fills, while class fills only affect even rows.
     pub er_odd_row_fill: Option<String>,

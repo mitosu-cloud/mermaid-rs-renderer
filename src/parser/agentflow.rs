@@ -120,6 +120,7 @@ pub(super) fn parse(input: &str) -> Result<ParseOutput> {
     let mut parsed = parse_flowchart(&normalized)?;
     let graph = &mut parsed.graph;
     graph.kind = DiagramKind::Agentflow;
+    graph.agentflow_config = Some(init_config.clone().unwrap_or_else(|| serde_json::json!({})));
     graph.acc_title = acc_title;
     graph.acc_descr = acc_descr;
     parsed.init_config = init_config;
@@ -132,6 +133,15 @@ pub(super) fn parse(input: &str) -> Result<ParseOutput> {
         .iter()
         .filter_map(|sub| sub.id.clone())
         .collect();
+    let container_order: Vec<_> = graph
+        .subgraphs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, sub)| sub.id.as_ref().map(|id| (id.clone(), index)))
+        .collect();
+    for (id, index) in container_order {
+        merge_metadata(graph, &id, serde_json::json!({"_containerIndex": index}));
+    }
     for node in graph.nodes.values_mut() {
         if !containers.contains(&node.id) {
             node.shape = NodeShape::RoundRect;
@@ -139,6 +149,11 @@ pub(super) fn parse(input: &str) -> Result<ParseOutput> {
     }
     for id in connectors {
         graph.ensure_node(&id, None, Some(NodeShape::RoundRect));
+        merge_metadata(
+            graph,
+            &id,
+            serde_json::json!({"_agentflowKind": "connector"}),
+        );
     }
     for (id, value) in metadata_by_id {
         merge_metadata(graph, &id, value);

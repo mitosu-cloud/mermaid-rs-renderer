@@ -255,20 +255,17 @@ pub(super) fn declaration(
 
 pub(super) fn edge_styles(graph: &mut Graph) {
     for (index, edge) in graph.edges.iter().enumerate() {
-        let Some(id) = edge.id.as_ref() else {
-            continue;
-        };
         let classes = std::iter::once("default").chain(
-            graph
-                .node_classes
-                .get(id)
+            edge.id
+                .as_ref()
+                .and_then(|id| graph.node_classes.get(id))
                 .into_iter()
                 .flatten()
                 .map(String::as_str),
         );
         let styles = classes
             .filter_map(|name| graph.class_defs.get(name))
-            .chain(graph.node_styles.get(id));
+            .chain(edge.id.as_ref().and_then(|id| graph.node_styles.get(id)));
         let target = graph.edge_styles.entry(index).or_default();
         for style in styles {
             if style.stroke.is_some() {

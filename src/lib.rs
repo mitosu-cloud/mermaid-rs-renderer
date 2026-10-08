@@ -95,6 +95,7 @@
 //! mermaid-rs-renderer = { version = "0.1", default-features = false }
 //! ```
 
+mod agentflow;
 mod block_shapes;
 #[cfg(feature = "cli")]
 pub mod cli;
