@@ -1,0 +1,84 @@
+flowchart TB
+    subgraph MP["Myriplane Control Plane (host CP)"]
+        Ten["Tenant records &<br/>GPU capability profiles"]
+        Inv["GPU inventory<br/>GPUs · MIG geometry · allocations"]
+        Sched["Placement engine<br/>host / GPU / MIG GI selection<br/>trust-domain anti-affinity"]
+        Meta["MetaDeployment / WLS<br/>cross-site workload shift"]
+    end
+
+    subgraph REG["IZCR"]
+        Art["Signed + attested artifacts<br/>service-VM image · broker · shim ·<br/>guest driver · models / LoRA"]
+    end
+
+    subgraph TCP["Tenant Control Plane (per-tenant virtual cluster)"]
+        TS["Tenant scheduler<br/>sees synthetic fractional GPU only"]
+    end
+
+    subgraph HOST["GPU Host"]
+        AG["myriagent2 (extended)<br/>VM lifecycle · memfd allocation ·<br/>virtio-cuda device + tenant_id binding ·<br/>health / epoch reporting"]
+
+        subgraph VN["Tenant A virtual node (micro-VM)"]
+            KUB["kubelet"]
+            EXP["in-VM GPU exposure<br/>(DRA driver / device plugin)"]
+            subgraph POD["Pod"]
+                APP["App — PyTorch / vLLM"]
+                SHIM["synthetic libcuda.so.1<br/>+ fake NVML"]
+            end
+            GD["virtio-cuda guest driver"]
+        end
+
+        subgraph SHM["Per-tenant shared memory (memfd)"]
+            RING["Submission / completion rings<br/>copy-then-validate discipline"]
+            STG["Pinned staging windows<br/>(window_id, offset, len) addressing"]
+        end
+
+        subgraph SVM["GPU Service VM (owns GPUs via VFIO)"]
+            SUP["Supervisor<br/>sessions · protocol epochs ·<br/>Xid / reset orchestration"]
+            WA["Tenant A broker worker<br/>validation · capability firewall ·<br/>quota · audit · VRAM zeroing"]
+            WB["Tenant B broker worker"]
+            DRV["NVIDIA driver + real libcuda"]
+        end
+
+        subgraph PGPU["Physical GPUs (VFIO passthrough)"]
+            GIA["MIG GI 1 — trust domain A"]
+            GIB["MIG GI 2 — trust domain B"]
+        end
+    end
+
+    Ten --> Sched
+    Inv --> Sched
+    Sched -->|"place virtual node on<br/>host / GPU / MIG GI"| AG
+    Meta -.->|"checkpoint / shift"| AG
+    Art -.->|"signed node image + shim"| AG
+    Art -.->|"attested service-VM image"| SVM
+
+    AG -->|"creates micro-VM,<br/>binds immutable tenant_id"| VN
+    AG -->|"allocates + maps windows"| SHM
+    AG <-->|"control channel:<br/>spawn / kill workers, health"| SUP
+
+    KUB -->|"registers with"| TCP
+    TS -.->|"schedules pods"| KUB
+    EXP -->|"mounts shim + device into pod"| POD
+    APP --> SHIM
+    SHIM --> GD
+    GD <-->|"doorbells: ioeventfd → irqfd<br/>(VMM out of fast path)"| SHM
+    SHM <--> WA
+    SUP --> WA
+    SUP --> WB
+    WA --> DRV
+    WB --> DRV
+    DRV --> GIA
+    DRV --> GIB
+
+    classDef cp fill:#6366f1,stroke:#4338ca,color:#fff
+    classDef agent fill:#0ea5e9,stroke:#0284c7,color:#fff
+    classDef tenant fill:#f0fdf4,stroke:#22c55e
+    classDef shm fill:#fffbeb,stroke:#f59e0b
+    classDef svm fill:#ede9fe,stroke:#8b5cf6
+    classDef gpu fill:#fef2f2,stroke:#ef4444
+    class Ten,Inv,Sched,Meta cp
+    class AG agent
+    class KUB,EXP,APP,SHIM,GD,TS tenant
+    class RING,STG shm
+    class SUP,WA,WB,DRV svm
+    class GIA,GIB gpu

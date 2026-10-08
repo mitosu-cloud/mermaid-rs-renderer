@@ -2578,6 +2578,9 @@ fn assign_positions_manual(
         is_small_dense_labeled_flowchart(graph, layout_node_ids.len(), &layout_edges);
     let use_dagre_lr_label_rank_spacing = flowchart_use_dagre_lr_label_rank_spacing(graph);
     let use_label_dummies = !small_dense_flowchart
+        && !(graph.kind == crate::ir::DiagramKind::Flowchart
+            && flowchart_has_external_compound_subgraph(graph)
+            && flowchart_has_nested_subgraph(graph))
         && !matches!(
             graph.kind,
             crate::ir::DiagramKind::Class
@@ -6356,6 +6359,11 @@ fn flowchart_has_external_compound_subgraph(graph: &Graph) -> bool {
                 !flowchart_subgraph_is_recursive_cluster(graph, sub)
                     && flowchart_subgraph_has_external_edge(graph, sub)
             })
+}
+
+fn flowchart_has_nested_subgraph(graph: &Graph) -> bool {
+    graph.kind == crate::ir::DiagramKind::Flowchart
+        && top_level_subgraph_indices(graph).len() < graph.subgraphs.len()
 }
 
 fn flowchart_has_tb_external_compound_subgraph(graph: &Graph) -> bool {
@@ -11834,15 +11842,15 @@ fn pack_flowchart_recursive_subgraph_components(
     theme: &Theme,
     config: &LayoutConfig,
 ) {
-    if graph.kind != crate::ir::DiagramKind::Flowchart
-        || graph.subgraphs.is_empty()
-        || is_horizontal(graph.direction)
-    {
+    if graph.kind != crate::ir::DiagramKind::Flowchart || graph.subgraphs.is_empty() {
         return;
     }
+    let pack_cross_axis_is_x = !is_horizontal(graph.direction);
 
-    let recursive_subgraphs: Vec<usize> = top_level_subgraph_indices(graph)
-        .into_iter()
+    let top_level_subgraphs = top_level_subgraph_indices(graph);
+    let mut recursive_subgraphs: Vec<usize> = top_level_subgraphs
+        .iter()
+        .copied()
         .filter(|idx| {
             graph
                 .subgraphs
@@ -11854,22 +11862,25 @@ fn pack_flowchart_recursive_subgraph_components(
     if recursive_subgraphs.is_empty() {
         return;
     }
+    if recursive_subgraphs.len() == top_level_subgraphs.len() {
+        recursive_subgraphs.reverse();
+    }
 
     #[derive(Clone)]
     struct PackComponent {
         nodes: Vec<String>,
         order_group: usize,
         order: usize,
-        min_x: f32,
-        max_x: f32,
-        anchor_y: f32,
-        source_half_height: f32,
+        min_cross: f32,
+        max_cross: f32,
+        anchor_main: f32,
+        source_half_main: f32,
     }
 
     let subgraph_layouts = build_subgraph_layouts(graph, nodes, theme, config);
     let mut components = Vec::new();
     let mut recursive_members: HashSet<String> = HashSet::new();
-    let mut recursive_rank_height: f32 = 0.0;
+    let mut recursive_rank_main_size: f32 = 0.0;
 
     for (group_order, sub_idx) in recursive_subgraphs.iter().copied().enumerate() {
         let Some(sub) = graph.subgraphs.get(sub_idx) else {
@@ -11892,15 +11903,20 @@ fn pack_flowchart_recursive_subgraph_components(
         for node_id in &sub.nodes {
             recursive_members.insert(node_id.clone());
         }
-        recursive_rank_height = recursive_rank_height.max(max_y - min_y);
+        let (min_cross, max_cross, anchor_main, source_half_main) = if pack_cross_axis_is_x {
+            (min_x, max_x, (min_y + max_y) * 0.5, (max_y - min_y) * 0.5)
+        } else {
+            (min_y, max_y, (min_x + max_x) * 0.5, (max_x - min_x) * 0.5)
+        };
+        recursive_rank_main_size = recursive_rank_main_size.max(source_half_main * 2.0);
         components.push(PackComponent {
             nodes: sub.nodes.clone(),
             order_group: 0,
             order: group_order,
-            min_x,
-            max_x,
-            anchor_y: (min_y + max_y) * 0.5,
-            source_half_height: (max_y - min_y) * 0.5,
+            min_cross,
+            max_cross,
+            anchor_main,
+            source_half_main,
         });
     }
 
@@ -11984,17 +12000,26 @@ fn pack_flowchart_recursive_subgraph_components(
         }
 
         let mut source_centers = Vec::new();
-        let mut source_max_height: f32 = 0.0;
+        let mut source_max_main_size: f32 = 0.0;
         for id in &comp {
             if indegree.get(id.as_str()).copied().unwrap_or(0) == 0
                 && let Some(node) = nodes.get(id)
             {
-                source_centers.push(node.y + node.height * 0.5);
-                source_max_height = source_max_height.max(node.height);
+                if pack_cross_axis_is_x {
+                    source_centers.push(node.y + node.height * 0.5);
+                    source_max_main_size = source_max_main_size.max(node.height);
+                } else {
+                    source_centers.push(node.x + node.width * 0.5);
+                    source_max_main_size = source_max_main_size.max(node.width);
+                }
             }
         }
-        let anchor_y = if source_centers.is_empty() {
-            (min_y + max_y) * 0.5
+        let anchor_main = if source_centers.is_empty() {
+            if pack_cross_axis_is_x {
+                (min_y + max_y) * 0.5
+            } else {
+                (min_x + max_x) * 0.5
+            }
         } else {
             source_centers.iter().sum::<f32>() / source_centers.len() as f32
         };
@@ -12003,15 +12028,20 @@ fn pack_flowchart_recursive_subgraph_components(
             .filter_map(|id| graph.node_order.get(id).copied())
             .min()
             .unwrap_or(usize::MAX);
+        let (min_cross, max_cross) = if pack_cross_axis_is_x {
+            (min_x, max_x)
+        } else {
+            (min_y, max_y)
+        };
 
         components.push(PackComponent {
             nodes: comp,
             order_group: 1,
             order,
-            min_x,
-            max_x,
-            anchor_y,
-            source_half_height: source_max_height * 0.5,
+            min_cross,
+            max_cross,
+            anchor_main,
+            source_half_main: source_max_main_size * 0.5,
         });
     }
 
@@ -12023,21 +12053,25 @@ fn pack_flowchart_recursive_subgraph_components(
         a.order_group
             .cmp(&b.order_group)
             .then_with(|| a.order.cmp(&b.order))
-            .then_with(|| a.min_x.partial_cmp(&b.min_x).unwrap_or(Ordering::Equal))
+            .then_with(|| {
+                a.min_cross
+                    .partial_cmp(&b.min_cross)
+                    .unwrap_or(Ordering::Equal)
+            })
     });
 
     let mut cursor = components
         .iter()
-        .map(|comp| comp.min_x)
+        .map(|comp| comp.min_cross)
         .fold(f32::MAX, f32::min);
     if !cursor.is_finite() {
         return;
     }
-    let target_anchor_y = components
+    let target_anchor_main = components
         .iter()
-        .map(|comp| comp.anchor_y)
+        .map(|comp| comp.anchor_main)
         .fold(f32::MIN, f32::max);
-    if !target_anchor_y.is_finite() {
+    if !target_anchor_main.is_finite() {
         return;
     }
     let all_recursive_components = components.iter().all(|comp| comp.order_group == 0);
@@ -12046,32 +12080,43 @@ fn pack_flowchart_recursive_subgraph_components(
     } else {
         config.node_spacing.max(MIN_NODE_SPACING_FLOOR)
     };
-    let nonrecursive_source_height = components
+    let nonrecursive_source_main_size = components
         .iter()
         .filter(|comp| comp.order_group != 0)
-        .map(|comp| comp.source_half_height * 2.0)
+        .map(|comp| comp.source_half_main * 2.0)
         .fold(0.0_f32, f32::max);
     let descendant_rank_shift =
-        ((recursive_rank_height - nonrecursive_source_height) * 0.5).max(0.0);
+        ((recursive_rank_main_size - nonrecursive_source_main_size) * 0.5).max(0.0);
 
     for comp in components {
-        let delta_x = cursor - comp.min_x;
-        let delta_y = target_anchor_y - comp.anchor_y;
-        let anchor_after = comp.anchor_y + delta_y;
-        let descendant_threshold = anchor_after + comp.source_half_height + 0.5;
+        let delta_cross = cursor - comp.min_cross;
+        let delta_main = target_anchor_main - comp.anchor_main;
+        let anchor_after = comp.anchor_main + delta_main;
+        let descendant_threshold = anchor_after + comp.source_half_main + 0.5;
         for node_id in &comp.nodes {
             if let Some(node) = nodes.get_mut(node_id) {
-                node.x += delta_x;
-                node.y += delta_y;
-                if comp.order_group != 0
-                    && descendant_rank_shift > 0.5
-                    && node.y + node.height * 0.5 > descendant_threshold
-                {
-                    node.y += descendant_rank_shift;
+                if pack_cross_axis_is_x {
+                    node.x += delta_cross;
+                    node.y += delta_main;
+                    if comp.order_group != 0
+                        && descendant_rank_shift > 0.5
+                        && node.y + node.height * 0.5 > descendant_threshold
+                    {
+                        node.y += descendant_rank_shift;
+                    }
+                } else {
+                    node.y += delta_cross;
+                    node.x += delta_main;
+                    if comp.order_group != 0
+                        && descendant_rank_shift > 0.5
+                        && node.x + node.width * 0.5 > descendant_threshold
+                    {
+                        node.x += descendant_rank_shift;
+                    }
                 }
             }
         }
-        cursor += (comp.max_x - comp.min_x).max(1.0) + gap;
+        cursor += (comp.max_cross - comp.min_cross).max(1.0) + gap;
     }
 }
 
@@ -16933,6 +16978,80 @@ B1 --> B2"#;
             "recursive cluster root spacing should retain Mermaid's 50px rank gap; got right gap {:.2}",
             b.x - (top.x + top.width)
         );
+    }
+
+    #[test]
+    fn flowchart_disconnected_recursive_lr_clusters_pack_without_overlap() {
+        let source = include_str!(
+            "../../tests/mermaid-js-comparison/reference/flowchart-realworld-hami-qcuda-comparison.mmd"
+        );
+        let parsed = parse_mermaid(source).expect("failed to parse HAMI/qCUDA comparison fixture");
+        let layout = compute_layout(
+            &parsed.graph,
+            &Theme::mermaid_default(),
+            &LayoutConfig::default(),
+        );
+        let subgraph = |prefix: &str| {
+            layout
+                .subgraphs
+                .iter()
+                .find(|subgraph| subgraph.label.starts_with(prefix))
+                .unwrap_or_else(|| panic!("missing subgraph with label prefix {prefix}"))
+        };
+        let izuma = subgraph("Izuma virtio-cuda");
+        let qcuda = subgraph("qCUDA");
+        let hami = subgraph("HAMi");
+
+        assert!(
+            izuma.y + izuma.height <= qcuda.y,
+            "Mermaid root dagre order should place Izuma above qCUDA without overlap; Izuma bottom {:.2}, qCUDA top {:.2}",
+            izuma.y + izuma.height,
+            qcuda.y
+        );
+        assert!(
+            qcuda.y + qcuda.height <= hami.y,
+            "Mermaid root dagre order should place qCUDA above HAMi without overlap; qCUDA bottom {:.2}, HAMi top {:.2}",
+            qcuda.y + qcuda.height,
+            hami.y
+        );
+    }
+
+    #[test]
+    fn flowchart_external_compound_labels_do_not_leave_stale_dag_nodes() {
+        let source = include_str!(
+            "../../tests/mermaid-js-comparison/reference/flowchart-realworld-gpu-tenancy-component-diagram.mmd"
+        );
+        let parsed = parse_mermaid(source).expect("failed to parse GPU tenancy fixture");
+        let layout = compute_layout(
+            &parsed.graph,
+            &Theme::mermaid_default(),
+            &LayoutConfig::default(),
+        );
+
+        let label_dummies = layout
+            .nodes
+            .keys()
+            .filter(|id| id.starts_with("__elabel_"))
+            .collect::<Vec<_>>();
+        assert!(
+            label_dummies.is_empty(),
+            "external compound edges must route from final cluster positions instead of stale edge-label dummies; found {label_dummies:?}"
+        );
+
+        for (from, to) in [("Sched", "AG"), ("Meta", "AG"), ("Art", "SVM")] {
+            let edge = layout
+                .edges
+                .iter()
+                .find(|edge| edge.from == from && edge.to == to)
+                .unwrap_or_else(|| panic!("missing edge {from}->{to}"));
+            assert!(
+                edge.points
+                    .windows(2)
+                    .all(|pair| pair[1].1 + 0.1 >= pair[0].1),
+                "TB compound edge {from}->{to} should not backtrack through a stale label rank; got {:?}",
+                edge.points
+            );
+        }
     }
 
     #[test]

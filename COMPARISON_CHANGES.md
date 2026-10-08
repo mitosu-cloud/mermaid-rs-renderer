@@ -14400,6 +14400,52 @@ Pass 2 findings:
 Verification:
 - `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-basic-framework` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
 - `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-transitions-and-confusion` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
+
+## flowchart-realworld-gpu-tenancy-component-diagram — Pass 2 findings — 2026-08-06T03:53:14Z
+
+Root cause:
+- Labeled edges crossing top-level compound boundaries received hidden `__elabel_*` rank nodes before nested subgraph direction overrides and compound packing moved their visible endpoints.
+- The later router treated those obsolete dummy centers as mandatory via-points, producing backward rank-axis travel and long cross-diagram connector detours.
+
+Changes applied:
+- `src/layout/mod.rs` — disabled pre-layout label dummy ranks only for flowcharts that combine external compound edges with nested subgraphs. Flat compound diagrams retain their established labeled-edge waypoints.
+- `src/layout/mod.rs` — added a regression asserting the GPU fixture contains no stale label dummies and that representative external compound edges do not backtrack on the TB rank axis.
+- `tests/mermaid-js-comparison/reference/flowchart-realworld-gpu-tenancy-component-diagram.mmd` — added the supplied real-world comparison input.
+
+Pass 2 findings:
+- RS no longer emits any `__elabel_*` nodes for this nested compound fixture.
+- `Sched -> AG` is now a direct two-point forward route; `Meta -> AG` and `Art -> SVM` no longer travel upward through obsolete label ranks before reaching the host.
+- RS viewBox improved from `0 0 1632.7244 3042` to `0 0 1570.5469 2754`; JS remains `-13.703125 0 2070.78515625 2299`.
+- Visual match remains partial. Connector backtracking is corrected, but RS still differs from JS in top-level compound placement, host-region proportions, edge-label congestion, and overall aspect ratio.
+
+Verification:
+- `bash tests/mermaid-js-comparison/render-comparison.sh flowchart-realworld-gpu-tenancy-component-diagram` passed: RS 1 ok, JS 1 ok.
+- `cargo test --lib layout::tests::flowchart_external_compound_labels_do_not_leave_stale_dag_nodes -- --exact` passed.
+- `cargo test --lib` passed: 329 passed, 0 failed.
+
+## flowchart-realworld-hami-qcuda-comparison — Pass 2 findings — 2026-08-06T03:53:14Z
+
+Root cause:
+- `pack_flowchart_recursive_subgraph_components` only packed components on the x axis for TD/BT roots and returned early for LR/RL roots.
+- Mermaid's root Dagre treats disconnected compound nodes like normal root nodes, packs LR-root components on the y cross axis, and orders this all-compound fixture in reverse declaration order.
+
+Changes applied:
+- `src/layout/mod.rs` — generalized recursive component packing to select the cross and main axes from graph direction, including source alignment and descendant-rank compensation.
+- `src/layout/mod.rs` — reversed all-recursive top-level component order before packing to match Mermaid's root Dagre order.
+- `src/layout/mod.rs` — added a regression asserting `Izuma`, `qCUDA`, and `HAMi` are ordered and disjoint.
+- `tests/mermaid-js-comparison/reference/flowchart-realworld-hami-qcuda-comparison.mmd` — added the supplied real-world comparison input.
+
+Pass 2 findings:
+- Top-level RS bounds are now disjoint: `IZ y=8..1358`, `QCUDA y=1382.5..2645.5`, and `HAMI y=2670..3546`.
+- RS now presents the same top-level sequence as JS instead of overlaying all three systems.
+- RS viewBox improved from `0 0 407.89844 2170` to `0 0 398.70313 3554`; JS is `0 0 657.76953125 3852.5`.
+- Visual match remains partial because nested cluster widths, padding, text wrapping, and total size still differ from JS, although the catastrophic overlap is gone.
+
+Verification:
+- `bash tests/mermaid-js-comparison/render-comparison.sh flowchart-realworld-hami-qcuda-comparison` passed: RS 1 ok, JS 1 ok.
+- `cargo test --lib layout::tests::flowchart_disconnected_recursive_lr_clusters_pack_without_overlap -- --exact` passed.
+- Existing dotted-import compound regression passed after scoping the label-dummy change to nested compounds.
+- `cargo test --lib` passed: 329 passed, 0 failed.
 - `cargo test cynefin --quiet` passed with pre-existing warnings.
 - `cargo test merge_init_config_updates_cynefin_config --quiet` passed with pre-existing warnings.
 - `cargo build --release` passed with pre-existing warnings.
@@ -14424,6 +14470,56 @@ Verification:
 - `cargo build --release` passed with pre-existing warnings.
 - `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-basic-framework` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
 - `bash tests/mermaid-js-comparison/render-comparison.sh cynefin-transitions-and-confusion` passed after allowing Chromium for JS rendering: RS 1 ok, JS 1 ok.
+
+## flowchart-realworld-gpu-tenancy-component-diagram — Pass 1 findings — 2026-08-06T03:40:58Z
+
+### Mandatory visual-appearance checks
+
+- Aspect ratio + size class: JS is `2070.79 x 2299` (aspect `0.90`); RS is `1632.72 x 3042` (aspect `0.54`). RS is 32% narrower by aspect ratio and 32% taller, a major size-class mismatch.
+- Layout topology: JS places MP and IZCR across the top, the GPU Host below, TCP left of the host, and the host's VN/SHM/SVM/PGPU regions in distinct non-overlapping areas. RS puts IZCR above/right, MP below it, TCP below the entire host, and compresses nested host regions into crossing vertical bands.
+- Edge shape: JS uses Dagre spline paths with `M...C...L` / `M...L...C...L` transitions. RS routes several labeled cross-cluster edges through stale label points using `M...L...L`, then applies basis curves at render time; paths such as `Sched -> AG`, `Meta -> AG`, `Art -> SVM`, `AG -> VN`, and `KUB <-> TCP` visibly backtrack and cross unrelated regions.
+- Inter-element spacing: JS gives all top-level clusters independent padded bands. RS `HOST` spans `y=785.25..2824.5`, while `TCP` is forced to `y=2882..3034`; this changes the intended side placement into a long vertical tail. Nested `VN` (`x=28..673`) and `SVM` (`x=723..1210`) are separated, but their external connectors repeatedly cross the intervening cluster space.
+- Label-vs-container fit: node labels fit their nodes, but edge labels no longer fit their route corridors. For example `Sched -> AG` has its hidden label dummy centered near `y=531` while its endpoints terminate at `y=703` and `y=1361`; `Art -> SVM` has its label dummy near `y=531` while its target cluster begins at `y=1642`.
+- State-of-the-art summary: displayed side by side, these are not the same picture. RS preserves the semantic nodes but loses Mermaid's compound-Dagre cluster placement and routes labeled edges through obsolete pre-cluster coordinates.
+
+### Structural diffs
+
+- No semantic flowchart nodes are missing, but RS represents edge labels as hidden `__elabel_*` layout nodes and later uses their stale centers as mandatory route via-points.
+- JS viewBox is `-13.703125 0 2070.78515625 2299`; RS viewBox is `0 0 1632.7244 3042`.
+- JS uses HTML `foreignObject` labels; RS uses native SVG text. This structural difference is expected, but the geometry is not equivalent.
+
+### Visual defects in RS
+
+- `Sched -> AG`: route goes from `(689,703)` upward to `(688,531)` before descending to `(719,1361)`.
+- `Meta -> AG`: route goes from `(1045,395)` upward/right to `(1147,282)` before descending to `(817,1400)`.
+- `Art -> SVM`: route jumps from `(1444,183)` through `(333,531)` to `(967,1642)`, crossing the full diagram.
+- `AG -> VN`: route goes from `(655,1361)` up to `(599,840)` and back down to the VN boundary.
+- `KUB -> TCP` and `TS -> KUB` use multi-segment routes that revisit `y=1089`/`1777` and cross the host/VN boundary repeatedly.
+- Multiple edge-label boxes overlap connectors around the MP/HOST boundary; several labels are detached from the locally shortest source-target corridor.
+
+## flowchart-realworld-hami-qcuda-comparison — Pass 1 findings — 2026-08-06T03:40:58Z
+
+### Mandatory visual-appearance checks
+
+- Aspect ratio + size class: JS is `657.77 x 3852.5` (aspect `0.17`); RS is `407.90 x 2170` (aspect `0.19`). The aspect ratios are similar, but RS is only 56% of JS height because its top-level components overlap instead of stacking.
+- Layout topology: JS stacks the disconnected top-level recursive clusters in reverse declaration order (`IZ`, `QCUDA`, `HAMI`) with clear gaps. RS places the same clusters in that order but overlays their vertical extents.
+- Edge shape: internal linear-chain edges are straight in both outputs. The dominant defect is cluster placement, not edge curvature.
+- Inter-element spacing: RS cluster extents are `IZ y=8..1358`, `QCUDA y=899..2162`, and `HAMI y=1080.42..1956.42`; all three overlap. JS keeps every top-level cluster disjoint with roughly one node-spacing gap.
+- Label-vs-container fit: labels fit individual nodes, but overlapping top-level cluster backgrounds and titles make the composition unreadable as a three-way comparison.
+- State-of-the-art summary: displayed side by side, these do not look equivalent. RS computes each recursive cluster reasonably, then fails to pack the disconnected cluster nodes along the LR graph's cross axis.
+
+### Structural diffs
+
+- Semantic node/edge content is present in both outputs.
+- JS viewBox is `0 0 657.76953125 3852.5`; RS viewBox is `0 0 407.89844 2170`.
+- RS top-level cluster rectangles intersect even though the corresponding JS cluster rectangles are disjoint.
+
+### Visual defects in RS
+
+- `IZ` intersects `QCUDA` over `y=899..1358`.
+- `IZ` intersects `HAMI` over `y=1080.42..1358`.
+- `QCUDA` intersects `HAMI` over `y=1080.42..1956.42`.
+- The root viewBox clips the intended sequential comparison into an overlaid composition rather than a readable stack.
 
 ## cynefin-* — Bold font-face parity — 2026-05-27T13:58:34Z
 
