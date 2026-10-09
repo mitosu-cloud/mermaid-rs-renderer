@@ -7,11 +7,6 @@ use crate::{
 
 pub(crate) fn enabled(graph: &Graph) -> bool {
     graph.kind == DiagramKind::Class
-        && graph
-            .appearance_config
-            .get("_lollipop")
-            .and_then(|v| v.as_bool())
-            == Some(true)
 }
 
 pub(crate) fn sections(label: &TextBlock) -> [Vec<String>; 3] {
@@ -44,7 +39,10 @@ pub(crate) fn size(node: &Node, label: &TextBlock, theme: &Theme) -> (f32, f32) 
         return (label.width + 32.0, theme.font_size * 1.5 + 24.0);
     }
     if node.shape == NodeShape::Note {
-        return (label.width + 24.0, label.height + 24.0);
+        return (
+            label.width + 12.0,
+            label.lines.len() as f32 * theme.font_size * 1.5 + 12.0,
+        );
     }
     let groups = sections(label);
     let width = |text: &str, bold| {
@@ -59,7 +57,7 @@ pub(crate) fn size(node: &Node, label: &TextBlock, theme: &Theme) -> (f32, f32) 
     };
     let title = groups[0]
         .iter()
-        .map(|s| width(s, true))
+        .map(|s| width(s, !s.starts_with('«')))
         .fold(0.0_f32, f32::max);
     let body = groups[1..]
         .iter()
@@ -76,6 +74,16 @@ pub(crate) fn size(node: &Node, label: &TextBlock, theme: &Theme) -> (f32, f32) 
 
 pub(crate) fn node_style(graph: &Graph, id: &str) -> NodeStyle {
     let mut style = NodeStyle::default();
+    if graph
+        .nodes
+        .get(id)
+        .is_some_and(|n| n.shape == NodeShape::Note)
+    {
+        style.fill = Some("#fff5ad".into());
+        style.stroke = Some("#FACC15".into());
+        style.stroke_width = Some(1.0);
+        return style;
+    }
     if !crate::usecase::redux(&graph.appearance_config)
         || graph
             .nodes
@@ -95,4 +103,37 @@ pub(crate) fn node_style(graph: &Graph, id: &str) -> NodeStyle {
     style.stroke = Some(crate::usecase::BORDERS[slot % crate::usecase::BORDERS.len()].into());
     style.stroke_width = Some(2.0);
     style
+}
+
+/// UML angle brackets are data, including generic types and annotations.
+/// Only explicit line breaks are interpreted here; HTML tag stripping would
+/// silently erase the generic arguments and interface name.
+pub(crate) fn measure_label(text: &str, theme: &Theme) -> TextBlock {
+    let text = text
+        .replace("<br/>", "\n")
+        .replace("<br />", "\n")
+        .replace("<br>", "\n");
+    let lines: Vec<_> = text
+        .lines()
+        .map(|s| crate::layout::TextLine::plain(s.to_string()))
+        .collect();
+    let width = lines
+        .iter()
+        .map(|s| {
+            let w = crate::text_metrics::measure_styled_text_width(
+                &s.text(),
+                theme.font_size,
+                &theme.font_family,
+                false,
+                false,
+            )
+            .unwrap_or(0.0);
+            (w * 64.0).ceil() / 64.0
+        })
+        .fold(0.0_f32, f32::max);
+    TextBlock {
+        width,
+        height: lines.len() as f32 * theme.font_size * 1.5,
+        lines,
+    }
 }

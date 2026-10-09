@@ -8336,3 +8336,336 @@ Final release build succeeded (2026-10-09T04:33:57+00:00); 20 existing warnings.
 - Changed 10 source files: `src/flowchart_shapes/documents.rs`, `src/flowchart_shapes.rs`, `src/parser.rs`, `src/layout/text.rs`, `src/layout/mod.rs`, `src/layout/elk.rs`, `src/layout/routing.rs`, `src/render.rs`, `src/render/agentflow.rs`, and `src/text_metrics.rs`. Added two calibrated italic font assets under `src/fonts/` using the existing Recursive OFL.
 - WireGuard uses the native Rust ELK layered port (workspace 0.11.0, commit 2191680292b9565592223c22a28b5ef33c3acbad). JS uses elkjs 0.9.3 with Mermaid 12.1.0 / CLI 12.0.0. Both use the ELK layered algorithm; implementations and versions differ. No JavaScript runtime was introduced.
 - Prior worktree changes were retained. No dependencies, fixture sources, tests, or JS golden files were edited in this iteration; no commit or push was performed.
+
+## C4, class and ER layout/category comparison — Pass 1 findings — 2026-10-09T14:28:08+00:00
+
+### Mandatory visual appearance checks
+- C4 banking: Rust viewBox 1248 × 847 versus JS 932 × 1659.56. Root nodes use three columns versus two, and the container uses four columns versus two. These look like different layouts. C4 component and context examples share this defect.
+- C4 curves use the same quarter-x quadratic control rule, but Rust forces the first relationship straight, clips against legacy rectangles, and relocates labels. Modern JS uses silhouette intersections and explicit relationship offsets. Different grid positions produce very different routes and crossings.
+- C4 uses legacy stereotypes and person icons, smaller text/boxes and margins, omits the title, and measures descriptions differently. JS uses unified rounded boxes, a silhouette person and cylinders.
+- Class inheritance: Rust 690.4 × 363.2 versus JS 665.85 × 459; Rust centers Animal with diagonals, whereas JS places Animal at upper left, notes beside it, and Fish/Zebra/Duck below with orthogonal rounded paths. Rust uses the old font, uniform colors and smaller compartments and omits the title.
+- Queued class examples share the old appearance. Interface annotation reads “Shape <>” instead of «interface» followed by Shape. Bank example title is missing. Generic class displays only four members, removes angle-bracket content and drops all later Square declarations; JS shows all nine title/member/method entries.
+- ER keys/comments: Rust 875.84 × 774.5 versus JS 845.36 × 656.75; PERSON is at the top with a long diagonal, rather than beside CAR with orthogonal connectors converging on NAMED-DRIVER. Table dimensions already match JS; the remaining major discrepancy is routing/layout.
+
+### Structural differences and visual defects
+- C4 external/internal palettes match, but modern shape outlines and text hierarchy are absent. Labels moved by collision avoidance no longer follow user offsets or JS. Legacy DB and person intersections cannot follow the new silhouette.
+- Class titles, interface annotation and generic member text are missing/altered. Class fonts, palette and stroke thickness use the classic path; edge geometry uses the legacy router.
+- No unreadable contrast found in the selected pairs. The dominant defects are topology, edge shape and missing information, rather than counts.
+
+### Diagnosis
+- Installed Mermaid 12.1 C4 retains its legacy grid with screen.availWidth = 800 in headless references; Rust hardcodes 1920 and older defaults. Match the same grid, unified shape metrics and curve/intersection rules.
+- Installed Mermaid classes/ER use ELK. Rust currently enables the native ELK and unified classBox adapter only for lollipop class diagrams; generalize the adapter, match JS input ordering, and preserve native Rust execution.
+- Normalize generic class identity while retaining its display label, preserve literal UML angle brackets during measurement, and render authored titles.
+
+## C4, class and ER layout/category comparison — Changes applied — 2026-10-09T14:38:41+00:00
+
+- `src/class_lollipop.rs`, `src/render/class_lollipop.rs`, `src/layout/mod.rs` — generalize unified classBox metrics and appearance to all classes, preserve literal UML labels, match note padding and route classes/ER through native ELK.
+- `src/parser.rs` — unify generic class IDs, retain nested generic text and later member declarations, parse interface annotations, order classes/notes/relationships like JS, preserve frontmatter titles and C4 title directives.
+- `src/config.rs`, `src/c4_shapes.rs`, `src/layout/c4.rs` — current Mermaid C4 grid defaults and 800px reference viewport; unified rounded/person/cylinder measurement and silhouette intersections; preserve authored relationship offsets.
+- `src/render/c4_modern.rs`, `src/render.rs`, `src/layout/types.rs`, `src/ir.rs` — modern C4 shapes/text hierarchy, quadratic relationships, authored C4/class/ER titles and title canvas space.
+- `src/text_metrics.rs`, `src/fonts/OpenSans*`, `src/fonts/OFL-OpenSans.txt` — bundle the reference Open Sans font for consistent C4 SVG/PNG text measurement and rendering.
+
+- Adapter verification: `src/layout/elk.rs` now includes Mermaid’s zero-size label entries on unnamed class/note relationships; `src/parser.rs` maps Person/System positional descriptions directly, retaining their sprite/tag/link positions.
+
+- Shared font verification: use-case actor/use-case labels also request Open Sans. Embed the matching font in those SVGs so their rendered labels use the same face as layout/PNG metrics.
+- Native ELK investigation: a standalone native JSON harness and elkjs comparison reproduce different crossing-minimization ordering for the Animal/free-note graph even with the same node/edge inputs and layout options. Empty-label entries are retained to mirror JS; changing disconnected-component separation does not resolve this discrepancy, so no such override is retained.
+
+- Render verification corrections: paint generic diagram titles after the background; strip quotes from C4 named attribute values so explicit offsets/colors apply; retain JS’s straight first C4 relationship, measured label half-width and bracketed technology lines. Default C4 boundary stereotypes use uppercase. Neo ER edge labels use transparent backgrounds.
+
+## C4, class and ER layout/category comparison — Pass 2 findings — 2026-10-09T15:04:43+00:00
+
+### Mandatory visual appearance checks
+
+- C4 banking now uses the same two-column root/container topology and corresponding relationship directions as JS. RS viewBox is 932 × 1662.063 versus JS 932 × 1659.563; the component example is 932 × 1356.881 versus 932 × 1354.881. The remaining 2–2.5px height discrepancy comes from text measurement/rounding. Both now look recognizably like the same picture.
+- Correction to the initial C4 edge diagnosis: JS draws its first relationship with a straight line, then the remaining relationships with quarter-x/half-y quadratic curves. RS retains that same rule. Both banking diagrams show all ten relationships; inspecting only JS path elements had omitted its first line from the earlier investigation.
+- C4 relationship endpoints now meet the person/cylinder silhouettes. Authored offsets, label positions and bracketed technology text correspond to JS. Some relationship labels cross nodes in both outputs because the reference itself does so; no collision avoidance is added. C4 grid spacing uses 50px shape margins with 216px minimum node widths. Wrapped text generally occupies at most 176/216 (81.5%) of the node width, with 20px side padding.
+- Class annotations, Bank title and generic contents now appear. Interface viewBox is RS 120.920 × 118 versus JS 120.921875 × 118. Bank is 233.620 × 243 versus 233.6328125 × 243, and generic Square is 363.190 × 277 versus 363.1953125 × 277. The same nine Square title/member/method strings are present, including List<List<int>>. These diagrams are recognizably similar; small text baseline and shadow/outline differences remain.
+- Basic class and relationship-type examples now show the reference palette and 2px compartment outlines. The basic canvas is RS 202.560 × 218 versus JS 202.4375 × 218; relationship-type is RS 843.950 × 218 versus JS 842.8984375 × 218. Their gross layout matches, but marker size/weight, endpoint clearance and dashed relationship painting still differ.
+- Animal inheritance does NOT visually match JS layout: RS 756.354 × 439 versus JS 665.846 × 459. RS keeps free/attached notes on the left, Animal at upper right, and Duck/Fish/Zebra below. JS places Animal at upper left, notes on the right and Fish/Zebra/Duck below. RS parent/child clear gap is 40/177 = 0.226 times Animal height versus JS 60/177 = 0.339. Both use orthogonal lines with rounded bends, but the branch spans and note attachment route visibly differ.
+- ER keys/comments now has the same 845.359 × 656.75 canvas in both outputs. MANUFACTURER sits above CAR; PERSON is beside CAR; their orthogonal rounded routes meet NAMED-DRIVER below, with matching label locations. Edge labels no longer have an opaque background. Marker and edge strokes remain thinner in RS.
+- Generic Square's longest method uses roughly 93% of its node width, with 12px side padding; this tight fit is shared with JS. No clipping, overlapping member text or missing entries was observed in the requested class/ER examples.
+- **Visual match: partial overall.** C4 banking/component and the six queued class/ER examples are recognizably similar to JS, with the discrepancies above. **Animal inheritance visual match: no**, because its note/branch topology is still different.
+
+### Structural differences
+
+- Modern class nodes use SVG text/painted shadows instead of the reference's foreignObject labels/filters. Their annotations, generic literal angle brackets, palette and compartment geometry now correspond to the reference. Baselines and marker outlines are not identical.
+- C4 uses the current unified silhouette/person/cylinder geometry with Open Sans rather than legacy image icons/stereotypes. Bundled SVG fonts and PNG/layout measurement now request the same face. Queue-specific geometry still uses a simplified shape.
+- Native ELK is the Rust port at revision 2191680292b9565592223c22a28b5ef33c3acbad (workspace 0.11.0); installed Mermaid references use elkjs 0.9.3. A standalone native JSON harness reproduced the Animal ordering discrepancy from matching node/edge inputs and JS options. This points to native port algorithm behavior; using the same ELK algorithm does not currently produce the same result for that graph.
+
+### Visual defects and remaining category gaps
+
+- Animal note/component and child ordering remains the dominant requested layout defect.
+- Class inheritance/aggregation markers are thinner/larger or differently attached than JS. Dashed dependency/realization lines in relationship demonstrations still differ, and center label backgrounds remain gray rather than transparent.
+- Category class checks also expose missing cardinality labels, classDef/default styling not applied, link-theme colors, namespace container appearance, and abstract/static/package member formatting. Inline node styles generally survive, but dash styles are not consistently painted.
+- C4 deployment placement/routes correspond closely, but RS paints deployment node boundaries dashed whereas JS paints them solid. C4 dynamic labels still omit numbered step prefixes and misparse the indexed SQL relationship text. C4 context nesting/topology now corresponds, but queue dimensions/labels differ and make RS 64px taller (2978.615 versus 2914.615).
+- ER category checks retain thinner markers/line strokes, dashed versus dotted non-identifying relations, missing shadows, Markdown-name formatting, and delivery-address wrapping differences. The keys/comments requested example has no missing attribute/key/comment text or route topology defect.
+- All 24 use-case examples were reviewed because shared Open Sans metrics/embedding changes affected their SVGs. Labels remain readable and fit the inspected shapes. Existing use-case ordering/routing, actor color/icon, note and boundary discrepancies remain; this pass does not claim category-wide identity.
+
+### Verification and scope
+
+- Release build succeeded with the existing 20 warnings. Rust formatting and git diff whitespace checks passed. No unit tests were run under the svg-parity workflow.
+- Regenerated all 458 Rust SVGs and 458 Rust PNGs with zero errors and zero renderer diagnostics. Refreshed the gallery and validated all 1,832 expected RS/JS artifacts (SVG XML and PNG signatures); none missing or invalid.
+- 73 Rust SVGs changed: 5 C4, 30 class, 14 ER and 24 use-case. Every JS SVG hash is unchanged.
+- Visually reviewed all 75 fixtures in these four categories using browser-rendered side-by-side contact sheets, plus full-size captures of the requested examples and all five C4 examples.
+- 18 source/font files changed or added: src/class_lollipop.rs, src/config.rs, src/ir.rs, src/layout/c4.rs, src/layout/elk.rs, src/layout/mod.rs, src/layout/types.rs, src/lib.rs, src/parser.rs, src/render.rs, src/render/class_lollipop.rs, src/text_metrics.rs, src/c4_shapes.rs, src/render/c4_modern.rs, and four Open Sans font/license assets under src/fonts/.
+- Prior work was committed at user request as 7345411 (Improve native layout and flowchart SVG comparison fidelity) before this pass. New implementation/log changes remain uncommitted. No dependency, fixture source, test or JS golden edits were made; nothing was pushed.
+- Remaining discrepancies are recorded for the next invocation, as svg-parity prescribes exactly one implementation pass.
+
+## Sequence layout and blogging-app communication — Pass 1 findings — 2026-10-09T16:06:32+00:00
+
+### Mandatory visual appearance checks
+- Blogging-app: RS retains five uniformly lilac participants, gray lifelines, Trebuchet text and differently wrapped notes; JS uses the current colored participants, Recursive text, dark lifelines and single-line spanning notes. Displayed side by side these are visibly different pictures.
+- JS participant x positions are 0, 200, 400, 600, 862.5; RS centers them at uniform 200px intervals. The spanning note contributes half its measured width to actor-margin calculation in JS, widening the Mail→Storage interval. Rust currently ignores notes when spacing actors and applies a 0.855 width estimate to message labels.
+- JS actor row height is 74 (44px glyph band + 6px gap + 18px label + 6px gap); RS uses 65. JS first note is y84/h39, first message y169, alt y271–832, nested par y594–822 and footer y852. Rust uses empirical frame/message offsets and globally wraps the spanning notes into two/three lines, displacing events and footer.
+- RS first message label touches the first spanning note; JS keeps the message in its own row beneath it. JS note text spans one line with ample margins; RS unnecessarily wraps in an 850px box.
+- JS messages use straight horizontal lines, a compact self-message hook where applicable, and source-order event spacing. Rust uses a separate collision-adjustment pass which can relocate labels away from their message midpoint. Frame dividers/header heights and activation endpoints also differ.
+- Related basic/loops/alt/opt/multiline examples show the same font/palette, actor-row, marker and event-spacing differences. These are shared implementation issues rather than a blogging-specific fixture defect.
+### Structural differences and visual defects
+- Missing current per-participant palette/shadows and corresponding activation colors; lifeline weight, frame label polygon and message marker sizes differ.
+- The parser retains separate note/frame/activation arrays indexed only by message number, losing ordering between frame boundaries and notes at the same index. Mermaid consumes an ordered event stream.
+- Long note wrapping and empirical frame spacing can cause note/message-label collisions. No invisible text was found in the selected samples.
+### Diagnosis
+- Port the installed Mermaid 12.1 sequence renderer's actor-margin calculation, actorBands geometry, note measurement, ordered event cursor/bounds stack and frame wrapping to Rust. Preserve sequence configuration and default neo/redux appearance while retaining authored classic settings.
+- Use the same font for measurement and painting; remove the width scaling and sequence label collision heuristics from this code path. Source was read from the installed Mermaid sourcemap because the sibling checkout is sparse.
+
+## User follow-up queue — 2026-10-09T16:07:36+00:00
+
+- flowchart-bang-shape — investigate incorrect RS symbol.
+- flowchart-custom-fontawesome-icons — render the actual icon; current JS reference is also reported wrong and must not be copied blindly.
+- Gantt category — use Mermaid JS layout logic and verify across related fixtures.
+- These follow the active sequence-layout work.
+
+## Sequence layout and blogging-app communication — Changes applied — 2026-10-09T16:25:07+00:00
+
+- src/ir.rs and src/parser.rs — retain ordered message, note, activation, frame-start, section, and frame-end events; carry diagram appearance settings into sequence layout.
+- src/sequence.rs — separate browser text measurement from painted font metrics; use the sequence font size, Redux actor palette, and sequence configuration values. The default JS measurement font-family is invalid CSS, so its unscoped browser measurement falls back to Times; valid explicit families are measured directly.
+- src/layout/sequence_mermaid.rs — port the actor-width and note-margin passes, source-order cursor, nested frame bounds, activation endpoints, curved self messages, lifecycle positioning, and footer/viewBox calculation from Mermaid sequenceRenderer.ts and actorBands.ts. Sequence layouts bypass the legacy message-index estimates; ZenUML retains its existing path.
+- src/render/sequence.rs — draw the measured layout with Recursive text, colored participants/activations, shared icon bands, Mermaid marker geometry, and frame heading placement.
+- src/layout/text.rs and src/layout/mod.rs — expose the existing Mermaid entity decoder for sequence text measurements.
+- src/render.rs and src/lib.rs — register the shared sequence implementation and render source-ordered sequence layouts through it.
+
+## Sequence layout and blogging-app communication — Pass 2 findings — 2026-10-09T16:27:25+00:00
+
+### Visual appearance
+- The blogging-app pair is now recognizably the same picture: both viewBoxes are -50 -10 1112.5 977, actors use the same five color slots and Recursive 16px text, notes are single-line 912.5×39 rectangles at y=84 and y=453, and messages occur at y=169,215,261,352,443,538,584,675,721,812. The alt/par boundaries and footer placement match the golden.
+- Equivalent elements now have the same source-order topology. Spanning notes no longer force extra lines or collide with the following message. Message-to-self paths are cubic curves with the upstream 60px control offsets.
+- The complete sequence category was visually reviewed in seven contact sheets (40 fixtures). The overall size, arrangement, typography, and shared frame/message spacing are substantially closer to JS. 37/40 have exactly matching viewBoxes; this metric supplements the visual review and does not establish appearance equivalence by itself.
+### Remaining structural and visual differences
+- Message and arrowhead color is black in RS versus the darker purple-gray JS signal color; frame-cap shadows also differ slightly.
+- Central connection circles are absent in RS (sequenceDiagram-central-connections).
+- Control participant arrow glyphs remain visibly different from JS.
+- Sequence-number circles are not placed like JS on self calls and opposing arrows.
+- Critical frame heading wrapping is narrower in RS; critical-region-with-options is 16px taller (608 vs 592), and critical headings can overlap the cap.
+- Encoded-entity message spacing is narrower in RS (463 vs 571px viewBox width), because entity decoding occurs before width measurement.
+- Group-box geometry and borders remain different: grouping-with-box viewBox is -70 -10 1007 441 versus -50 -10 967 441; background-highlight rectangles also have extra outlines in RS.
+### Verification
+- cargo build --release: success, existing 20 warnings.
+- All 458 fixtures regenerated as Rust SVG and PNG: zero errors, zero diagnostics. Exactly the 40 sequence SVGs changed; all JS golden SVG hashes stayed unchanged.
+- Gallery regenerated: 458 pairs, no missing pairs.
+- Visual match: partial for the complete category; blogging-app layout is visually aligned, with residual drawing-style differences. Per svg-parity single-pass instruction, remaining discrepancies are recorded for a subsequent iteration.
+
+## Sequence glyphs and endpoint painting — round 1 — Pass 1 findings — 2026-10-09T17:38:31+00:00
+
+### Mandatory visual appearance checks
+- Central-connections canvases both measure 450×357 and preserve the two-actor topology, but RS omits all four connection dots and routes arrowheads too close to the receiving lifeline. JS first message ends at x264 versus RS x268; marked-source messages should start 4px farther right.
+- Control-participant canvases both measure 450×311, with matching 44px circular glyph bands. RS draws a small right-pointing arrow at the top of the control circle; JS uses a larger left-pointing marker rotated 172.5 degrees.
+- Autonumber canvases both measure 684×613. RS circles are visibly smaller (r9 versus JS marker r6 scaled by the line CSS to r12), centered on the offset line endpoint rather than actor/activation bounds; JS number text is baseline y+4.
+- Across the category, RS participant rectangle outlines are 1px compared with the JS Redux 2px outlines, and message strokes/filled arrowheads are black instead of #28253D. Frame cap shadows exist only in RS because the reference URL does not resolve to its diagram-scoped filter.
+- Matching canvas dimensions do not imply matching appearance: the missing dots and glyph/outline differences are apparent in the full-size side-by-side captures. No clipping or invisible text was found in these three examples.
+### Structural differences and source diagnosis
+- Central decorations are already parsed but ignored by the new renderer. Port drawCentralConnection and calculateCentralConnectionOffset, including the first receiving-end clearance rule.
+- Port the exact control marker attributes/path and autonumber positioning rules from the installed sequenceRenderer.ts/svgDraw.js; keep layout bounds and actor/activation coordinates as the anchor source.
+
+## Sequence glyphs and endpoint painting — round 1 — Changes applied — 2026-10-09T17:39:32+00:00
+
+- src/sequence.rs — use the Redux signal color #28253D.
+- src/layout/sequence_mermaid.rs — port marked-source offsets, receiving central-connection clearance, and bound-based number anchors.
+- src/render/sequence.rs — paint central connection dots and exact transformed control glyph; use 2px neo actor outlines, upstream numbered-message line clearance, 12px number circles and sans-serif number text; omit the non-reference frame-cap shadow.
+
+## Sequence glyphs and endpoint painting — round 1 — Pass 2 findings — 2026-10-09T17:41:15+00:00
+
+### Visual appearance
+- Central-connections now includes the four 5px dots at (275,120), (75,166), (275,212), (75,212), matching JS. First receiving endpoint is x264, marked source offsets match x80/x278, and signal color is #28253D. Its 450×357 canvas/topology is unchanged and the pair now looks essentially alike.
+- Control glyphs now use the JS path transformed around ref point (11,5.8), rotated 172.5° and scaled by the 2px line stroke. Header/footer icons and participant border weight now resemble JS.
+- Autonumber circles now use r12, bound-based X coordinates 75/309/309/309/509, y+4 text baseline, and the upstream line-start clearance. The 684×613 layout is unchanged.
+- Reviewed all 40 regenerated sequence fixtures in category sheets: outlines/signals now agree much more closely; critical-heading wrapping, encoded-entity widths and group-box geometry remain visibly different and are scheduled for the next round.
+### Verification
+- Release build successful with the existing 20 warnings. All 458 Rust SVG/PNG pairs regenerated, zero errors/diagnostics; 40 Rust SVGs changed and no JS golden hashes changed.
+- Visual match: yes for the three targeted examples; partial for the entire sequence category due to the remaining layout gaps.
+
+## Sequence frame wrapping, entities and participant boxes — round 2 — Pass 1 findings — 2026-10-09T17:42:30+00:00
+
+### Mandatory visual appearance checks
+- Critical-with-options is 459×608 in RS versus 459×592 in JS. Actor positions/frame width match, but RS wraps the heading into two lines and adds 16px to all following events/footer. The self-message span must participate in the frame-width prepass using actor X coordinates, which gives JS a 293px heading width. Critical-without-options also uses different heading line breaks.
+- Encoded-entity canvas is 463×311 in RS versus 571×311 in JS. RS shows the right decoded symbols but makes the two actors visibly closer. JS measures its protected entity tokens before restoring characters for painting; decoding before measurement removes 108px of required actor spacing.
+- Grouping-with-box is -70 -10 1007 441 versus JS -50 -10 967 441. Actor coordinates are identical (5,239,459,712), but RS starts painted boxes at y23, leaving titles outside them, while JS starts them at y-5. JS boxes extend to y400; RS stops at y405 with different top extent. The padded painted rectangle does not enlarge JS global bounds, whereas RS incorrectly includes its extra 20px left/right padding.
+- Background-highlight frames have extra RS outlines and resolved shadows absent from the JS picture. In all four examples relationships keep the same gross topology; differences are visible spacing/wrapping/container defects. Critical titles touch or overlap their label cap in both outputs in some cases, so duplicating JS placement is not a general collision-removal claim.
+### Source diagnosis
+- Port calculateLoopBounds including its note/self-message unions, subtracting labelBoxWidth on each update. Keep entity protection tokens for width measurement, restoring decoded characters only for painting. Group boxes retain separate raw bounds and padded rectangle bounds, as addActorRenderingData/drawBox do.
+
+## Sequence frame wrapping, entities and participant boxes — round 2 — Changes applied — 2026-10-09T17:43:39+00:00
+
+- src/layout/sequence_mermaid.rs — port the complete frame-width prepass with preview activations, actual arrow endpoints, self-message actor-coordinate unions and note unions. Keep raw group bounds separate from the padded painted boxes and anchor boxes above the actor row.
+- src/sequence.rs — protect Mermaid entities during spacing/wrapping measurement and restore them for painted TextBlock lines.
+- src/render/sequence.rs — align group titles with JS and paint background-highlight rectangles without the extra outline/filter.
+
+## Sequence frame wrapping, entities and participant boxes — round 2 — Pass 2 — 2026-10-09T17:48:15+00:00
+
+Visual match: partial. The critical frames, participant boxes and background highlights now closely match the JS captures. Reviewed all 40 sequence examples in seven contact sheets, plus detailed target captures. 39 of 40 viewBoxes match exactly; the encoded-entity fixture remains one pixel wider (572 vs 571). Full regeneration: 458 Rust SVG/PNG pairs, no render errors or diagnostics, five changed Rust SVGs and no changed JS SVGs. Critical-heading overlap and low contrast on the purple participant box also occur in the JS reference. One implementation pass completed for this round.
+
+## Flowchart bang outline and Font Awesome labels — round 3 — Pass 1 findings — 2026-10-09T17:49:39+00:00
+
+### Mandatory visual-appearance checks
+- Bang: JS is a wide 259.75 × 117.25 concave burst; Rust is a 187 × 187 diamond. These are visibly different pictures. Rust prints the metadata text shape: bang instead of the node ID A.
+- Font Awesome: the two-node stack is retained, but Rust is 223.56 × 146 vs JS 168 × 131. Rust prints fa:fa-twitter and fak:fa-custom-icon-name literally. JS shows a missing-glyph box for Twitter and an empty custom label; the user explicitly identified this JS reference as faulty. The registered Twitter asset must be rendered instead.
+- The longer literal custom label expands Rust E beyond JS E; both vertical connectors are straight.
+### Structural diffs
+- Missing concave bang path; metadata falls through to diamond parsing.
+- Missing vector Twitter icon in both Rust and the golden image. Existing Rust icon lookup does not accept the fa- prefix or include Twitter.
+- The fak custom name is an unregistered example placeholder with no asset in the repository.
+### Visual defects
+- Shape topology and aspect ratio are wrong for bang. Icon names appear as text in Rust; they fit their expanded containers but do not represent the specified symbols. No other clipping or crossings in these two fixtures.
+### Summary
+The bang pictures are entirely different. Font Awesome needs actual icon rendering; reproducing the faulty JS glyph would not satisfy the user.
+
+## Flowchart bang outline and Font Awesome labels — round 3 — Changes applied — 2026-10-09T17:52:48+00:00
+
+- src/parser.rs: recognize bang metadata as the existing burst shape.
+- src/flowchart_shapes.rs: reuse the fourteen concave arcs from Mermaid, including measured arc bounds and the corresponding label origin, with flowchart padding.
+- src/icons.rs and src/FontAwesome-LICENSE.txt: accept fa- names, bundle the unmodified Font Awesome Twitter path with attribution, and share token splitting, icon advance widths and vector painting for inline labels. Unknown custom names remain readable fallbacks.
+- src/layout/text.rs and src/layout/mod.rs: measure inline icons in plain and styled flowchart labels.
+- src/usecase.rs: keep complete icon tokens together while wrapping flowchart labels; preserve the existing text-only path for other diagram types.
+- src/render.rs: paint flowchart inline icons with their adjacent text, bold and italic styling and measured line positions. No dependencies or fixtures changed.
+
+## Flowchart bang outline and Font Awesome labels — round 3 — Pass 2 findings — 2026-10-09T17:55:17+00:00
+
+### Mandatory visual-appearance checks
+- Visual match: partial. The bang topology, concave arc geometry, label A and 259.75 × 117.25 dimensions match JS. Rust still adds a visible 4px translucent shadow absent from the JS burst. The remaining viewBox origin difference translates the diagram without altering its proportions.
+- Twitter now renders the original vector bird, including the related single-node fixture. Its single-node dimensions are 168 × 61 in both versions; JS still displays the faulty missing glyph. This intentional symbol difference follows the user request.
+- The custom-example E remains a readable unknown-name fallback, so Rust stays 223.56 × 146 vs JS 168 × 131 and has different E rounding. No fak asset was supplied.
+### Structural diffs
+- Related metadata icon shape is still unsupported: flowchart-icon-shape falls back to a diamond with metadata text, now containing the recognized heart inline. JS itself substitutes its unknown-icon fallback. This is a distinct parser/shape gap requiring another round.
+- Cloud has the same pre-existing extra Rust shadow; markdown labels and mindmap burst geometry remain unchanged. Usecase actor SVG changed only by attribution comments, with its pre-existing routing differences retained.
+### Visual defects
+- No overflow or crossings introduced in the reviewed target images. Custom unknown name fits its expanded node.
+- Reviewed three additional temporary diagrams for multiple icons, text next to icons, bold/HTML labels, wrapping, unknown names, connected bursts and multiline burst labels. The recognized icons paint together with their labels; wrapped lines stay inside their symbols.
+### Verification
+- cargo build --release succeeded with the existing 20 warnings. git diff --check is clean.
+- Regenerated all 458 Rust SVGs and PNGs: zero errors, zero diagnostics, five changed Rust SVGs, zero changed JS SVGs. Rebuilt the comparison gallery.
+- One implementation pass completed for this round. Remaining items: decorative-shape shadows, metadata icon shapes and custom assets; Gantt layout remains in the user queue.
+
+## Decorative flowchart shadows — five-round batch 1/5 — Pass 1 findings — 2026-10-09T19:05:00+00:00
+
+### Visual appearance
+- Bang and cloud retain correct 259.75×117.25 and matching cloud dimensions/geometry, but Rust adds a 4px translucent copy below/right of the complete path. JS has no shadow on these paths.
+- Braces have the same two-sided topology and centered A, but Rust shadows all brace strokes, making a visibly different outline. Documents, rough path symbols and delay shapes have the same selector mismatch.
+### Structural differences and source diagnosis
+- JS Redux shadows rect, polygon, circle and outer-path classes. Its ordinary path, ellipse and neo-line strokes are excluded. Rust applies a shape-wide shadow to almost every neo node.
+### Defects and summary
+- Extra shadow paint, not a geometry or topology error; no label overflow or invisible text in the three targets. The pair would look alike after this painting difference is removed. Apply the JS selectors by supported shape family and preserve rectangle/polygon/circle/cylinder shadows.
+
+## Decorative flowchart shadows — five-round batch 1/5 — Changes applied — 2026-10-09T19:05:00+00:00
+
+- src/flowchart_shapes.rs: model Redux shadow selectors by SVG shape family.
+- src/render.rs: paint node shadows only for matching families, removing the extra shadow from decorative and rough path symbols.
+
+## Decorative flowchart shadows — five-round batch 1/5 — Pass 2 findings — 2026-10-09T19:07:18+00:00
+
+Visual match: yes for bang and cloud; partial for braces because JS uses rough path strokes. The extra shadows on those three targets are gone. Rectangle and circle shadows remain. Full regeneration: 458 fixtures, zero errors/diagnostics, no changed JS SVGs. Related-document review exposed an incomplete selector mapping: JS outer-path may be a parent g, so document/delay/stadium groups still require shadows. This newly found category gap will be addressed in round 2 along with icon shapes. One implementation pass completed.
+
+## Icon metadata and inherited outer-path shadows — five-round batch 2/5 — Pass 1 findings — 2026-10-09T19:07:18+00:00
+
+### Visual appearance
+- flowchart-icon-shape Rust remains a 271×271 diamond containing five lines of metadata; JS is an approximately 124×157 icon-plus-label stack, though its icon asset is a question-mark fallback. These are different pictures.
+- Related standalone Twitter labels paint correctly; explicit metadata must produce the requested heart instead of interpreting the declaration as label text.
+- Related document/delay/stadium symbols lost their shadows in round 1: the JS outer-path selector can apply to parent groups, not only paths.
+### Structural differences
+- Parser resolves no icon shape, drops form, and does not supply separate icon/label geometry. Port the plain/square/rounded/circle icon shape builders, retaining top/bottom position and asset dimensions.
+- Include all ancestor outer-path classes in the supported shadow-family mapping.
+### Defects and summary
+- Metadata label expansion produces the wrong size class and wrong shape. No invisible text; the explicit icon declaration needs separate icon and label bounds. Correctly registered assets should render their actual vector, as requested even when JS uses a missing-asset fallback.
+
+## Icon metadata and inherited outer-path shadows — five-round batch 2/5 — Changes applied — 2026-10-09T19:08:07+00:00
+
+- src/ir.rs and src/parser.rs: preserve icon form, asset dimensions and position in a dedicated icon shape; no fallback to diamond label parsing.
+- src/layout/mod.rs and src/flowchart_shapes.rs: use separate icon/container/label bounds and 8px label spacing, including top labels and empty labels. Render known Font Awesome vectors and preserve unknown-name fallbacks.
+- src/flowchart_shapes.rs: restore shadows for the parent outer-path groups identified during category review.
+- src/render.rs: render metadata icon nodes independently of text-label shapes.
+
+## Icon metadata and inherited outer-path shadows — five-round batch 2/5 — Pass 2 findings — 2026-10-09T19:10:06+00:00
+
+Visual match: partial. The explicit icon example now has the requested heart and a separate Heart label below it, with an icon container instead of metadata in a diamond. JS uses an unregistered-icon question-mark fallback, so actual-vector dimensions intentionally differ. Manually rendered and reviewed circle/square/rounded/plain, top labels, 64px assets and no-label variants. Parent outer-path shadows are restored for documents/delay/stadium and related shapes; bang/cloud/braces retain the intended no-shadow behavior. All 458 fixtures regenerated without errors or diagnostics, JS references unchanged. One implementation pass completed; custom fak assets remain unavailable.
+
+## Gantt timing and row layout — five-round batch 3/5 — Pass 1 findings — 2026-10-09T19:10:49+00:00
+
+### Visual appearance
+- Basic Gantt: Rust uses a task-label column and tiny duration bars; its axis ends in 2058 instead of JS February 2014. Rust repeats the origin when advancing sequential tasks. JS uses full-width section backgrounds, task labels in or beside the bars and a 784×196 canvas.
+- Comprehensive example has tiny bars, overflowing wrapped labels, incorrect combined task statuses and an axis extending into 2278. JS is a coherent January 2014 plan.
+- Compact example uses three rows in Rust; JS reuses row 0 for the non-overlapping third task and is 784×148.
+### Structural differences and source diagnosis
+- Port compiled start/end dates, previous-task chaining across sections, multiple after/until references and HH:mm durations from Mermaid ganttDb. Preserve authored directives and status flags.
+- Port left/right padding 75, top padding 50, 20px bars, 4px row gaps, rangeRound time scale and per-section compact interval packing from ganttRenderer.
+### Defects and summary
+- The timelines and task-label topology are visibly different; label wraps overlap adjacent rows in Rust. One-pass scope is date/dependency compilation and basic row/bar geometry. Axis tick selection, theme styling and excluded dates will follow in rounds 4 and 5.
+
+## Gantt timing and row layout — five-round batch 3/5 — Changes applied — 2026-10-09T19:13:27+00:00
+
+- src/ir.rs and src/parser.rs: retain raw Gantt metadata, all status tags and authored directives.
+- src/layout/gantt.rs and src/layout/types.rs: add native time compilation, multiple after/until references, minute/hour durations, explicit date ends, previous-task chaining, rounded time-scale coordinates and compact interval rows. Retain legacy model data for compatibility.
+- src/render/gantt.rs and src/render.rs: paint the native bar/label layout with Mermaid padding and sizes; task labels stay inside bars or adjacent according to fit. Calendar axis and full theme styling are the next round.
+
+## Gantt timing and row layout — five-round batch 3/5 — Pass 2 findings — 2026-10-09T19:15:18+00:00
+
+Visual match: partial. Basic and compact now use the same 784×196 and 784×148 canvases, corresponding bar coordinates, source-order rows and compact row reuse as JS; the erroneous decades-long timeline is gone. Multiple after/until dependencies now produce the same apple/banana/cherry/kiwi bar geometry. Comprehensive remains horizontally different because excluded days have not yet been compiled. Calendar grid/ticks, exact fonts/colors and vertical markers remain for rounds 4 and 5. All nine Gantt SVGs changed; all 458 fixtures rendered without errors/diagnostics and JS references stayed unchanged.
+
+## Gantt calendar axis and painting — five-round batch 4/5 — Pass 1 findings — 2026-10-09T19:15:18+00:00
+
+### Visual appearance
+- Basic and compact retain matching JS bar layout, but have no time axis/grid and use the Rust generic font and primary purple instead of JS Trebuchet, #8a90dd tasks and #534fbc borders. Section tint and centered section-title paint differ.
+- Dependency example places bars correctly but renders active and critical colors approximately; combined crit+done and crit+active flags need JS styling precedence.
+### Structural differences and source diagnosis
+- Port D3 automatic interval selection and calendar-aligned ticks, configured tick intervals/weekday and axisFormat. Match axis baseline h-50 and grid endpoint 35, font sizes, full-width bands and text fit rules from ganttRenderer/styles.
+### Defects and summary
+- Topology is recognizably similar, but absent axes and different paint still make visibly different pictures. Comprehensive task positions remain affected by calendar exclusions; that separate timing gap is round 5.
+
+## Gantt calendar axis and painting — five-round batch 4/5 — Changes applied — 2026-10-09T19:17:13+00:00
+
+- src/layout/gantt.rs and src/layout/types.rs: port D3 interval selection, calendar-aligned dates, weekday/week intervals, axisFormat and rounded tick coordinates.
+- src/render/gantt.rs: use Mermaid Gantt fonts, title/section/task positions, default theme colors and overrides, combined critical statuses, full-width section bands, 0.8-scale milestones, italic milestone labels and JS text-fit placement. Restore the bottom calendar axis and vertical grid lines.
+
+## Gantt calendar axis and painting — five-round batch 4/5 — Pass 2 findings — 2026-10-09T19:18:56+00:00
+
+Visual match: partial. Basic, comments, compact and multiple-dependency diagrams now closely resemble JS, with matching calendar ticks, full-width section colors, task styling and fonts. Milestone time scale, size and label topology are aligned. Exact typography and rasterization can still differ slightly. Comprehensive and custom-weekend examples still need excluded-date timing; vertical-marker tasks still paint as ordinary bars. All 458 fixtures regenerated without errors/diagnostics; nine Gantt SVGs changed and JS golden files did not change. One implementation pass completed.
+
+## Gantt excluded dates and vertical markers — five-round batch 5/5 — Pass 1 findings — 2026-10-09T19:18:56+00:00
+
+### Visual appearance
+- Comprehensive task rows, color/status styles and axis paint are aligned, but bar positions and domain remain shorter than JS because weekends are counted as working days. JS also shades excluded day ranges and may keep a separate renderEndTime from dependency endTime.
+- Custom weekend configuration must exclude Friday/Saturday rather than Saturday/Sunday; this changes the end dates of both tasks.
+- Vertical-markers has the right 784×148 canvas and two task rows, but Rust draws the two vert tasks as ordinary row bars. JS uses narrow markers spanning the chart and 15px labels below its axis.
+### Source diagnosis
+- Port ganttDb isInvalidDate/fixTaskDates including includes overrides and separate render ends. Port ganttRenderer exclude-range rectangles, vert geometry/labels and optional today/top axes. Retain explicit date ends and zero-duration milestones.
+### Defects and summary
+- Remaining calendar and marker geometry is visible across related examples. This round completes one source pass, then reviews all nine Gantt examples and checks the related flowchart shapes/icons again.
+
+## Gantt excluded dates and vertical markers — five-round batch 5/5 — Changes applied — 2026-10-09T19:23:49+00:00
+
+- src/layout/gantt.rs and src/layout/types.rs: port Mermaid working-day exclusions, include overrides, Friday/Saturday weekends, separate dependency/render end dates and closed exclusion bands. Preserve explicit end dates and zero-duration milestones.
+- src/render/gantt.rs: draw exclusion backgrounds, narrow vertical markers and labels, authored top axes and today-marker styles; text placement uses visible end dates while text color follows dependency end dates, as in Mermaid.
+- src/parser.rs: retain standalone topAxis and inclusiveEndDates directives.
+
+## Gantt excluded dates and vertical markers — five-round batch 5/5 — Pass 2 findings — 2026-10-09T19:27:31+00:00
+
+### Visual appearance
+Visual match: partial. All nine Gantt canvases match JS. Basic, comments, compact, milestones and vertical markers now look essentially the same. Comprehensive task/marker geometry also matches JS, and excluded-day shading has the same topology. The custom-weekend example is recognizably the same chart, with two task rectangles differing by 1px across a DST boundary.
+### Structural differences and remaining defects
+- Compared all 42 task rectangles/markers: 40 match JS x/y/width/height exactly; the two custom-weekend tasks differ by 1px in x or width.
+- Comprehensive labels such as Add to mermaid and the last Describe gantt syntax still anchor differently when renderEndTime differs from endTime. Rust's white outside text can land on the light background instead of extending over its task bar. Label anchoring needs another source pass.
+- Further review of round 4 found that the multiple-dependency example's daily ticks differ: Rust ends at Jul 28 while JS ends at Jul 27 and uses a local-time phase offset. Rust currently uses timezone-independent calendar days; browser local-time/DST semantics remain.
+- The empty week-interval fixture omits the JS reference's clipped red today marker at the left boundary.
+- Related bang, lined-document and double-brace examples visually retain the round 1/2 improvements. Known Font Awesome metadata renders a real heart with a separate label; the JS golden still contains a missing-asset question mark. Unknown custom icon assets remain unavailable, and the custom-icon fixture still differs in sizing/rounding.
+### Category verification
+- Viewed all nine regenerated Gantt examples side by side and rechecked five related shape/icon examples.
+- A temporary calendar variant confirmed include overrides, explicit inclusive ends, exclusion-band geometry, milestone placement and configured top axes against a fresh JS render. Its task and exclusion rectangles match. Mermaid's standalone topAxis directive throws yy.TopAxis is not a function in the installed package; the configuration form rendered successfully.
+- Release build succeeded with 20 existing warnings. All 458 Rust SVG/PNG pairs regenerated without errors or diagnostics; JS golden SVG hashes stayed unchanged. Gallery regenerated, all 1,832 expected JS/RS SVG/PNG files exist, and git diff --check passed.
+One implementation pass completed for each of the five requested rounds; the remaining discrepancies are recorded for the next invocation.

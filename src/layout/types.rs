@@ -529,6 +529,9 @@ pub struct JourneyLayout {
 
 #[derive(Debug, Clone)]
 pub struct SequenceData {
+    /// Present for the source-ordered Mermaid sequence layout.
+    pub appearance: Option<serde_json::Value>,
+    pub viewbox: Option<(f32, f32, f32, f32)>,
     pub lifelines: Vec<Lifeline>,
     pub footboxes: Vec<NodeLayout>,
     pub boxes: Vec<SequenceBoxLayout>,
@@ -658,6 +661,7 @@ pub struct Layout {
 
 #[derive(Debug, Clone)]
 pub struct C4Layout {
+    pub title: Option<String>,
     pub shapes: Vec<C4ShapeLayout>,
     pub boundaries: Vec<C4BoundaryLayout>,
     pub rels: Vec<C4RelLayout>,
@@ -759,6 +763,7 @@ pub struct QuadrantPointLayout {
 
 #[derive(Debug, Clone)]
 pub struct GanttLayout {
+    pub native: Option<NativeGanttLayout>,
     pub title: Option<TextBlock>,
     pub sections: Vec<GanttSectionLayout>,
     pub tasks: Vec<GanttTaskLayout>,
@@ -779,6 +784,49 @@ pub struct GanttLayout {
     pub ticks: Vec<GanttTick>,
     /// X position for the "today" marker line, if applicable.
     pub today_x: Option<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NativeGanttLayout {
+    pub options: serde_json::Value,
+    pub width: f32,
+    pub height: f32,
+    pub left: f32,
+    pub right: f32,
+    pub top: f32,
+    pub bar_height: f32,
+    pub gap: f32,
+    pub start: f64,
+    pub end: f64,
+    pub tasks: Vec<NativeGanttTask>,
+    pub sections: Vec<(String, usize, usize)>,
+    pub ticks: Vec<GanttTick>,
+    pub excluded: Vec<(f64, f64)>,
+}
+
+impl NativeGanttLayout {
+    pub fn x(&self, time: f64) -> f32 {
+        self.left
+            + (((time - self.start) / (self.end - self.start))
+                * (self.width - self.left - self.right) as f64)
+                .round() as f32
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NativeGanttTask {
+    pub id: String,
+    pub label: String,
+    pub start: f64,
+    pub end: f64,
+    pub render_end: f64,
+    pub row: usize,
+    pub section: usize,
+    pub done: bool,
+    pub active: bool,
+    pub crit: bool,
+    pub milestone: bool,
+    pub vert: bool,
 }
 
 #[derive(Debug, Clone)]

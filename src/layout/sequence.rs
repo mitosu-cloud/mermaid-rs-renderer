@@ -27,6 +27,9 @@ pub(super) fn compute_sequence_layout(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> Layout {
+    if graph.kind == crate::ir::DiagramKind::Sequence {
+        return super::sequence_mermaid::compute(graph, theme, config);
+    }
     let mut nodes = BTreeMap::new();
     let mut edges = Vec::new();
     let subgraphs = Vec::new();
@@ -1560,6 +1563,8 @@ pub(super) fn compute_sequence_layout(
         acc_title: None,
         acc_descr: None,
         diagram: DiagramData::Sequence(SequenceData {
+            appearance: None,
+            viewbox: None,
             lifelines,
             footboxes: sequence_footboxes,
             boxes: sequence_boxes,

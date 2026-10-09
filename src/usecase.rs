@@ -260,16 +260,35 @@ pub(crate) fn measure_bold(block: &mut TextBlock, theme: &Theme) {
 /// Wrap an already parsed label without discarding inline bold or italic spans.
 /// A wrapped HTML label occupies the configured width even when its last line is short.
 pub(crate) fn wrap_label(block: &mut TextBlock, limit: f32, theme: &Theme, config: &LayoutConfig) {
+    wrap_label_impl(block, limit, theme, config, false);
+}
+
+pub(crate) fn wrap_flowchart_label(
+    block: &mut TextBlock,
+    limit: f32,
+    theme: &Theme,
+    config: &LayoutConfig,
+) {
+    wrap_label_impl(block, limit, theme, config, true);
+}
+
+fn wrap_label_impl(
+    block: &mut TextBlock,
+    limit: f32,
+    theme: &Theme,
+    config: &LayoutConfig,
+    inline_icons: bool,
+) {
     use crate::layout::{SpanStyle, TextSpan};
-    fn line(chars: &[(char, SpanStyle)]) -> TextLine {
+    fn line(units: &[(String, SpanStyle)]) -> TextLine {
         let mut spans: Vec<TextSpan> = Vec::new();
-        for &(ch, style) in chars {
-            if let Some(last) = spans.last_mut().filter(|last| last.style == style) {
-                last.text.push(ch);
+        for (text, style) in units {
+            if let Some(last) = spans.last_mut().filter(|last| last.style == *style) {
+                last.text.push_str(text);
             } else {
                 spans.push(TextSpan {
-                    text: ch.to_string(),
-                    style,
+                    text: text.clone(),
+                    style: *style,
                 });
             }
         }
@@ -285,6 +304,17 @@ pub(crate) fn wrap_label(block: &mut TextBlock, limit: f32, theme: &Theme, confi
         line.spans
             .iter()
             .map(|span| {
+                if inline_icons {
+                    if let Some(width) = crate::icons::inline_width(
+                        &span.text,
+                        theme.font_size,
+                        &theme.font_family,
+                        span.style.bold,
+                        span.style.italic,
+                    ) {
+                        return width;
+                    }
+                }
                 text_metrics::measure_styled_text_width(
                     &span.text,
                     theme.font_size,
@@ -301,16 +331,34 @@ pub(crate) fn wrap_label(block: &mut TextBlock, limit: f32, theme: &Theme, confi
     for original in &block.lines {
         let mut current = Vec::new();
         for span in &original.spans {
-            for ch in span.text.chars() {
-                current.push((ch, span.style));
+            // Treat each recognized icon token as one indivisible unit. Its
+            // name must not trigger wrapping before the full token is measured.
+            let units: Vec<String> = if inline_icons {
+                crate::icons::label_parts(&span.text)
+                    .into_iter()
+                    .flat_map(|part| match part {
+                        crate::icons::LabelPart::Text(text) => {
+                            text.chars().map(|ch| ch.to_string()).collect()
+                        }
+                        crate::icons::LabelPart::Icon(name) => vec![name.to_string()],
+                    })
+                    .collect()
+            } else {
+                span.text.chars().map(|ch| ch.to_string()).collect()
+            };
+            for unit in units {
+                current.push((unit, span.style));
                 if measure(&line(&current)) > limit {
                     if let Some(split) = current
                         .iter()
-                        .rposition(|(ch, _)| ch.is_whitespace())
+                        .rposition(|(text, _)| text.chars().all(char::is_whitespace))
                         .filter(|split| *split > 0)
                     {
                         let rest = current.split_off(split + 1);
-                        while current.last().is_some_and(|(ch, _)| ch.is_whitespace()) {
+                        while current
+                            .last()
+                            .is_some_and(|(text, _)| text.chars().all(char::is_whitespace))
+                        {
                             current.pop();
                         }
                         lines.push(line(&current));

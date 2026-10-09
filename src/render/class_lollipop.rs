@@ -76,25 +76,23 @@ pub(super) fn node(
             + theme.font_size * 1.5 / 2.0
             + crate::text_metrics::centered_baseline_offset(theme.font_size, &theme.font_family)
                 .unwrap_or(theme.font_size * 0.35);
-        let lines: Vec<_> = group
-            .iter()
-            .enumerate()
-            .map(|(i, s)| (i, s.as_str()))
-            .collect();
-        svg.push_str(&text_lines_svg(
-            &lines,
-            if i == 0 {
-                node.x + node.width / 2.0
-            } else {
-                node.x + 12.0
-            },
-            baseline,
-            theme.font_size * 1.5,
-            if i == 0 { "middle" } else { "start" },
-            theme,
-            color,
-            i == 0,
-        ));
+        for (line_index, text) in group.iter().enumerate() {
+            let bold = i == 0 && !text.starts_with('«');
+            svg.push_str(&text_lines_svg(
+                &[(0, text.as_str())],
+                if i == 0 {
+                    node.x + node.width / 2.0
+                } else {
+                    node.x + 12.0
+                },
+                baseline + line_index as f32 * theme.font_size * 1.5,
+                theme.font_size * 1.5,
+                if i == 0 { "middle" } else { "start" },
+                theme,
+                color,
+                bold,
+            ));
+        }
         top += heights[i];
     }
     svg

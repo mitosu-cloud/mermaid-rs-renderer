@@ -111,6 +111,7 @@ pub mod layout_dump;
 mod mindmap_shapes;
 pub mod parser;
 pub mod render;
+mod sequence;
 mod text_metrics;
 pub mod theme;
 mod usecase;
@@ -487,3 +488,5 @@ mod tests {
         );
     }
 }
+
+mod c4_shapes;

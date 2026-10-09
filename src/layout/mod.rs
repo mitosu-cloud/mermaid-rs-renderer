@@ -25,9 +25,11 @@ mod ranking;
 mod routing;
 mod sankey;
 mod sequence;
+mod sequence_mermaid;
 mod state_dagre;
 mod swimlane;
 mod text;
+pub(crate) use text::decode_mermaid_entities;
 mod timeline;
 mod tree_view;
 mod treemap;
@@ -369,7 +371,11 @@ pub fn compute_layout_with_metrics(
         }
     };
 
-    if graph.kind == crate::ir::DiagramKind::Flowchart || crate::class_lollipop::enabled(graph) {
+    if matches!(
+        graph.kind,
+        crate::ir::DiagramKind::Flowchart | crate::ir::DiagramKind::Er
+    ) || crate::class_lollipop::enabled(graph)
+    {
         let engine = graph
             .appearance_config
             .get("layout")
@@ -559,7 +565,7 @@ fn compute_flowchart_layout(
     let measure_font_size = theme.font_size;
     let mut label_config = effective_config.clone();
     if graph.kind == crate::ir::DiagramKind::Class {
-        label_config.label_line_height = label_config.class_label_line_height();
+        label_config.label_line_height = 1.5;
     }
     let mut state_marker_ids: Vec<String> = Vec::new();
     let mut state_height_total = 0.0f32;
@@ -579,7 +585,9 @@ fn compute_flowchart_layout(
                 | crate::ir::DiagramKind::Er
                 | crate::ir::DiagramKind::UseCase
         );
-        let mut label = if graph.kind == crate::ir::DiagramKind::Flowchart
+        let mut label = if graph.kind == crate::ir::DiagramKind::Class {
+            crate::class_lollipop::measure_label(&node.label, theme)
+        } else if graph.kind == crate::ir::DiagramKind::Flowchart
             && (node.markdown_label || has_html_formatting(&node.label))
         {
             let normalized = if node.markdown_label {
@@ -654,7 +662,7 @@ fn compute_flowchart_layout(
                 .get("wrappingWidth")
                 .and_then(|v| v.as_f64())
                 .unwrap_or(120.0) as f32;
-            crate::usecase::wrap_label(&mut label, limit, theme, &label_config);
+            crate::usecase::wrap_flowchart_label(&mut label, limit, theme, &label_config);
             if label.width > 0.0 && node.shape != crate::ir::NodeShape::Text {
                 label.width = label.width.max(
                     options
@@ -665,6 +673,10 @@ fn compute_flowchart_layout(
             }
         }
         let label_empty = label.lines.len() == 1 && label.lines[0].text().trim().is_empty();
+        if matches!(node.shape, crate::ir::NodeShape::Icon(_)) && label_empty {
+            label.width = 0.0;
+            label.height = 0.0;
+        }
         if !label_empty
             && node.shape != crate::ir::NodeShape::CollapsedGroup
             && let Some(options) = graph.agentflow_config.as_ref()
@@ -689,6 +701,10 @@ fn compute_flowchart_layout(
         }
         if crate::class_lollipop::enabled(graph) {
             (width, height) = crate::class_lollipop::size(node, &label, theme);
+        }
+        if let crate::ir::NodeShape::Icon(form) = node.shape {
+            let asset = node.img_w.unwrap_or(48.0).max(node.img_h.unwrap_or(48.0));
+            (width, height) = crate::flowchart_shapes::icon_size(form, asset, &label);
         }
         if let Some(options) = graph.agentflow_config.as_ref()
             && let Some(size) = crate::agentflow::node_size(node.shape, &label, options)

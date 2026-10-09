@@ -1,6 +1,139 @@
 /// Minimal FontAwesome icon subset as SVG path data.
 /// Each icon is stored as (viewbox_size, path_d) where viewbox is assumed square.
 /// Icons are from FontAwesome Free (CC BY 4.0 / MIT license).
+use crate::{config::LayoutConfig, layout::TextBlock, theme::Theme};
+use regex::Regex;
+use std::sync::LazyLock;
+
+static INLINE_ICON: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"fa[bklrs]?:fa-[\w-]+").unwrap());
+
+pub(crate) enum LabelPart<'a> {
+    Text(&'a str),
+    Icon(&'a str),
+}
+
+/// Keep unknown names readable, including custom packs without a supplied asset.
+pub(crate) fn label_parts(text: &str) -> Vec<LabelPart<'_>> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    for token in INLINE_ICON.find_iter(text) {
+        if lookup_icon(token.as_str()).is_none() {
+            continue;
+        }
+        if start < token.start() {
+            parts.push(LabelPart::Text(&text[start..token.start()]));
+        }
+        parts.push(LabelPart::Icon(token.as_str()));
+        start = token.end();
+    }
+    if start < text.len() {
+        parts.push(LabelPart::Text(&text[start..]));
+    }
+    parts
+}
+
+pub(crate) fn has_inline_icon(text: &str) -> bool {
+    if !text.contains(":fa-") {
+        return false;
+    }
+    INLINE_ICON
+        .find_iter(text)
+        .any(|token| lookup_icon(token.as_str()).is_some())
+}
+
+pub(crate) fn styled_text_width(
+    text: &str,
+    size: f32,
+    family: &str,
+    bold: bool,
+    italic: bool,
+) -> f32 {
+    crate::text_metrics::measure_styled_text_width(text, size, family, bold, italic)
+        .unwrap_or(text.chars().count() as f32 * size * 0.5)
+}
+
+/// Inline SVG icons have the font's em height and retain their own aspect ratio.
+pub(crate) fn inline_width(
+    text: &str,
+    size: f32,
+    family: &str,
+    bold: bool,
+    italic: bool,
+) -> Option<f32> {
+    has_inline_icon(text).then(|| {
+        label_parts(text)
+            .into_iter()
+            .map(|part| match part {
+                LabelPart::Text(text) => styled_text_width(text, size, family, bold, italic),
+                LabelPart::Icon(name) => {
+                    let (width, height, _) = lookup_icon(name).expect("known inline icon");
+                    size * width / height
+                }
+            })
+            .sum()
+    })
+}
+
+pub(crate) fn render_inline_label(
+    x: f32,
+    y: f32,
+    label: &TextBlock,
+    theme: &Theme,
+    config: &LayoutConfig,
+    color: Option<&str>,
+) -> String {
+    let size = theme.font_size;
+    let line_height = size * config.label_line_height;
+    let baseline = crate::text_metrics::centered_baseline_offset(size, &theme.font_family)
+        .unwrap_or(size * 0.35);
+    let fill = crate::render::escape_xml(color.unwrap_or(&theme.primary_text_color));
+    let family = crate::render::escape_xml(&theme.font_family);
+    let mut svg = String::new();
+    let measure = |text: &str, bold, italic| {
+        inline_width(text, size, &theme.font_family, bold, italic)
+            .unwrap_or_else(|| styled_text_width(text, size, &theme.font_family, bold, italic))
+    };
+    for (index, line) in label.lines.iter().enumerate() {
+        let width: f32 = line
+            .spans
+            .iter()
+            .map(|span| measure(&span.text, span.style.bold, span.style.italic))
+            .sum();
+        let mut cursor = x - width / 2.0;
+        let baseline_y = y - label.height / 2.0 + line_height * (index as f32 + 0.5) + baseline;
+        for span in &line.spans {
+            for part in label_parts(&span.text) {
+                match part {
+                    LabelPart::Text(text) => {
+                        let weight = if span.style.bold { "bold" } else { "normal" };
+                        let style = if span.style.italic {
+                            "italic"
+                        } else {
+                            "normal"
+                        };
+                        svg.push_str(&format!(
+                            "<text x=\"{cursor:.5}\" y=\"{baseline_y:.5}\" font-family=\"{family}\" font-size=\"{size}\" font-weight=\"{weight}\" font-style=\"{style}\" fill=\"{fill}\" xml:space=\"preserve\">{}</text>",
+                            crate::render::escape_xml(text)
+                        ));
+                        cursor += measure(text, span.style.bold, span.style.italic);
+                    }
+                    LabelPart::Icon(name) => {
+                        let (width, height, path) = lookup_icon(name).expect("known inline icon");
+                        let scale = size / height;
+                        // Match an inline em-sized SVG's vertical-align: -0.125em.
+                        let top = baseline_y - size * 0.875;
+                        svg.push_str(&format!(
+                            "<!-- Font Awesome Free by Fonticons, Inc. https://fontawesome.com/license/free (icons: CC BY 4.0) --><g role=\"img\" aria-label=\"{name}\" transform=\"translate({cursor:.5},{top:.5}) scale({scale:.8})\"><path d=\"{path}\" fill=\"{fill}\"/></g>"
+                        ));
+                        cursor += width * scale;
+                    }
+                }
+            }
+        }
+    }
+    svg
+}
 
 /// Look up a FontAwesome icon by name, returning (viewbox_width, viewbox_height, path_d).
 /// Supports `fa:name` prefix format.
@@ -10,7 +143,11 @@ pub fn lookup_icon(name: &str) -> Option<(f32, f32, &'static str)> {
         .or_else(|| name.strip_prefix("fab:"))
         .or_else(|| name.strip_prefix("fas:"))
         .unwrap_or(name);
+    let clean = clean.strip_prefix("fa-").unwrap_or(clean);
     match clean {
+        // Font Awesome Free 7.3.1 by Fonticons, Inc. (CC BY 4.0).
+        // https://fontawesome.com/license/free — original, unmodified path.
+        "twitter" => Some((512.0, 512.0, TWITTER_PATH)),
         "server" => Some((
             512.0,
             512.0,
@@ -128,7 +265,7 @@ pub fn render_icon_svg(name: &str, x: f32, y: f32, size: f32, fill: &str) -> Str
         let tx = x + (size - vw * scale) / 2.0;
         let ty = y + (size - vh * scale) / 2.0;
         format!(
-            "<g transform=\"translate({tx:.2},{ty:.2}) scale({scale:.6})\"><path d=\"{path_d}\" fill=\"{fill}\"/></g>"
+            "<!-- Font Awesome Free by Fonticons, Inc. https://fontawesome.com/license/free (icons: CC BY 4.0) --><g transform=\"translate({tx:.2},{ty:.2}) scale({scale:.6})\"><path d=\"{path_d}\" fill=\"{fill}\"/></g>"
         )
     } else {
         // Fallback: render the icon name as text
@@ -140,3 +277,6 @@ pub fn render_icon_svg(name: &str, x: f32, y: f32, size: f32, fill: &str) -> Str
         )
     }
 }
+
+// Font Awesome Free 7.3.1: https://fontawesome.com/license/free (CC BY 4.0).
+const TWITTER_PATH: &str = "M459.4 151.7c.3 4.5 .3 9.1 .3 13.6 0 138.7-105.6 298.6-298.6 298.6-59.5 0-114.7-17.2-161.1-47.1 8.4 1 16.6 1.3 25.3 1.3 49.1 0 94.2-16.6 130.3-44.8-46.1-1-84.8-31.2-98.1-72.8 6.5 1 13 1.6 19.8 1.6 9.4 0 18.8-1.3 27.6-3.6-48.1-9.7-84.1-52-84.1-103l0-1.3c14 7.8 30.2 12.7 47.4 13.3-28.3-18.8-46.8-51-46.8-87.4 0-19.5 5.2-37.4 14.3-53 51.7 63.7 129.3 105.3 216.4 109.8-1.6-7.8-2.6-15.9-2.6-24 0-57.8 46.8-104.9 104.9-104.9 30.2 0 57.5 12.7 76.7 33.1 23.7-4.5 46.5-13.3 66.6-25.3-7.8 24.4-24.4 44.8-46.1 57.8 21.1-2.3 41.6-8.1 60.4-16.2-14.3 20.8-32.2 39.3-52.6 54.3z";

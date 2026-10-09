@@ -65,7 +65,7 @@ fn named_entity(name: &str) -> Option<char> {
 
 /// Decode mermaid entity codes (`#NNNN;` decimal and `#name;` named) into
 /// actual unicode characters. Mirrors mermaid.js behavior.
-pub(super) fn decode_mermaid_entities(text: &str) -> String {
+pub(crate) fn decode_mermaid_entities(text: &str) -> String {
     MERMAID_ENTITY_RE
         .replace_all(text, |caps: &regex::Captures| {
             let token = &caps[1];
@@ -187,6 +187,11 @@ pub(super) fn measure_flowchart_label(
     config: &LayoutConfig,
 ) -> TextBlock {
     let measure = |value: &str| {
+        if let Some(width) =
+            crate::icons::inline_width(value, theme.font_size, &theme.font_family, false, false)
+        {
+            return (width * 64.0).ceil() / 64.0;
+        }
         crate::text_metrics::measure_text_width_with_kerning(
             value,
             theme.font_size,
@@ -480,13 +485,22 @@ pub(super) fn measure_flowchart_rich_label(
             line.spans
                 .iter()
                 .map(|span| {
-                    crate::text_metrics::measure_styled_text_width(
+                    crate::icons::inline_width(
                         &span.text,
                         theme.font_size,
                         &theme.font_family,
                         span.style.bold,
                         span.style.italic,
                     )
+                    .or_else(|| {
+                        crate::text_metrics::measure_styled_text_width(
+                            &span.text,
+                            theme.font_size,
+                            &theme.font_family,
+                            span.style.bold,
+                            span.style.italic,
+                        )
+                    })
                     .unwrap_or_else(|| {
                         text_width(&span.text, theme.font_size, &theme.font_family, false)
                     })

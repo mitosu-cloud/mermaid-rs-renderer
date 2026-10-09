@@ -50,6 +50,153 @@ fn neo(options: &Value) -> bool {
     options.get("look").and_then(Value::as_str).unwrap_or("neo") == "neo"
 }
 
+/// Redux's shadow selectors target rects, polygons, circles and outer-paths.
+/// Decorative plain paths and roughjs path groups have no matching selector.
+pub(crate) fn has_shadow(shape: NodeShape) -> bool {
+    matches!(
+        shape,
+        NodeShape::Rectangle
+            | NodeShape::RoundRect
+            | NodeShape::Circle
+            | NodeShape::SmallCircle
+            | NodeShape::DoubleCircle
+            | NodeShape::Diamond
+            | NodeShape::Hexagon
+            | NodeShape::LeanRight
+            | NodeShape::LeanLeft
+            | NodeShape::Parallelogram
+            | NodeShape::ParallelogramAlt
+            | NodeShape::Trapezoid
+            | NodeShape::TrapezoidAlt
+            | NodeShape::NotchRect
+            | NodeShape::Subroutine
+            | NodeShape::Cylinder
+            | NodeShape::LinedCylinder
+            | NodeShape::HorizontalCylinder
+            | NodeShape::Stadium
+            | NodeShape::Hourglass
+            | NodeShape::LightningBolt
+            | NodeShape::HalfRoundedRect
+            | NodeShape::CurvedTrapezoid
+            | NodeShape::DividedRect
+            | NodeShape::Document
+            | NodeShape::LinedDocument
+            | NodeShape::Triangle
+            | NodeShape::FlippedTriangle
+            | NodeShape::WindowPane
+            | NodeShape::LinedRect
+            | NodeShape::NotchedPentagon
+            | NodeShape::SlopedRect
+            | NodeShape::StackedDocument
+            | NodeShape::StackedRect
+            | NodeShape::OddShape
+            | NodeShape::FramedCircle
+            | NodeShape::CrossedCircle
+            | NodeShape::BowTieRect
+            | NodeShape::TagDocument
+            | NodeShape::TagRect
+    )
+}
+
+fn bang(label: &TextBlock) -> crate::mindmap_shapes::Outline {
+    // Flowcharts and mindmaps use the same fourteen arcs. Flowchart labels
+    // occupy their HTML minimum width, and the shape's padding is 15px.
+    crate::mindmap_shapes::outline(
+        NodeShape::MindmapBang,
+        label.width.max(120.0),
+        label.height,
+        15.0,
+    )
+    .expect("bang outline")
+}
+
+pub(crate) fn icon_size(form: crate::ir::IconForm, asset: f32, label: &TextBlock) -> (f32, f32) {
+    let body = match form {
+        crate::ir::IconForm::Plain => asset,
+        crate::ir::IconForm::Circle => asset * std::f32::consts::SQRT_2 + 40.0,
+        _ => asset + 40.0,
+    };
+    (
+        body.max(label.width),
+        body + label.height + if label.height > 0.0 { 8.0 } else { 0.0 },
+    )
+}
+
+pub(crate) fn icon_node(
+    node: &NodeLayout,
+    theme: &Theme,
+    config: &crate::config::LayoutConfig,
+) -> String {
+    use crate::ir::IconForm;
+    let NodeShape::Icon(form) = node.shape else {
+        return String::new();
+    };
+    let asset = node.img_w.unwrap_or(48.0).max(node.img_h.unwrap_or(48.0));
+    let body = icon_size(
+        form,
+        asset,
+        &TextBlock {
+            lines: vec![],
+            width: 0.0,
+            height: 0.0,
+        },
+    )
+    .1;
+    let top = node.img_pos.as_deref() == Some("t");
+    let gap = if node.label.height > 0.0 { 8.0 } else { 0.0 };
+    let cx = node.x + node.width / 2.0;
+    let cy = if top {
+        node.y + node.label.height + gap + body / 2.0
+    } else {
+        node.y + body / 2.0
+    };
+    let fill = node.style.fill.as_deref().unwrap_or(&theme.primary_color);
+    let stroke = node
+        .style
+        .stroke
+        .as_deref()
+        .unwrap_or(&theme.primary_border_color);
+    let sw = node.style.stroke_width.unwrap_or(2.0);
+    let container = match form {
+        IconForm::Plain => String::new(),
+        IconForm::Circle => format!(
+            "<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{}\" fill=\"{fill}\" stroke=\"{fill}\" stroke-width=\"{sw}\"/>",
+            body / 2.0
+        ),
+        _ => format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"{body}\" height=\"{body}\" rx=\"{}\" fill=\"{fill}\" stroke=\"{fill}\" stroke-width=\"{sw}\"/>",
+            cx - body / 2.0,
+            cy - body / 2.0,
+            if form == IconForm::Rounded { 5.0 } else { 0.0 }
+        ),
+    };
+    let icon = crate::icons::render_icon_svg(
+        node.icon.as_deref().unwrap_or("?"),
+        cx - asset / 2.0,
+        cy - asset / 2.0,
+        asset,
+        stroke,
+    );
+    let mut svg =
+        format!("{container}<g transform=\"translate(4,4)\" opacity=\"0.06\">{icon}</g>{icon}");
+    if node.label.height > 0.0 {
+        let label_y = if top {
+            node.y + node.label.height / 2.0
+        } else {
+            node.y + body + gap + node.label.height / 2.0
+        };
+        svg.push_str(&crate::icons::render_inline_label(
+            cx,
+            label_y,
+            &node.label,
+            theme,
+            config,
+            node.style.text_color.as_deref(),
+        ));
+    }
+    svg
+}
+
 struct Cloud {
     width: f32,
     height: f32,
@@ -148,6 +295,10 @@ pub(crate) fn size(shape: NodeShape, label: &TextBlock, options: &Value) -> Opti
         ));
     }
     match shape {
+        NodeShape::MindmapBang => {
+            let b = bang(label);
+            Some((b.width(), b.height()))
+        }
         NodeShape::Hourglass => Some((30.0, 30.0)),
         NodeShape::LightningBolt => Some((35.0, 70.0)),
         NodeShape::SmallCircle | NodeShape::FilledCircle | NodeShape::FramedCircle => {
@@ -197,6 +348,10 @@ pub(crate) fn size(shape: NodeShape, label: &TextBlock, options: &Value) -> Opti
 }
 
 pub(crate) fn label_center(node: &NodeLayout, options: &Value) -> Option<(f32, f32)> {
+    if node.shape == NodeShape::MindmapBang {
+        let b = bang(&node.label);
+        return Some((node.x - b.bounds.0, node.y - b.bounds.1));
+    }
     if let Some(geometry) = documents::geometry(node.shape, &node.label, neo(options)) {
         return Some((
             node.x - geometry.bounds[0] + geometry.label.0,
@@ -263,6 +418,15 @@ pub(crate) fn svg(
         return Some(geometry.svg(node.x, node.y, fill, stroke, sw, &dash));
     }
     match node.shape {
+        NodeShape::MindmapBang => {
+            let b = bang(&node.label);
+            Some(format!(
+                "<path d=\"{}\" transform=\"translate({:.5},{:.5})\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}/>",
+                b.path,
+                node.x - b.bounds.0,
+                node.y - b.bounds.1
+            ))
+        }
         NodeShape::Rectangle => Some(format!(
             "<rect x=\"{:.5}\" y=\"{:.5}\" width=\"{:.5}\" height=\"{:.5}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{sw}\"{dash}/>",
             node.x, node.y, node.width, node.height

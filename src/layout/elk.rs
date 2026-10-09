@@ -624,6 +624,12 @@ pub(super) fn apply(graph: &Graph, layout: &mut Layout) -> Result<(), String> {
             value["labels"] = json!([{"text": edge.label, "width": label.width, "height": label.height,
                 "layoutOptions": {"edgeLabels.placement": "CENTER", "edgeLabels.inline": true}}]);
         }
+        else if graph.kind == DiagramKind::Class {
+            // Preserve Mermaid's relation input, which includes a label entry
+            // even when the relationship has no visible text.
+            value["labels"] = json!([{"text": "", "width": 0, "height": 0,
+                "layoutOptions": {"edgeLabels.placement": "CENTER", "edgeLabels.inline": true}}]);
+        }
         value
     }).collect();
     let mut input = json!({"id":"root", "layoutOptions": layout_options(graph, graph.direction, false),

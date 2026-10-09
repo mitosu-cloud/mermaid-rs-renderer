@@ -45,7 +45,13 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
     let mut global_max_y = conf.diagram_margin_y;
 
     let mut screen_bounds = C4Bounds::new(conf);
-    let width_limit = 1920.0;
+    // Mermaid uses screen.availWidth: the comparison viewport is 800 px.
+    let width_limit = graph
+        .appearance_config
+        .get("c4")
+        .and_then(|v| v.get("viewportWidth"))
+        .and_then(|v| v.as_f64())
+        .unwrap_or(800.0) as f32;
     screen_bounds.set_data(
         conf.diagram_margin_x,
         conf.diagram_margin_x,
@@ -115,7 +121,7 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
             text_color: rel.text_color.clone(),
         });
     }
-    resolve_c4_rel_label_offsets(&mut rels_out, &shapes_out, conf);
+    // Keep authored relationship offsets, as Mermaid does.
 
     let mut nodes: BTreeMap<String, NodeLayout> = BTreeMap::new();
     for shape in &shapes_out {
@@ -182,9 +188,10 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
     let width = (global_max_x - conf.diagram_margin_x + 2.0 * conf.diagram_margin_x).max(1.0);
     let height = (global_max_y - conf.diagram_margin_y + 2.0 * conf.diagram_margin_y).max(1.0);
     let viewbox_x = 0.0;
-    let viewbox_y = -conf.diagram_margin_y;
+    let extra_title = if c4.title.is_some() { 60.0 } else { 0.0 };
+    let viewbox_y = -conf.diagram_margin_y - extra_title;
     let viewbox_width = width;
-    let viewbox_height = height;
+    let viewbox_height = height + extra_title;
 
     Layout {
         kind: graph.kind,
@@ -196,6 +203,7 @@ pub(super) fn compute_c4_layout(graph: &Graph, config: &LayoutConfig) -> Layout 
         acc_title: None,
         acc_descr: None,
         diagram: DiagramData::C4(C4Layout {
+            title: c4.title.clone(),
             shapes: shapes_out,
             boundaries: boundaries_out,
             rels: rels_out,
@@ -483,126 +491,22 @@ fn layout_c4_shapes(
     shapes_out: &mut Vec<C4ShapeLayout>,
     shape_map: &std::collections::HashMap<String, &crate::ir::C4Shape>,
     conf: &crate::config::C4Config,
-    fast_metrics: bool,
+    _fast_metrics: bool,
 ) {
     for shape_id in shape_ids {
         let Some(shape) = shape_map.get(shape_id) else {
             continue;
         };
-        let type_font_size = (c4_shape_font_size(conf, shape.kind) - 2.0).max(1.0);
-        let type_font_family = c4_shape_font_family(conf, shape.kind);
-        let type_label_text = format!("<<{}>>", shape.kind.as_str());
-        let type_width = estimate_text_width(
-            &type_label_text,
-            type_font_size,
-            type_font_family,
-            fast_metrics,
+        let mut measured = crate::c4_shapes::measure(
+            shape,
+            conf,
+            c4_shape_font_size(conf, shape.kind),
+            c4_shape_font_family(conf, shape.kind),
         );
-        let type_height = type_font_size + 2.0;
-        let type_layout = C4TextLayout {
-            text: type_label_text.clone(),
-            lines: vec![type_label_text],
-            width: type_width,
-            height: type_height,
-            y: conf.c4_shape_padding,
-        };
-        let mut y = type_layout.y + type_layout.height - 4.0;
-
-        let mut image_y = None;
-        if matches!(
-            shape.kind,
-            crate::ir::C4ShapeKind::Person | crate::ir::C4ShapeKind::ExternalPerson
-        ) {
-            image_y = Some(y);
-            y += conf.person_icon_size;
-        } else if shape.sprite.is_some() {
-            image_y = Some(y);
-            y += conf.person_icon_size;
-        }
-
-        let label_font_size = c4_shape_font_size(conf, shape.kind) + 2.0;
-        let label_font_family = c4_shape_font_family(conf, shape.kind);
-        let text_limit_width = conf.width - conf.c4_shape_padding * 2.0;
-        let label_layout = c4_text_layout(
-            &shape.label,
-            label_font_size,
-            y + 8.0,
-            conf.wrap,
-            text_limit_width,
-            c4_text_line_height(conf, label_font_size),
-            label_font_family,
-            fast_metrics,
-        );
-        y = label_layout.y + label_layout.height;
-
-        let mut type_or_techn_layout = None;
-        let type_or_techn_text = shape
-            .techn
-            .as_ref()
-            .or(shape.type_label.as_ref())
-            .map(|t| format!("[{}]", t));
-        if let Some(text) = type_or_techn_text {
-            let font_size = c4_shape_font_size(conf, shape.kind);
-            let font_family = c4_shape_font_family(conf, shape.kind);
-            let layout = c4_text_layout(
-                &text,
-                font_size,
-                y + 5.0,
-                conf.wrap,
-                text_limit_width,
-                c4_text_line_height(conf, font_size),
-                font_family,
-                fast_metrics,
-            );
-            y = layout.y + layout.height;
-            type_or_techn_layout = Some(layout);
-        }
-
-        let mut descr_layout = None;
-        let mut rect_height = y;
-        let mut rect_width = label_layout.width;
-        if let Some(descr) = &shape.descr {
-            let font_size = c4_shape_font_size(conf, shape.kind);
-            let font_family = c4_shape_font_family(conf, shape.kind);
-            let layout = c4_text_layout(
-                descr,
-                font_size,
-                y + 20.0,
-                conf.wrap,
-                text_limit_width,
-                c4_text_line_height(conf, font_size),
-                font_family,
-                fast_metrics,
-            );
-            y = layout.y + layout.height;
-            rect_width = rect_width.max(layout.width);
-            let lines = layout.lines.len() as f32;
-            rect_height = y - lines * 5.0;
-            descr_layout = Some(layout);
-        }
-        rect_width += conf.c4_shape_padding;
-        let width = conf.width.max(rect_width);
-        let height = conf.height.max(rect_height);
-        let margin = conf.c4_shape_margin;
-        let (x, y_pos) = bounds.insert(width, height, margin);
-
-        shapes_out.push(C4ShapeLayout {
-            id: shape.id.clone(),
-            kind: shape.kind,
-            bg_color: shape.bg_color.clone(),
-            border_color: shape.border_color.clone(),
-            font_color: shape.font_color.clone(),
-            x,
-            y: y_pos,
-            width,
-            height,
-            margin,
-            type_label: type_layout,
-            label: label_layout,
-            type_or_techn: type_or_techn_layout,
-            descr: descr_layout,
-            image_y,
-        });
+        let (x, y) = bounds.insert(measured.width, measured.height, measured.margin);
+        measured.x = x;
+        measured.y = y;
+        shapes_out.push(measured);
     }
     bounds.bump_last_margin(conf.c4_shape_margin);
 }
@@ -661,12 +565,8 @@ fn c4_shape_font_family(conf: &crate::config::C4Config, kind: crate::ir::C4Shape
     }
 }
 
-fn c4_text_line_height(conf: &crate::config::C4Config, font_size: f32) -> f32 {
-    let mut height = font_size + conf.text_line_height;
-    if font_size <= conf.text_line_height_small_threshold {
-        height += conf.text_line_height_small_add;
-    }
-    height.max(1.0)
+fn c4_text_line_height(_conf: &crate::config::C4Config, font_size: f32) -> f32 {
+    (font_size * 1.35).ceil()
 }
 
 fn c4_text_layout(
@@ -777,63 +677,7 @@ fn c4_intersect_points(
 }
 
 fn c4_intersect_point(node: &C4ShapeLayout, end: (f32, f32)) -> (f32, f32) {
-    let (x1, y1) = (node.x, node.y);
-    let (x2, y2) = end;
-    let from_center_x = x1 + node.width / 2.0;
-    let from_center_y = y1 + node.height / 2.0;
-    let dx = (x1 - x2).abs();
-    let dy = (y1 - y2).abs();
-    let tan_dyx = if dx.abs() < f32::EPSILON {
-        0.0
-    } else {
-        dy / dx
-    };
-    let from_dyx = node.height / node.width;
-    if (y1 - y2).abs() < f32::EPSILON && x1 < x2 {
-        return (x1 + node.width, from_center_y);
-    }
-    if (y1 - y2).abs() < f32::EPSILON && x1 > x2 {
-        return (x1, from_center_y);
-    }
-    if (x1 - x2).abs() < f32::EPSILON && y1 < y2 {
-        return (from_center_x, y1 + node.height);
-    }
-    if (x1 - x2).abs() < f32::EPSILON && y1 > y2 {
-        return (from_center_x, y1);
-    }
-    if x1 > x2 && y1 < y2 {
-        if from_dyx >= tan_dyx {
-            (x1, from_center_y + tan_dyx * node.width / 2.0)
-        } else {
-            (
-                from_center_x - dx / dy * node.height / 2.0,
-                y1 + node.height,
-            )
-        }
-    } else if x1 < x2 && y1 < y2 {
-        if from_dyx >= tan_dyx {
-            (x1 + node.width, from_center_y + tan_dyx * node.width / 2.0)
-        } else {
-            (
-                from_center_x + dx / dy * node.height / 2.0,
-                y1 + node.height,
-            )
-        }
-    } else if x1 < x2 && y1 > y2 {
-        if from_dyx >= tan_dyx {
-            (x1 + node.width, from_center_y - tan_dyx * node.width / 2.0)
-        } else {
-            (from_center_x + node.height / 2.0 * dx / dy, y1)
-        }
-    } else if x1 > x2 && y1 > y2 {
-        if from_dyx >= tan_dyx {
-            (x1, from_center_y - node.width / 2.0 * tan_dyx)
-        } else {
-            (from_center_x - node.height / 2.0 * dx / dy, y1)
-        }
-    } else {
-        (from_center_x, from_center_y)
-    }
+    crate::c4_shapes::intersect(node, end)
 }
 
 #[derive(Clone, Copy)]
@@ -844,6 +688,7 @@ struct C4Rect {
     height: f32,
 }
 
+#[allow(dead_code)]
 fn resolve_c4_rel_label_offsets(
     rels: &mut [C4RelLayout],
     shapes: &[C4ShapeLayout],

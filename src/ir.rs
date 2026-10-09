@@ -112,6 +112,18 @@ pub struct SequenceLifecycle {
     pub kind: SequenceLifecycleKind,
 }
 
+/// Source order is significant: a note or frame may occur between two
+/// messages with the same message index. Keep that order for cursor layout.
+#[derive(Debug, Clone, Copy)]
+pub enum SequenceEvent {
+    Message(usize),
+    Note(usize),
+    Activation(usize),
+    FrameStart(usize),
+    FrameSection(usize, usize),
+    FrameEnd(usize),
+}
+
 #[derive(Debug, Clone)]
 pub struct SequenceNote {
     pub position: SequenceNotePosition,
@@ -217,6 +229,7 @@ pub struct QuadrantData {
 
 #[derive(Debug, Clone)]
 pub struct GanttTask {
+    pub raw_meta: String,
     pub id: String,
     pub label: String,
     pub start: Option<String>,
@@ -376,6 +389,7 @@ pub struct C4Rel {
 
 #[derive(Debug, Clone, Default)]
 pub struct C4Data {
+    pub title: Option<String>,
     pub shapes: Vec<C4Shape>,
     pub boundaries: Vec<C4Boundary>,
     pub rels: Vec<C4Rel>,
@@ -745,6 +759,7 @@ pub struct Graph {
     pub edges: Vec<Edge>,
     pub subgraphs: Vec<Subgraph>,
     pub sequence_participants: Vec<String>,
+    pub sequence_events: Vec<SequenceEvent>,
     pub sequence_frames: Vec<SequenceFrame>,
     pub sequence_notes: Vec<SequenceNote>,
     pub sequence_activations: Vec<SequenceActivation>,
@@ -823,6 +838,7 @@ pub struct UseCaseData {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeShape {
     Rectangle,
+    Icon(IconForm),
     Ellipse,
     Image,
     ForkJoin,
@@ -891,6 +907,14 @@ pub enum NodeShape {
     DividedRect,        // div-rect / div-proc — rectangle with horizontal divider
     LinedRect,          // lin-rect / lin-proc — rectangle with vertical lines
     WavyRect,           // wave-rect / paper-tape — rectangle with wavy top and bottom
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IconForm {
+    Plain,
+    Square,
+    Rounded,
+    Circle,
 }
 
 /// Deduplicated direction combinations for block diagram arrow nodes.
@@ -1043,6 +1067,7 @@ impl Graph {
             edges: Vec::new(),
             subgraphs: Vec::new(),
             sequence_participants: Vec::new(),
+            sequence_events: Vec::new(),
             sequence_frames: Vec::new(),
             sequence_notes: Vec::new(),
             sequence_activations: Vec::new(),

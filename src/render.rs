@@ -16,11 +16,14 @@ use std::collections::HashMap;
 use std::path::Path;
 
 mod agentflow;
+mod c4_modern;
 mod class_lollipop;
+mod gantt;
 mod kanban;
 mod packet;
 mod radar;
 mod railroad;
+mod sequence;
 mod usecase;
 
 fn fit_dimensions_to_preferred_ratio(
@@ -53,6 +56,11 @@ fn edge_dom_id(edge_idx: usize) -> String {
 }
 
 pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> String {
+    if let DiagramData::Sequence(data) = &layout.diagram
+        && let Some(appearance) = &data.appearance
+    {
+        return sequence::render(layout, data, &crate::sequence::theme(appearance, theme));
+    }
     let agent_theme = match &layout.diagram {
         DiagramData::Graph {
             agentflow: Some(options),
@@ -69,13 +77,29 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         _ => None,
     };
     let theme = agent_theme.as_ref().unwrap_or(theme);
+    let graph_title = match &layout.diagram {
+        DiagramData::Graph {
+            appearance: Some(options),
+            ..
+        } if matches!(
+            layout.kind,
+            crate::ir::DiagramKind::Class | crate::ir::DiagramKind::Er
+        ) =>
+        {
+            options
+                .get("title")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+        }
+        _ => None,
+    };
     let mut svg = String::new();
     let state_font_size = if layout.kind == crate::ir::DiagramKind::State {
         theme.font_size * 0.85
     } else {
         theme.font_size
     };
-    let (width, height, viewbox_x, viewbox_y, viewbox_width, viewbox_height) =
+    let (width, mut height, viewbox_x, mut viewbox_y, viewbox_width, mut viewbox_height) =
         if let DiagramData::Error(error) = &layout.diagram {
             (
                 error.render_width,
@@ -194,6 +218,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let height = layout.height.max(1.0);
             (width, height, 0.0, 0.0, width, height)
         };
+    if graph_title.is_some() {
+        viewbox_y -= 50.0;
+        viewbox_height += 50.0;
+        height += 50.0;
+    }
     let seq_data = if let DiagramData::Sequence(s) = &layout.diagram {
         Some(s)
     } else {
@@ -346,6 +375,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         svg.push_str("</style>");
     }
 
+    if is_c4 || layout.kind == crate::ir::DiagramKind::UseCase {
+        svg.push_str("<style>");
+        svg.push_str(include_str!("fonts/OpenSans.css"));
+        svg.push_str("</style>");
+    }
+
     // Emit accessibility <title> and <desc> elements.
     if let Some(title) = &layout.acc_title {
         svg.push_str(&format!(
@@ -373,6 +408,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             "<rect x=\"{viewbox_x}\" y=\"{viewbox_y}\" width=\"{viewbox_width}\" height=\"{viewbox_height}\" fill=\"{}\"/>",
             theme.background
         ));
+    }
+
+    if let Some(title) = graph_title {
+        svg.push_str(&format!("<text x=\"{:.4}\" y=\"-29\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>",viewbox_x + viewbox_width/2.0,normalize_font_family(&theme.font_family),theme.font_size,escape_xml(&theme.primary_text_color),escape_xml(title)));
     }
 
     if let DiagramData::Kanban(ref cards) = layout.diagram {
@@ -1324,8 +1363,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             ));
         }
     } else {
-        let base_edge_width = if matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if layout.kind == crate::ir::DiagramKind::Class && options.get("_lollipop").and_then(|v|v.as_bool())==Some(true))
-        {
+        let base_edge_width = if layout.kind == crate::ir::DiagramKind::Class {
             2.0
         } else {
             match layout.kind {
@@ -1533,7 +1571,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 } else if layout.kind == crate::ir::DiagramKind::Agentflow
                     || matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if options.get("_layoutEngine").is_some())
                 {
-                    svg.push_str(&format!("<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",x-label.width/2.0,y-label.height/2.0,label.width,label.height,theme.edge_label_background));
+                    if layout.kind != crate::ir::DiagramKind::Er {
+                        svg.push_str(&format!("<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",x-label.width/2.0,y-label.height/2.0,label.width,label.height,theme.edge_label_background));
+                    }
                     if layout.kind == crate::ir::DiagramKind::Flowchart {
                         let baseline = y - label.height / 2.0
                             + theme.font_size * config.label_line_height / 2.0
@@ -1566,7 +1606,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                     }
                 } else if layout.kind == crate::ir::DiagramKind::Er {
                     let fill = crate::theme::adjust_color(&theme.primary_color, -160.0, 0.0, 0.0);
-                    svg.push_str(&format!("<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{fill}\" fill-opacity=\"0.5\"/>", x - label.width / 2.0, y - label.height / 2.0, label.width, label.height));
+                    if !matches!(&layout.diagram, DiagramData::Graph { appearance: Some(options), .. } if options.get("_layoutEngine").is_some() && crate::agentflow::neo(options))
+                    {
+                        svg.push_str(&format!("<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{fill}\" fill-opacity=\"0.5\"/>", x - label.width / 2.0, y - label.height / 2.0, label.width, label.height));
+                    }
                     let baseline = y - label.height / 2.0
                         + 14.0 * config.label_line_height / 2.0
                         + text_metrics::centered_baseline_offset(14.0, &theme.font_family)
@@ -1870,9 +1913,18 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 }
                 continue;
             }
-            if matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if layout.kind == crate::ir::DiagramKind::Class && options.get("_lollipop").and_then(|v|v.as_bool())==Some(true))
-            {
+            if layout.kind == crate::ir::DiagramKind::Class {
                 svg.push_str(&class_lollipop::node(node, theme, config));
+                if node.link.is_some() {
+                    svg.push_str("</a>");
+                }
+                continue;
+            }
+
+            if layout.kind == crate::ir::DiagramKind::Flowchart
+                && matches!(node.shape, crate::ir::NodeShape::Icon(_))
+            {
+                svg.push_str(&crate::flowchart_shapes::icon_node(node, theme, config));
                 if node.link.is_some() {
                     svg.push_str("</a>");
                 }
@@ -1900,14 +1952,7 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let node_svg = agent_shape
                 .or(special_shape)
                 .unwrap_or_else(|| shape_svg(node, theme, config, layout.kind));
-            if modern_flow
-                && !matches!(
-                    node.shape,
-                    crate::ir::NodeShape::Flag
-                        | crate::ir::NodeShape::WavyRect
-                        | crate::ir::NodeShape::FilledCircle
-                )
-            {
+            if modern_flow && crate::flowchart_shapes::has_shadow(node.shape) {
                 let mut shadow = node.clone();
                 shadow.style.fill = Some("black".into());
                 shadow.style.stroke = Some("black".into());
@@ -2008,7 +2053,22 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 || (layout.kind == crate::ir::DiagramKind::Flowchart
                     && node.shape == crate::ir::NodeShape::Hourglass);
             if !hide_label {
-                let label_svg = if layout.kind == crate::ir::DiagramKind::Treemap {
+                let label_svg = if layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node
+                        .label
+                        .lines
+                        .iter()
+                        .any(|line| crate::icons::has_inline_icon(&line.text()))
+                {
+                    crate::icons::render_inline_label(
+                        center_x,
+                        center_y,
+                        &node.label,
+                        theme,
+                        config,
+                        node.style.text_color.as_deref(),
+                    )
+                } else if layout.kind == crate::ir::DiagramKind::Treemap {
                     if node.is_treemap_leaf {
                         // Leaf nodes: name centered, value centered below in smaller font
                         let mut out = String::new();
@@ -4480,6 +4540,9 @@ fn render_gantt(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> String {
+    if let Some(data) = &layout.native {
+        return gantt::render(data, layout.title.as_ref(), theme);
+    }
     let mut svg = String::new();
     let chart_left = layout.chart_x;
     let chart_right = layout.chart_x + layout.chart_width;
@@ -5901,13 +5964,13 @@ fn render_formatted_tspans(
     }
 }
 
-const C4_PERSON_ICON: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAACD0lEQVR4Xu2YoU4EMRCGT+4j8Ai8AhaH4QHgAUjQuFMECUgMIUgwJAgMhgQsAYUiJCiQIBBY+EITsjfTdme6V24v4c8vyGbb+ZjOtN0bNcvjQXmkH83WvYBWto6PLm6v7p7uH1/w2fXD+PBycX1Pv2l3IdDm/vn7x+dXQiAubRzoURa7gRZWd0iGRIiJbOnhnfYBQZNJjNbuyY2eJG8fkDE3bbG4ep6MHUAsgYxmE3nVs6VsBWJSGccsOlFPmLIViMzLOB7pCVO2AtHJMohH7Fh6zqitQK7m0rJvAVYgGcEpe//PLdDz65sM4pF9N7ICcXDKIB5Nv6j7tD0NoSdM2QrU9Gg0ewE1LqBhHR3BBdvj2vapnidjHxD/q6vd7Pvhr31AwcY8eXMTXAKECZZJFXuEq27aLgQK5uLMohCenGGuGewOxSjBvYBqeG6B+Nqiblggdjnc+ZXDy+FNFpFzw76O3UBAROuXh6FoiAcf5g9eTvUgzy0nWg6I8cXHRUpg5bOVBCo+KDpFajOf23GgPme7RSQ+lacIENUgJ6gg1k6HjgOlqnLqip4tEuhv0hNEMXUD0clyXE3p6pZA0S2nnvTlXwLJEZWlb7cTQH1+USgTN4VhAenm/wea1OCAOmqo6fE1WCb9WSKBah+rbUWPWAmE2Rvk0ApiB45eOyNAzU8xcTvj8KvkKEoOaIYeHNA3ZuygAvFMUO0AAAAASUVORK5CYII=";
-const C4_EXTERNAL_PERSON_ICON: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAB6ElEQVR4Xu2YLY+EMBCG9+dWr0aj0Wg0Go1Go0+j8Xdv2uTCvv1gpt0ebHKPuhDaeW4605Z9mJvx4AdXUyTUdd08z+u6flmWZRnHsWkafk9DptAwDPu+f0eAYtu2PEaGWuj5fCIZrBAC2eLBAnRCsEkkxmeaJp7iDJ2QMDdHsLg8SxKFEJaAo8lAXnmuOFIhTMpxxKATebo4UiFknuNo4OniSIXQyRxEA3YsnjGCVEjVXD7yLUAqxBGUyPv/Y4W2beMgGuS7kVQIBycH0fD+oi5pezQETxdHKmQKGk1eQEYldK+jw5GxPfZ9z7Mk0Qnhf1W1m3w//EUn5BDmSZsbR44QQLBEqrBHqOrmSKaQAxdnLArCrxZcM7A7ZKs4ioRq8LFC+NpC3WCBJsvpVw5edm9iEXFuyNfxXAgSwfrFQ1c0iNda8AdejvUgnktOtJQQxmcfFzGglc5WVCj7oDgFqU18boeFSs52CUh8LE8BIVQDT1ABrB0HtgSEYlX5doJnCwv9TXocKCaKbnwhdDKPq4lf3SwU3HLq4V/+WYhHVMa/3b4IlfyikAduCkcBc7mQ3/z/Qq/cTuikhkzB12Ae/mcJC9U+Vo8Ej1gWAtgbeGgFsAMHr50BIWOLCbezvhpBFUdY6EJuJ/QDW0XoMX60zZ0AAAAASUVORK5CYII=";
-
 fn render_c4(c4: &C4Layout, config: &LayoutConfig) -> String {
     let conf = &config.c4;
     let mut svg = String::new();
 
+    if let Some(title) = &c4.title {
+        svg.push_str(&format!("<text x=\"{:.3}\" y=\"20\" text-anchor=\"middle\" font-family=\"{}\" font-size=\"14\" fill=\"#333\">{}</text>", c4.viewbox_width / 2.0 - 4.0 * conf.diagram_margin_x, normalize_font_family(&conf.boundary_font_family), escape_xml(title)));
+    }
     svg.push_str("<defs><symbol id=\"computer\" width=\"24\" height=\"24\"><path transform=\"scale(.5)\" d=\"M2 2v13h20v-13h-20zm18 11h-16v-9h16v9zm-10.228 6l.466-1h3.524l.467 1h-4.457zm14.228 3h-24l2-6h2.104l-1.33 4h18.45l-1.297-4h2.073l2 6zm-5-10h-14v-7h14v7z\"/></symbol></defs>");
     svg.push_str("<defs><symbol id=\"database\" fill-rule=\"evenodd\" clip-rule=\"evenodd\"><path transform=\"scale(.5)\" d=\"M12.258.001l.256.004.255.005.253.008.251.01.249.012.247.015.246.016.242.019.241.02.239.023.236.024.233.027.231.028.229.031.225.032.223.034.22.036.217.038.214.04.211.041.208.043.205.045.201.046.198.048.194.05.191.051.187.053.183.054.18.056.175.057.172.059.168.06.163.061.16.063.155.064.15.066.074.033.073.033.071.034.07.034.069.035.068.035.067.035.066.035.064.036.064.036.062.036.06.036.06.037.058.037.058.037.055.038.055.038.053.038.052.038.051.039.05.039.048.039.047.039.045.04.044.04.043.04.041.04.04.041.039.041.037.041.036.041.034.041.033.042.032.042.03.042.029.042.027.042.026.043.024.043.023.043.021.043.02.043.018.044.017.043.015.044.013.044.012.044.011.045.009.044.007.045.006.045.004.045.002.045.001.045v17l-.001.045-.002.045-.004.045-.006.045-.007.045-.009.044-.011.045-.012.044-.013.044-.015.044-.017.043-.018.044-.02.043-.021.043-.023.043-.024.043-.026.043-.027.042-.029.042-.03.042-.032.042-.033.042-.034.041-.036.041-.037.041-.039.041-.04.041-.041.04-.043.04-.044.04-.045.04-.047.039-.048.039-.05.039-.051.039-.052.038-.053.038-.055.038-.055.038-.058.037-.058.037-.06.037-.06.036-.062.036-.064.036-.064.036-.066.035-.067.035-.068.035-.069.035-.07.034-.071.034-.073.033-.074.033-.15.066-.155.064-.16.063-.163.061-.168.06-.172.059-.175.057-.18.056-.183.054-.187.053-.191.051-.194.05-.198.048-.201.046-.205.045-.208.043-.211.041-.214.04-.217.038-.22.036-.223.034-.225.032-.229.031-.231.028-.233.027-.236.024-.239.023-.241.02-.242.019-.246.016-.247.015-.249.012-.251.01-.253.008-.255.005-.256.004-.258.001-.258-.001-.256-.004-.255-.005-.253-.008-.251-.01-.249-.012-.247-.015-.245-.016-.243-.019-.241-.02-.238-.023-.236-.024-.234-.027-.231-.028-.228-.031-.226-.032-.223-.034-.22-.036-.217-.038-.214-.04-.211-.041-.208-.043-.204-.045-.201-.046-.198-.048-.195-.05-.19-.051-.187-.053-.184-.054-.179-.056-.176-.057-.172-.059-.167-.06-.164-.061-.159-.063-.155-.064-.151-.066-.074-.033-.072-.033-.072-.034-.07-.034-.069-.035-.068-.035-.067-.035-.066-.035-.064-.036-.063-.036-.062-.036-.061-.036-.06-.037-.058-.037-.057-.037-.056-.038-.055-.038-.053-.038-.052-.038-.051-.039-.049-.039-.049-.039-.046-.039-.046-.04-.044-.04-.043-.04-.041-.04-.04-.041-.039-.041-.037-.041-.036-.041-.034-.041-.033-.042-.032-.042-.03-.042-.029-.042-.027-.042-.026-.043-.024-.043-.023-.043-.021-.043-.02-.043-.018-.044-.017-.043-.015-.044-.013-.044-.012-.044-.011-.045-.009-.044-.007-.045-.006-.045-.004-.045-.002-.045-.001-.045v-17l.001-.045.002-.045.004-.045.006-.045.007-.045.009-.044.011-.045.012-.044.013-.044.015-.044.017-.043.018-.044.02-.043.021-.043.023-.043.024-.043.026-.043.027-.042.029-.042.03-.042.032-.042.033-.042.034-.041.036-.041.037-.041.039-.041.04-.041.041-.04.043-.04.044-.04.046-.04.046-.039.049-.039.049-.039.051-.039.052-.038.053-.038.055-.038.056-.038.057-.037.058-.037.06-.037.061-.036.062-.036.063-.036.064-.036.066-.035.067-.035.068-.035.069-.035.07-.034.072-.034.072-.033.074-.033.151-.066.155-.064.159-.063.164-.061.167-.06.172-.059.176-.057.179-.056.184-.054.187-.053.19-.051.195-.05.198-.048.201-.046.204-.045.208-.043.211-.041.214-.04.217-.038.22-.036.223-.034.226-.032.228-.031.231-.028.234-.027.236-.024.238-.023.241-.02.243-.019.245-.016.247-.015.249-.012.251-.01.253-.008.255-.005.256-.004.258-.001.258.001z\"/></symbol></defs>");
     svg.push_str("<defs><symbol id=\"clock\" width=\"24\" height=\"24\"><path transform=\"scale(.5)\" d=\"M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0-2c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm5.848 12.459c.202.038.202.333.001.372-1.907.361-6.045 1.111-6.547 1.111-.719 0-1.301-.582-1.301-1.301 0-.512.77-5.447 1.125-7.445.034-.192.312-.181.343.014l.985 6.238 5.394 1.011z\"/></symbol></defs>");
@@ -5926,8 +5989,8 @@ fn render_c4(c4: &C4Layout, config: &LayoutConfig) -> String {
     svg.push_str("<defs><marker id=\"filled-head\" refX=\"18\" refY=\"7\" markerWidth=\"20\" markerHeight=\"28\" orient=\"auto\"><path d=\"M 18,7 L9,13 L14,7 L9,1 Z\"/></marker></defs>");
 
     svg.push_str("<g>");
-    for (idx, rel) in c4.rels.iter().enumerate() {
-        svg.push_str(&render_c4_rel(rel, conf, idx == 0));
+    for (index, rel) in c4.rels.iter().enumerate() {
+        svg.push_str(&render_c4_rel(rel, conf, index == 0));
     }
     svg.push_str("</g>");
 
@@ -5935,166 +5998,15 @@ fn render_c4(c4: &C4Layout, config: &LayoutConfig) -> String {
 }
 
 fn render_c4_shape(shape: &C4ShapeLayout, conf: &crate::config::C4Config) -> String {
-    let (default_fill, default_stroke) = c4_shape_colors(conf, shape.kind);
-    let fill = shape.bg_color.as_deref().unwrap_or(default_fill);
-    let stroke = shape.border_color.as_deref().unwrap_or(default_stroke);
-    let font_color = shape.font_color.as_deref().unwrap_or("#FFFFFF");
-    let fill = escape_xml(fill);
-    let stroke = escape_xml(stroke);
-    let font_color = escape_xml(font_color);
-    let mut svg = String::new();
-    svg.push_str("<g class=\"person-man\">");
-    match shape.kind {
-        crate::ir::C4ShapeKind::SystemDb
-        | crate::ir::C4ShapeKind::ExternalSystemDb
-        | crate::ir::C4ShapeKind::ContainerDb
-        | crate::ir::C4ShapeKind::ExternalContainerDb
-        | crate::ir::C4ShapeKind::ComponentDb
-        | crate::ir::C4ShapeKind::ExternalComponentDb => {
-            let half = shape.width / 2.0;
-            let ellipse = conf.db_ellipse_height;
-            svg.push_str(&format!(
-                "<path fill=\"{}\" stroke-width=\"{}\" stroke=\"{}\" d=\"M{:.0},{:.0}c0,-{ellipse} {half:.0},-{ellipse} {half:.0},-{ellipse}c0,0 {half:.0},0 {half:.0},{ellipse}l0,{:.0}c0,{ellipse} -{half:.0},{ellipse} -{half:.0},{ellipse}c0,0 -{half:.0},0 -{half:.0},-{ellipse}l0,-{:.0}\"/>",
-                fill,
-                conf.shape_stroke_width,
-                stroke,
-                shape.x,
-                shape.y,
-                shape.height,
-                shape.height
-            ));
-            svg.push_str(&format!(
-                "<path fill=\"none\" stroke-width=\"{}\" stroke=\"{}\" d=\"M{:.0},{:.0}c0,{ellipse} {half:.0},{ellipse} {half:.0},{ellipse}c0,0 {half:.0},0 {half:.0},-{ellipse}\"/>",
-                conf.shape_stroke_width,
-                stroke,
-                shape.x,
-                shape.y,
-            ));
-        }
-        crate::ir::C4ShapeKind::SystemQueue
-        | crate::ir::C4ShapeKind::ExternalSystemQueue
-        | crate::ir::C4ShapeKind::ContainerQueue
-        | crate::ir::C4ShapeKind::ExternalContainerQueue
-        | crate::ir::C4ShapeKind::ComponentQueue
-        | crate::ir::C4ShapeKind::ExternalComponentQueue => {
-            let half = shape.height / 2.0;
-            let curve = conf.queue_curve_radius;
-            svg.push_str(&format!(
-                "<path fill=\"{}\" stroke-width=\"{}\" stroke=\"{}\" d=\"M{:.0},{:.0}l{:.0},0c{curve},0 {curve},{half} {curve},{half}c0,0 0,{half} -{curve},{half}l-{:.0},0c-{curve},0 -{curve},-{half} -{curve},-{half}c0,0 0,-{half} {curve},-{half}\"/>",
-                fill,
-                conf.shape_stroke_width,
-                stroke,
-                shape.x,
-                shape.y,
-                shape.width,
-                shape.width
-            ));
-            svg.push_str(&format!(
-                "<path fill=\"none\" stroke-width=\"{}\" stroke=\"{}\" d=\"M{:.0},{:.0}c-{curve},0 -{curve},{half} -{curve},{half}c0,{half} {curve},{half} {curve},{half}\"/>",
-                conf.shape_stroke_width,
-                stroke,
-                shape.x + shape.width,
-                shape.y,
-            ));
-        }
-        _ => {
-            svg.push_str(&format!(
-                "<rect x=\"{:.0}\" y=\"{:.0}\" fill=\"{}\" stroke=\"{}\" width=\"{:.0}\" height=\"{:.0}\" rx=\"{:.1}\" ry=\"{:.1}\" stroke-width=\"{}\"/>",
-                shape.x,
-                shape.y,
-                fill,
-                stroke,
-                shape.width,
-                shape.height,
-                conf.shape_corner_radius,
-                conf.shape_corner_radius,
-                conf.shape_stroke_width
-            ));
-        }
-    }
-
-    let type_font_size = c4_shape_font_size(conf, shape.kind) - 2.0;
-    let type_font_family = c4_shape_font_family(conf, shape.kind);
-    svg.push_str(&format!(
-        "<text fill=\"{}\" font-family=\"{}\" font-size=\"{}\" font-style=\"italic\" lengthAdjust=\"spacing\" textLength=\"{:.0}\" x=\"{:.0}\" y=\"{:.0}\">{}</text>",
-        font_color,
-        normalize_font_family(type_font_family),
-        type_font_size,
-        shape.type_label.width.round(),
-        shape.x + shape.width / 2.0 - shape.type_label.width / 2.0,
-        shape.y + shape.type_label.y,
-        escape_xml(&shape.type_label.text)
-    ));
-
-    if let Some(image_y) = shape.image_y
-        && matches!(
-            shape.kind,
-            crate::ir::C4ShapeKind::Person | crate::ir::C4ShapeKind::ExternalPerson
-        )
-    {
-        let icon = match shape.kind {
-            crate::ir::C4ShapeKind::ExternalPerson => C4_EXTERNAL_PERSON_ICON,
-            crate::ir::C4ShapeKind::Person => C4_PERSON_ICON,
-            _ => C4_PERSON_ICON,
-        };
-        svg.push_str(&format!(
-            "<image width=\"{:.0}\" height=\"{:.0}\" x=\"{:.0}\" y=\"{:.0}\" xlink:href=\"{}\"/>",
-            conf.person_icon_size,
-            conf.person_icon_size,
-            shape.x + shape.width / 2.0 - conf.person_icon_size / 2.0,
-            shape.y + image_y,
-            icon
-        ));
-    }
-
-    let label_font_size = c4_shape_font_size(conf, shape.kind) + 2.0;
-    let label_font_family = c4_shape_font_family(conf, shape.kind);
-    let label_font_weight = "bold";
-    svg.push_str(&c4_text_svg(
-        shape.x + shape.width / 2.0,
-        shape.y + shape.label.y,
-        &shape.label.lines,
-        label_font_family,
-        label_font_size,
-        label_font_weight,
-        &font_color,
-        false,
-    ));
-
-    if let Some(type_or_techn) = &shape.type_or_techn {
-        let font_family = c4_shape_font_family(conf, shape.kind);
-        let font_weight = c4_shape_font_weight(conf, shape.kind);
-        let font_size = c4_shape_font_size(conf, shape.kind);
-        svg.push_str(&c4_text_svg(
-            shape.x + shape.width / 2.0,
-            shape.y + type_or_techn.y,
-            &type_or_techn.lines,
-            font_family,
-            font_size,
-            font_weight,
-            &font_color,
-            true,
-        ));
-    }
-
-    if let Some(descr) = &shape.descr {
-        let font_family = c4_shape_font_family(conf, shape.kind);
-        let font_weight = c4_shape_font_weight(conf, shape.kind);
-        let font_size = c4_shape_font_size(conf, shape.kind);
-        svg.push_str(&c4_text_svg(
-            shape.x + shape.width / 2.0,
-            shape.y + descr.y,
-            &descr.lines,
-            font_family,
-            font_size,
-            font_weight,
-            &font_color,
-            false,
-        ));
-    }
-
-    svg.push_str("</g>");
-    svg
+    let (fill, stroke) = c4_shape_colors(conf, shape.kind);
+    c4_modern::shape(
+        shape,
+        conf,
+        fill,
+        stroke,
+        c4_shape_font_size(conf, shape.kind),
+        c4_shape_font_family(conf, shape.kind),
+    )
 }
 
 fn render_c4_boundary(boundary: &C4BoundaryLayout, conf: &crate::config::C4Config) -> String {
@@ -6142,7 +6054,7 @@ fn render_c4_boundary(boundary: &C4BoundaryLayout, conf: &crate::config::C4Confi
     let label_font_size = conf.boundary_font_size + 2.0;
     svg.push_str(&c4_text_svg(
         boundary.x + boundary.width / 2.0,
-        boundary.y + boundary.label.y,
+        boundary.y + conf.c4_shape_margin - 35.0,
         &boundary.label.lines,
         &conf.boundary_font_family,
         label_font_size,
@@ -6233,7 +6145,7 @@ fn render_c4_rel(rel: &C4RelLayout, conf: &crate::config::C4Config, straight: bo
     let mid_x = rel.start.0.min(rel.end.0) + (rel.start.0 - rel.end.0).abs() / 2.0 + rel.offset_x;
     let mid_y = rel.start.1.min(rel.end.1) + (rel.start.1 - rel.end.1).abs() / 2.0 + rel.offset_y;
     svg.push_str(&c4_text_svg(
-        mid_x,
+        mid_x + rel.label.width / 2.0,
         mid_y,
         &rel.label.lines,
         &conf.message_font_family,
@@ -6244,9 +6156,13 @@ fn render_c4_rel(rel: &C4RelLayout, conf: &crate::config::C4Config, straight: bo
     ));
     if let Some(techn) = &rel.techn {
         svg.push_str(&c4_text_svg(
-            mid_x,
+            mid_x + rel.label.width.max(techn.width) / 2.0,
             mid_y + conf.message_font_size + 5.0,
-            &techn.lines,
+            &techn
+                .lines
+                .iter()
+                .map(|line| format!("[{line}]"))
+                .collect::<Vec<_>>(),
             &conf.message_font_family,
             conf.message_font_size,
             &conf.message_font_weight,
@@ -6408,35 +6324,6 @@ fn c4_shape_font_size(conf: &crate::config::C4Config, kind: crate::ir::C4ShapeKi
         crate::ir::C4ShapeKind::ExternalComponent => conf.external_component_font_size,
         crate::ir::C4ShapeKind::ExternalComponentDb => conf.external_component_db_font_size,
         crate::ir::C4ShapeKind::ExternalComponentQueue => conf.external_component_queue_font_size,
-    }
-}
-
-fn c4_shape_font_weight(conf: &crate::config::C4Config, kind: crate::ir::C4ShapeKind) -> &str {
-    match kind {
-        crate::ir::C4ShapeKind::Person => &conf.person_font_weight,
-        crate::ir::C4ShapeKind::ExternalPerson => &conf.external_person_font_weight,
-        crate::ir::C4ShapeKind::System => &conf.system_font_weight,
-        crate::ir::C4ShapeKind::SystemDb => &conf.system_db_font_weight,
-        crate::ir::C4ShapeKind::SystemQueue => &conf.system_queue_font_weight,
-        crate::ir::C4ShapeKind::ExternalSystem => &conf.external_system_font_weight,
-        crate::ir::C4ShapeKind::ExternalSystemDb => &conf.external_system_db_font_weight,
-        crate::ir::C4ShapeKind::ExternalSystemQueue => &conf.external_system_queue_font_weight,
-        crate::ir::C4ShapeKind::Container => &conf.container_font_weight,
-        crate::ir::C4ShapeKind::ContainerDb => &conf.container_db_font_weight,
-        crate::ir::C4ShapeKind::ContainerQueue => &conf.container_queue_font_weight,
-        crate::ir::C4ShapeKind::ExternalContainer => &conf.external_container_font_weight,
-        crate::ir::C4ShapeKind::ExternalContainerDb => &conf.external_container_db_font_weight,
-        crate::ir::C4ShapeKind::ExternalContainerQueue => {
-            &conf.external_container_queue_font_weight
-        }
-        crate::ir::C4ShapeKind::Component => &conf.component_font_weight,
-        crate::ir::C4ShapeKind::ComponentDb => &conf.component_db_font_weight,
-        crate::ir::C4ShapeKind::ComponentQueue => &conf.component_queue_font_weight,
-        crate::ir::C4ShapeKind::ExternalComponent => &conf.external_component_font_weight,
-        crate::ir::C4ShapeKind::ExternalComponentDb => &conf.external_component_db_font_weight,
-        crate::ir::C4ShapeKind::ExternalComponentQueue => {
-            &conf.external_component_queue_font_weight
-        }
     }
 }
 

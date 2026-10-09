@@ -255,7 +255,13 @@ fn extract_yaml_frontmatter(input: &str) -> (Option<serde_json::Value>, &str) {
             // like an %%{init: ...}%% value (which has `theme`, `themeVariables`,
             // diagram-specific keys at the top level).
             let config_val = if let Some(inner) = yaml_val.get("config") {
-                inner.clone()
+                let mut config = inner.clone();
+                if let Some(title) = yaml_val.get("title") {
+                    if let Some(values) = config.as_object_mut() {
+                        values.insert("title".into(), title.clone());
+                    }
+                }
+                config
             } else {
                 yaml_val
             };
@@ -1030,8 +1036,19 @@ fn parse_class_declaration(
         return Some((label.clone(), Some(label), body, open_body, classes));
     }
 
-    let id = strip_quotes(rest);
-    Some((id, None, body, open_body, classes))
+    let (header, annotation) = if let Some(start) = rest.find("<<") {
+        (rest[..start].trim(), Some(rest[start..].trim().to_string()))
+    } else {
+        (rest, None)
+    };
+    let (id, label) = normalize_class_id(header);
+    if let Some(annotation) = annotation {
+        body = Some(match body {
+            Some(body) => format!("{annotation}\n{body}"),
+            None => annotation,
+        });
+    }
+    Some((id, label, body, open_body, classes))
 }
 
 fn find_class_body_start(input: &str) -> Option<usize> {
@@ -1176,7 +1193,14 @@ fn normalize_class_id(token: &str) -> (String, Option<String>) {
         let label = strip_quotes(trimmed);
         return (label.clone(), Some(label));
     }
-    (strip_quotes(trimmed), None)
+    let name = strip_quotes(trimmed);
+    if let Some(index) = name.find('~') {
+        return (
+            name[..index].to_string(),
+            Some(convert_tilde_generics(&name)),
+        );
+    }
+    (name, None)
 }
 
 fn parse_state_alias_line(line: &str) -> Option<(String, String, Vec<String>)> {
@@ -2082,6 +2106,25 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
 
+        if let Some(title) = line.strip_prefix("title ") {
+            graph.appearance_config["title"] = serde_json::json!(title.trim());
+            continue;
+        }
+        if let Some(annotation) = line.strip_prefix("<<") {
+            if let Some((name, target)) = annotation.split_once(">>") {
+                let (id, label) = normalize_class_id(target.trim());
+                if let Some(label) = label {
+                    labels.insert(id.clone(), label);
+                }
+                graph.ensure_node(
+                    &id,
+                    labels.get(&id).cloned(),
+                    Some(crate::ir::NodeShape::Rectangle),
+                );
+                members.entry(id).or_default().push(format!("<<{name}>>"));
+                continue;
+            }
+        }
         if let Some((target, note_text, markdown_label)) = parse_class_note_line(line) {
             let note_id = format!("note{note_index}");
             graph.ensure_node_md(
@@ -2258,6 +2301,15 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
         }
 
         if let Some((id, member)) = parse_class_member_line(line) {
+            let (id, label) = normalize_class_id(&id);
+            if let Some(label) = label {
+                labels.entry(id.clone()).or_insert(label);
+            }
+            graph.ensure_node(
+                &id,
+                labels.get(&id).cloned(),
+                Some(crate::ir::NodeShape::Rectangle),
+            );
             members.entry(id).or_default().push(member);
             continue;
         }
@@ -2288,7 +2340,10 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
             }
         }
         if let Some(ref ann) = annotation {
-            lines.push(ann.clone());
+            lines.push(format!(
+                "«{}»",
+                ann.trim_start_matches("<<").trim_end_matches(">>")
+            ));
         }
         lines.push(class_name.clone());
         let mut attrs = Vec::new();
@@ -2319,30 +2374,66 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
         node.label = lines.join("\n");
     }
 
+    let mut ordered: Vec<_> = graph.nodes.keys().cloned().collect();
+    ordered.sort_by_key(|id| {
+        (
+            match graph.nodes[id].shape {
+                crate::ir::NodeShape::Note => 1,
+                crate::ir::NodeShape::Text => 2,
+                _ => 0,
+            },
+            graph.node_order.get(id).copied().unwrap_or(usize::MAX),
+        )
+    });
+    graph.node_order = ordered
+        .into_iter()
+        .enumerate()
+        .map(|(i, id)| (id, i))
+        .collect();
+    graph.edges.sort_by_key(|edge| {
+        !edge
+            .id
+            .as_deref()
+            .is_some_and(|id| id.starts_with("edgeNote"))
+    });
+
     Ok(ParseOutput { graph, init_config })
 }
 
 /// Convert Mermaid generic syntax `List~int~` to `List<int>`.
 fn convert_tilde_generics(input: &str) -> String {
-    if !input.contains('~') {
-        return input.to_string();
-    }
-    let mut result = String::with_capacity(input.len());
-    let mut in_generic = false;
-    for ch in input.chars() {
-        if ch == '~' {
-            if in_generic {
-                result.push('>');
-                in_generic = false;
+    fn convert(chars: &[char], pos: &mut usize, nested: bool) -> String {
+        let mut out = String::new();
+        while *pos < chars.len() {
+            let ch = chars[*pos];
+            if ch == '~' {
+                *pos += 1;
+                if nested {
+                    return out;
+                }
+                out.push('<');
+                out.push_str(&convert(chars, pos, true));
+                out.push('>');
             } else {
-                result.push('<');
-                in_generic = true;
+                out.push(ch);
+                *pos += 1;
+                // A generic starts after its type identifier; recursively
+                // consume it before the enclosing generic's closing tilde.
+                if nested
+                    && ch.is_alphanumeric()
+                    && chars.get(*pos) == Some(&'~')
+                    && chars.get(*pos + 1).is_some_and(|c| c.is_alphanumeric())
+                {
+                    *pos += 1;
+                    out.push('<');
+                    out.push_str(&convert(chars, pos, true));
+                    out.push('>');
+                }
             }
-        } else {
-            result.push(ch);
         }
+        out
     }
-    result
+    convert(&input.chars().collect::<Vec<_>>(), &mut 0, false)
 }
 
 fn is_er_card_char(ch: char) -> bool {
@@ -3497,6 +3588,7 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
     graph.kind = DiagramKind::Gantt;
     graph.direction = Direction::LeftRight;
     let (lines, init_config) = preprocess_input(input)?;
+    graph.appearance_config = init_config.clone().unwrap_or_else(|| serde_json::json!({}));
 
     let mut current_section: Option<usize> = None;
     let mut current_section_name: Option<String> = None;
@@ -3508,6 +3600,48 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
         let lower = line.to_ascii_lowercase();
+        if matches!(lower.as_str(), "topaxis" | "inclusiveenddates") {
+            if !graph
+                .appearance_config
+                .get("gantt")
+                .is_some_and(serde_json::Value::is_object)
+            {
+                graph.appearance_config["gantt"] = serde_json::json!({});
+            }
+            let key = if lower == "topaxis" {
+                "topAxis"
+            } else {
+                "inclusiveEndDates"
+            };
+            graph.appearance_config["gantt"][key] = serde_json::Value::Bool(true);
+            continue;
+        }
+        if let Some((key, value)) = line.split_once(char::is_whitespace) {
+            let directive = match key.to_ascii_lowercase().as_str() {
+                "dateformat" => Some("dateFormat"),
+                "axisformat" => Some("axisFormat"),
+                "tickinterval" => Some("tickInterval"),
+                "weekday" => Some("weekday"),
+                "weekend" => Some("weekend"),
+                "excludes" => Some("excludes"),
+                "includes" => Some("includes"),
+                "todaymarker" => Some("todayMarker"),
+                "displaymode" => Some("displayMode"),
+                _ => None,
+            };
+            if let Some(key) = directive {
+                if !graph
+                    .appearance_config
+                    .get("gantt")
+                    .is_some_and(serde_json::Value::is_object)
+                {
+                    graph.appearance_config["gantt"] = serde_json::json!({});
+                }
+                graph.appearance_config["gantt"][key] =
+                    serde_json::Value::String(value.trim().to_string());
+                continue;
+            }
+        }
         if lower.starts_with("gantt") {
             continue;
         }
@@ -3562,6 +3696,7 @@ fn parse_gantt_diagram(input: &str) -> Result<ParseOutput> {
             // Add to gantt_tasks
             let (start, duration) = extract_gantt_timing(&details);
             graph.gantt_tasks.push(crate::ir::GanttTask {
+                raw_meta: meta.trim().to_string(),
                 id: node_id.clone(),
                 label: label.to_string(),
                 start,
@@ -4269,6 +4404,12 @@ fn parse_c4_diagram(input: &str) -> Result<ParseOutput> {
         font_color: None,
     });
     let (lines, init_config) = preprocess_input(input)?;
+    graph.appearance_config = init_config.clone().unwrap_or_else(|| serde_json::json!({}));
+    graph.c4.title = graph
+        .appearance_config
+        .get("title")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
     let mut boundary_stack: Vec<String> = vec!["global".to_string()];
 
     for raw_line in lines {
@@ -4277,6 +4418,10 @@ fn parse_c4_diagram(input: &str) -> Result<ParseOutput> {
             continue;
         }
         let lower = line.to_ascii_lowercase();
+        if let Some(title) = line.strip_prefix("title ") {
+            graph.c4.title = Some(title.trim().to_string());
+            continue;
+        }
         if lower.starts_with("c4") {
             graph.c4.c4_type = Some(line.trim().to_string());
             continue;
@@ -4540,22 +4685,22 @@ fn process_c4_line(line: &str, c4: &mut crate::ir::C4Data, boundary_stack: &mut 
                     link = positional.get(6).cloned();
                 }
             } else {
-                if type_label.is_none() {
-                    type_label = positional.get(2).cloned();
-                }
+                // Person/System signatures use (alias, label, description,
+                // sprite, tags, link), unlike Container/Component signatures.
                 if descr.is_none() {
-                    descr = positional.get(3).cloned();
+                    descr = positional.get(2).cloned();
                 }
                 if sprite.is_none() {
-                    sprite = positional.get(4).cloned();
+                    sprite = positional.get(3).cloned();
                 }
                 if tags.is_none() {
-                    tags = positional.get(5).cloned();
+                    tags = positional.get(4).cloned();
                 }
                 if link.is_none() {
-                    link = positional.get(6).cloned();
+                    link = positional.get(5).cloned();
                 }
             }
+
             let parent_boundary = boundary_stack.last().cloned().unwrap_or_default();
             c4.shapes.push(crate::ir::C4Shape {
                 id,
@@ -4639,7 +4784,7 @@ fn parse_c4_args(args: &[String]) -> (Vec<String>, std::collections::HashMap<Str
             let key = key.trim().trim_start_matches('$');
             let value = value.trim();
             if !key.is_empty() {
-                kv.insert(key.to_string(), value.to_string());
+                kv.insert(key.to_string(), strip_quotes(value));
                 continue;
             }
         }
@@ -4678,15 +4823,15 @@ fn is_c4_boundary(func_lower: &str) -> bool {
 
 fn c4_boundary_default_type(func_lower: &str) -> String {
     if func_lower.contains("enterprise") {
-        "enterprise".to_string()
+        "ENTERPRISE".to_string()
     } else if func_lower.contains("container") {
-        "container".to_string()
+        "CONTAINER".to_string()
     } else if func_lower.contains("system") {
-        "system".to_string()
+        "SYSTEM".to_string()
     } else if func_lower.contains("node") {
-        "node".to_string()
+        "NODE".to_string()
     } else {
-        "system".to_string()
+        "SYSTEM".to_string()
     }
 }
 
@@ -6730,10 +6875,12 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
     graph.kind = DiagramKind::Sequence;
     graph.direction = Direction::LeftRight;
     let (lines, init_config) = preprocess_input(input)?;
+    graph.appearance_config = init_config.clone().unwrap_or_else(|| serde_json::json!({}));
+    use crate::ir::SequenceEvent;
 
     let mut labels: HashMap<String, String> = HashMap::new();
     let mut order: Vec<String> = Vec::new();
-    let mut open_frames: Vec<crate::ir::SequenceFrame> = Vec::new();
+    let mut open_frames: Vec<usize> = Vec::new();
     let mut frames: Vec<crate::ir::SequenceFrame> = Vec::new();
     let mut open_boxes: Vec<crate::ir::SequenceBox> = Vec::new();
 
@@ -6855,7 +7002,12 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 Some(strip_quotes(label))
             };
             let start_idx = graph.edges.len();
-            open_frames.push(crate::ir::SequenceFrame {
+            let frame_id = frames.len();
+            graph
+                .sequence_events
+                .push(SequenceEvent::FrameStart(frame_id));
+            open_frames.push(frame_id);
+            frames.push(crate::ir::SequenceFrame {
                 kind,
                 sections: vec![crate::ir::SequenceFrameSection {
                     label,
@@ -6869,7 +7021,8 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
         }
 
         if lower == "else" || lower.starts_with("else ") {
-            if let Some(frame) = open_frames.last_mut() {
+            if let Some(&frame_id) = open_frames.last() {
+                let frame = &mut frames[frame_id];
                 let split_idx = graph.edges.len();
                 if let Some(last) = frame.sections.last_mut() {
                     last.end_idx = split_idx;
@@ -6880,6 +7033,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 } else {
                     Some(strip_quotes(label))
                 };
+                graph
+                    .sequence_events
+                    .push(SequenceEvent::FrameSection(frame_id, frame.sections.len()));
                 frame.sections.push(crate::ir::SequenceFrameSection {
                     label,
                     start_idx: split_idx,
@@ -6890,9 +7046,10 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
         }
 
         if lower == "and" || lower.starts_with("and ") {
-            if let Some(frame) = open_frames.last_mut()
-                && frame.kind == crate::ir::SequenceFrameKind::Par
+            if let Some(&frame_id) = open_frames.last()
+                && frames[frame_id].kind == crate::ir::SequenceFrameKind::Par
             {
+                let frame = &mut frames[frame_id];
                 let split_idx = graph.edges.len();
                 if let Some(last) = frame.sections.last_mut() {
                     last.end_idx = split_idx;
@@ -6903,6 +7060,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 } else {
                     Some(strip_quotes(label))
                 };
+                graph
+                    .sequence_events
+                    .push(SequenceEvent::FrameSection(frame_id, frame.sections.len()));
                 frame.sections.push(crate::ir::SequenceFrameSection {
                     label,
                     start_idx: split_idx,
@@ -6913,9 +7073,10 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
         }
 
         if lower == "option" || lower.starts_with("option ") {
-            if let Some(frame) = open_frames.last_mut()
-                && frame.kind == crate::ir::SequenceFrameKind::Critical
+            if let Some(&frame_id) = open_frames.last()
+                && frames[frame_id].kind == crate::ir::SequenceFrameKind::Critical
             {
+                let frame = &mut frames[frame_id];
                 let split_idx = graph.edges.len();
                 if let Some(last) = frame.sections.last_mut() {
                     last.end_idx = split_idx;
@@ -6926,6 +7087,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 } else {
                     Some(strip_quotes(label))
                 };
+                graph
+                    .sequence_events
+                    .push(SequenceEvent::FrameSection(frame_id, frame.sections.len()));
                 frame.sections.push(crate::ir::SequenceFrameSection {
                     label,
                     start_idx: split_idx,
@@ -6936,13 +7100,16 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
         }
 
         if lower == "end" {
-            if let Some(mut frame) = open_frames.pop() {
+            if let Some(frame_id) = open_frames.pop() {
+                let frame = &mut frames[frame_id];
                 let end_idx = graph.edges.len();
                 if let Some(last) = frame.sections.last_mut() {
                     last.end_idx = end_idx;
                 }
                 frame.end_idx = end_idx;
-                frames.push(frame);
+                graph
+                    .sequence_events
+                    .push(SequenceEvent::FrameEnd(frame_id));
             } else if let Some(seq_box) = open_boxes.pop() {
                 graph.sequence_boxes.push(seq_box);
             }
@@ -6956,6 +7123,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                 }
                 ensure_sequence_node(&mut graph, &labels, id, None);
             }
+            graph
+                .sequence_events
+                .push(SequenceEvent::Note(graph.sequence_notes.len()));
             graph.sequence_notes.push(crate::ir::SequenceNote {
                 position,
                 participants,
@@ -6973,6 +7143,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                     order.push(id.clone());
                 }
                 ensure_sequence_node(&mut graph, &labels, &id, None);
+                graph
+                    .sequence_events
+                    .push(SequenceEvent::Activation(graph.sequence_activations.len()));
                 graph
                     .sequence_activations
                     .push(crate::ir::SequenceActivation {
@@ -6994,6 +7167,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                     order.push(id.clone());
                 }
                 ensure_sequence_node(&mut graph, &labels, &id, None);
+                graph
+                    .sequence_events
+                    .push(SequenceEvent::Activation(graph.sequence_activations.len()));
                 graph
                     .sequence_activations
                     .push(crate::ir::SequenceActivation {
@@ -7045,6 +7221,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
             ensure_sequence_node(&mut graph, &labels, &to, None);
             let has_arrow = arrow_head != crate::ir::SequenceArrowHead::None;
             let has_start_arrow = start_arrow.is_some();
+            graph
+                .sequence_events
+                .push(SequenceEvent::Message(graph.edges.len()));
             graph.edges.push(crate::ir::Edge {
                 from,
                 to,
@@ -7081,6 +7260,9 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
                     crate::ir::SequenceActivationKind::Deactivate => graph.edges[last].from.clone(),
                 };
                 graph
+                    .sequence_events
+                    .push(SequenceEvent::Activation(graph.sequence_activations.len()));
+                graph
                     .sequence_activations
                     .push(crate::ir::SequenceActivation {
                         participant,
@@ -7091,13 +7273,16 @@ fn parse_sequence_diagram(input: &str) -> Result<ParseOutput> {
         }
     }
 
-    while let Some(mut frame) = open_frames.pop() {
+    while let Some(frame_id) = open_frames.pop() {
+        let frame = &mut frames[frame_id];
         let end_idx = graph.edges.len();
         if let Some(last) = frame.sections.last_mut() {
             last.end_idx = end_idx;
         }
         frame.end_idx = end_idx;
-        frames.push(frame);
+        graph
+            .sequence_events
+            .push(SequenceEvent::FrameEnd(frame_id));
     }
     while let Some(seq_box) = open_boxes.pop() {
         graph.sequence_boxes.push(seq_box);
@@ -8039,11 +8224,19 @@ fn parse_at_shape_syntax(token: &str) -> Option<AtNodeMeta> {
     }
     let shape = if img.is_some() {
         crate::ir::NodeShape::Image
+    } else if icon.is_some() || shape_name.as_deref() == Some("icon") {
+        let form = match metadata.get("form").and_then(serde_json::Value::as_str) {
+            Some("circle") => crate::ir::IconForm::Circle,
+            Some("square") => crate::ir::IconForm::Square,
+            Some("rounded") => crate::ir::IconForm::Rounded,
+            _ => crate::ir::IconForm::Plain,
+        };
+        crate::ir::NodeShape::Icon(form)
     } else {
         resolve_shape_name(shape_name.as_deref()?)?
     };
     let label = label.unwrap_or_else(|| {
-        if img.is_some() {
+        if img.is_some() || icon.is_some() {
             String::new()
         } else {
             id.clone()
@@ -8098,6 +8291,7 @@ fn resolve_shape_name(name: &str) -> Option<crate::ir::NodeShape> {
         "curv-trap" | "curved-trapezoid" => Some(NodeShape::CurvedTrapezoid),
         "text" => Some(NodeShape::Text),
         "cloud" => Some(NodeShape::Cloud),
+        "bang" => Some(NodeShape::MindmapBang),
         "tri" | "triangle" | "extract" => Some(NodeShape::Triangle),
         "flip-tri" | "flipped-triangle" | "manual-file" => Some(NodeShape::FlippedTriangle),
         "sm-circ" | "small-circle" | "start" => Some(NodeShape::SmallCircle),

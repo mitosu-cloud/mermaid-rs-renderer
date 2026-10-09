@@ -11,6 +11,8 @@ static TEXT_MEASURER: Lazy<Mutex<TextMeasurer>> = Lazy::new(|| Mutex::new(TextMe
 
 /// The Redux themes ship Recursive; use the same face for geometry and PNGs.
 pub(crate) fn load_bundled_fonts(db: &mut Database) {
+    db.load_font_data(include_bytes!("fonts/OpenSans-400-normal.ttf").to_vec());
+    db.load_font_data(include_bytes!("fonts/OpenSans-400-italic.ttf").to_vec());
     db.load_font_data(include_bytes!("fonts/Recursive-Regular.ttf").to_vec());
     db.load_font_data(include_bytes!("fonts/Recursive-Bold.ttf").to_vec());
     // Chromium synthesizes a 0.25 shear for the normal-only Recursive webfont.
@@ -281,6 +283,7 @@ impl TextMeasurer {
     fn load_face(&mut self, font_family: &str, bold: bool, italic: bool) -> Option<FontFace> {
         let family_key = styled_family_key(font_family, bold, italic);
         if !font_family.contains("Recursive")
+            && !font_family.contains("Open Sans")
             && let Some(face) = load_cached_face(&family_key)
         {
             return Some(face);
