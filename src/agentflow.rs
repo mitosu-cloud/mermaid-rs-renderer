@@ -31,6 +31,7 @@ pub(crate) fn theme(config: &Value, theme: &Theme) -> Theme {
         result.primary_text_color = color("primaryTextColor", "#28253D");
         result.text_color = result.primary_text_color.clone();
         result.line_color = color("lineColor", "#000000");
+        result.edge_label_background = color("edgeLabelBackground", "#cccccc");
     }
     if let Some(variables) = config.get("themeVariables") {
         if let Some(family) = variables.get("fontFamily").and_then(Value::as_str) {
@@ -143,6 +144,23 @@ pub(crate) fn node_size(
         crate::ir::NodeShape::CollapsedGroup => {
             Some(((label.width + 16.0).max(80.0), label.height + 44.0))
         }
+        crate::ir::NodeShape::Subroutine => Some((
+            label.width + if neo(config) { 44.0 } else { 31.0 },
+            label.height + if neo(config) { 12.0 } else { 15.0 },
+        )),
+        crate::ir::NodeShape::Parallelogram | crate::ir::NodeShape::ParallelogramAlt => {
+            let h = label.height + 15.0;
+            Some((label.width + if neo(config) { 30.0 } else { 15.0 } + h, h))
+        }
+        crate::ir::NodeShape::ReferenceDocument => {
+            let w = label.width + if neo(config) { 32.0 } else { 30.0 };
+            let h = label.height + if neo(config) { 24.0 } else { 30.0 };
+            let amplitude = h / if neo(config) { 4.0 } else { 8.0 };
+            let max_wave = (0..=50)
+                .map(|i| amplitude * (std::f32::consts::TAU * 0.8 * i as f32 / 50.0).sin())
+                .fold(0.0, f32::max);
+            Some((w * 1.1, h + amplitude + max_wave))
+        }
         crate::ir::NodeShape::Hexagon => {
             let height = label.height + if neo(config) { 70.0 } else { 15.0 };
             let inset = height / if neo(config) { 3.5 } else { 4.0 };
@@ -166,6 +184,9 @@ pub(crate) fn container_style(graph: &crate::ir::Graph, id: &str) -> crate::ir::
         .and_then(Value::as_str)
         .unwrap_or("redux-color");
     if name != "redux-color" {
+        if name == "default" {
+            style.fill = Some("#ffffff".to_string());
+        }
         return style;
     }
     let index = graph

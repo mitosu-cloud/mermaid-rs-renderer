@@ -142,6 +142,9 @@ pub(super) fn parse(input: &str) -> Result<ParseOutput> {
     for (id, index) in container_order {
         merge_metadata(graph, &id, serde_json::json!({"_containerIndex": index}));
     }
+    for (id, parent) in &parents {
+        merge_metadata(graph, id, serde_json::json!({"_parent": parent}));
+    }
     for node in graph.nodes.values_mut() {
         if !containers.contains(&node.id) {
             node.shape = NodeShape::RoundRect;

@@ -620,6 +620,14 @@ pub(super) fn shape_polygon_points(node: &NodeLayout) -> Option<Vec<(f32, f32)>>
     let w = node.width;
     let h = node.height;
     match node.shape {
+        crate::ir::NodeShape::LightningBolt => Some(vec![
+            (x + w, y),
+            (x, y + h / 2.0 + 3.5),
+            (x + w - 14.0, y + h / 2.0 + 3.5),
+            (x, y + h),
+            (x + w, y + h / 2.0 - 3.5),
+            (x + 14.0, y + h / 2.0 - 3.5),
+        ]),
         crate::ir::NodeShape::Rectangle
         | crate::ir::NodeShape::RoundRect
         | crate::ir::NodeShape::ActorBox
@@ -819,6 +827,10 @@ pub(super) fn anchor_point_for_node(node: &NodeLayout, side: EdgeSide, offset: f
     match node.shape {
         crate::ir::NodeShape::Circle
         | crate::ir::NodeShape::DoubleCircle
+        | crate::ir::NodeShape::SmallCircle
+        | crate::ir::NodeShape::FilledCircle
+        | crate::ir::NodeShape::FramedCircle
+        | crate::ir::NodeShape::CrossedCircle
         | crate::ir::NodeShape::Ellipse => {
             let rx = node.width / 2.0;
             let ry = node.height / 2.0;
@@ -843,6 +855,23 @@ pub(super) fn anchor_point_for_node(node: &NodeLayout, side: EdgeSide, offset: f
         EdgeSide::Bottom => (cx, node.y + node.height),
     };
     apply_port_offset(base, side, clamp)
+}
+
+pub(super) fn anchor_point_for_outline(
+    node: &NodeLayout,
+    side: EdgeSide,
+    offset: f32,
+    outline: &[(f32, f32)],
+) -> (f32, f32) {
+    let (cx, cy) = (node.x + node.width / 2.0, node.y + node.height / 2.0);
+    let (origin, direction) = match side {
+        EdgeSide::Left => ((cx, cy + offset), (-1.0, 0.0)),
+        EdgeSide::Right => ((cx, cy + offset), (1.0, 0.0)),
+        EdgeSide::Top => ((cx + offset, cy), (0.0, -1.0)),
+        EdgeSide::Bottom => ((cx + offset, cy), (0.0, 1.0)),
+    };
+    ray_polygon_intersection(origin, direction, outline)
+        .unwrap_or_else(|| anchor_point_for_node(node, side, offset))
 }
 
 pub(super) fn routing_cell_size(config: &LayoutConfig) -> f32 {

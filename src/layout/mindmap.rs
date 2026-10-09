@@ -715,6 +715,7 @@ pub(super) fn compute_mindmap_layout(
         diagram: DiagramData::Graph {
             usecase: None,
             agentflow: None,
+            appearance: None,
             state_notes: Vec::new(),
         },
     }

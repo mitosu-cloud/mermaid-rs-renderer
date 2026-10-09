@@ -1,6 +1,50 @@
 //! Shared ER table measurements: layout and drawing must use identical cells.
 use crate::{layout::TextLine, text_metrics, theme::Theme};
 
+pub(crate) fn node_style(graph: &crate::ir::Graph, id: &str) -> crate::ir::NodeStyle {
+    let mut style = crate::ir::NodeStyle::default();
+    if graph
+        .appearance_config
+        .get("theme")
+        .and_then(|v| v.as_str())
+        .unwrap_or("redux-color")
+        != "redux-color"
+    {
+        return style;
+    }
+    let slot = graph.node_order.get(id).copied().unwrap_or(0);
+    let palette = |key: &str, defaults: &[&str]| {
+        if let Some(values) = graph
+            .appearance_config
+            .get("themeVariables")
+            .and_then(|v| v.get(key))
+            .and_then(|v| v.as_array())
+        {
+            if values.is_empty() {
+                return None;
+            }
+            return values[slot % values.len()].as_str().map(str::to_string);
+        }
+        Some(defaults[slot % defaults.len()].to_string())
+    };
+    style.stroke = palette("borderColorArray", &crate::usecase::BORDERS);
+    if style.stroke.is_some() {
+        style.fill = palette("bkgColorArray", &crate::usecase::BACKGROUNDS);
+        style.er_odd_row_fill = style.fill.clone();
+    }
+    style.stroke_width = Some(2.0);
+    style.text_color = Some(
+        graph
+            .appearance_config
+            .get("themeVariables")
+            .and_then(|v| v.get("primaryTextColor"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("#28253D")
+            .to_string(),
+    );
+    style
+}
+
 pub(crate) struct Table {
     pub title: String,
     pub rows: Vec<[String; 4]>,

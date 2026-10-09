@@ -343,7 +343,7 @@ fn preprocess_indented_input(
         if without_comment.trim().is_empty() {
             continue;
         }
-        if multiline_labels && let Some(closing) = unfinished_mindmap_label(&without_comment) {
+        if multiline_labels && let Some(closing) = unfinished_quoted_label(&without_comment) {
             pending = Some((without_comment, closing));
             continue;
         }
@@ -351,12 +351,12 @@ fn preprocess_indented_input(
     }
 
     if pending.is_some() {
-        anyhow::bail!("Unterminated quoted mindmap label");
+        anyhow::bail!("Unterminated quoted label");
     }
     Ok((lines, init_config))
 }
 
-fn unfinished_mindmap_label(line: &str) -> Option<&'static str> {
+fn unfinished_quoted_label(line: &str) -> Option<&'static str> {
     let start = line.find(['[', '(', ')', '{'])?;
     let label = line[start..]
         .trim_start_matches(['[', '(', ')', '{'])
@@ -501,7 +501,10 @@ fn parse_flowchart_like(input: &str, kind: DiagramKind) -> Result<ParseOutput> {
     graph.kind = kind;
     let mut subgraph_stack: Vec<usize> = Vec::new();
 
-    let (lines, init_config) = preprocess_input(input)?;
+    // A quoted label can span source lines, including Markdown strings.
+    // Keep it as one statement before splitting semicolons or parsing nodes.
+    let (lines, init_config) = preprocess_indented_input(input, true)?;
+    graph.appearance_config = init_config.clone().unwrap_or_else(|| serde_json::json!({}));
 
     for raw_line in lines {
         for line in split_statements(&raw_line) {
@@ -533,6 +536,17 @@ fn parse_flowchart_like(input: &str, kind: DiagramKind) -> Result<ParseOutput> {
             if let Some(caps) = SUBGRAPH_RE.captures(&line) {
                 let rest = caps.get(1).map(|m| m.as_str()).unwrap_or("");
                 let (id, label, classes, md) = parse_subgraph_header(rest);
+                if let Some(id) = &id {
+                    let mut metadata =
+                        serde_json::json!({"_containerIndex": graph.subgraphs.len()});
+                    if let Some(parent) = subgraph_stack
+                        .last()
+                        .and_then(|idx| graph.subgraphs[*idx].id.as_ref())
+                    {
+                        metadata["_parent"] = serde_json::json!(parent);
+                    }
+                    graph.element_metadata.insert(id.clone(), metadata);
+                }
                 graph.subgraphs.push(Subgraph {
                     id: id.clone(),
                     label,
@@ -598,9 +612,6 @@ fn parse_flowchart_like(input: &str, kind: DiagramKind) -> Result<ParseOutput> {
                 }
                 continue;
             }
-            if line.starts_with("title ") {
-                continue;
-            }
 
             // Edge metadata: e1@{ curve: "linear" }
             if let Some((edge_id, curve)) = parse_edge_metadata_line(&line) {
@@ -626,6 +637,12 @@ fn parse_flowchart_like(input: &str, kind: DiagramKind) -> Result<ParseOutput> {
             }
 
             if add_flowchart_edge(&line, &mut graph, &subgraph_stack) {
+                continue;
+            }
+
+            // A node named `title` is valid as an edge endpoint. Only treat
+            // this as a title directive after trying the edge grammar.
+            if line.starts_with("title ") {
                 continue;
             }
 
@@ -893,8 +910,8 @@ fn parse_class_relation_line(
 }
 
 fn class_relation_tokens() -> Vec<String> {
-    let relation_starts = ["<|", "<", "*", "o", ""];
-    let relation_ends = ["|>", ">", "*", "o", ""];
+    let relation_starts = ["<|", "<", "*", "o", "()", ""];
+    let relation_ends = ["|>", ">", "*", "o", "()", ""];
     let line_types = ["--", ".."];
 
     let mut tokens = Vec::new();
@@ -933,6 +950,13 @@ fn edge_meta_from_class_token(token: &str) -> EdgeMeta {
     }
     if token.ends_with('o') {
         end_decoration = Some(crate::ir::EdgeDecoration::Diamond);
+    }
+
+    if token.starts_with("()") {
+        start_decoration = Some(crate::ir::EdgeDecoration::Circle);
+    }
+    if token.ends_with("()") {
+        end_decoration = Some(crate::ir::EdgeDecoration::Circle);
     }
 
     let mut arrow_start_kind = None;
@@ -1991,6 +2015,8 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
     let mut current_class: Option<String> = None;
     let mut namespace_stack: Vec<usize> = Vec::new();
     let mut note_index = 0usize;
+    let mut interface_index = 0usize;
+    graph.appearance_config = init_config.clone().unwrap_or_else(|| serde_json::json!({}));
 
     for raw_line in lines {
         let line = raw_line.trim();
@@ -2123,8 +2149,21 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
         if let Some((left, right, meta, label, start_label, end_label)) =
             parse_class_relation_line(line)
         {
-            let (left_id, left_label) = normalize_class_id(&left);
-            let (right_id, right_label) = normalize_class_id(&right);
+            let (mut left_id, left_label) = normalize_class_id(&left);
+            let (mut right_id, right_label) = normalize_class_id(&right);
+            let left_interface = meta.start_decoration == Some(crate::ir::EdgeDecoration::Circle);
+            let right_interface = meta.end_decoration == Some(crate::ir::EdgeDecoration::Circle);
+            if left_interface || right_interface {
+                graph.appearance_config["_lollipop"] = serde_json::json!(true);
+                let (id, label) = if left_interface {
+                    (&mut left_id, left_label.as_ref().unwrap_or(&left))
+                } else {
+                    (&mut right_id, right_label.as_ref().unwrap_or(&right))
+                };
+                *id = format!("__class_interface_{interface_index}");
+                interface_index += 1;
+                graph.ensure_node(id, Some(label.clone()), Some(crate::ir::NodeShape::Text));
+            }
             if let Some(label) = left_label {
                 labels.insert(left_id.clone(), label);
             }
@@ -2134,7 +2173,11 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
             graph.ensure_node(
                 &left_id,
                 labels.get(&left_id).cloned(),
-                Some(crate::ir::NodeShape::Rectangle),
+                Some(if left_interface {
+                    crate::ir::NodeShape::Text
+                } else {
+                    crate::ir::NodeShape::Rectangle
+                }),
             );
             if let Some(&ns_idx) = namespace_stack.last() {
                 let sg = &mut graph.subgraphs[ns_idx];
@@ -2145,7 +2188,11 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
             graph.ensure_node(
                 &right_id,
                 labels.get(&right_id).cloned(),
-                Some(crate::ir::NodeShape::Rectangle),
+                Some(if right_interface {
+                    crate::ir::NodeShape::Text
+                } else {
+                    crate::ir::NodeShape::Rectangle
+                }),
             );
             if let Some(&ns_idx) = namespace_stack.last() {
                 let sg = &mut graph.subgraphs[ns_idx];
@@ -2217,7 +2264,10 @@ fn parse_class_diagram(input: &str) -> Result<ParseOutput> {
     }
 
     for (id, node) in graph.nodes.iter_mut() {
-        if node.shape == crate::ir::NodeShape::Note {
+        if matches!(
+            node.shape,
+            crate::ir::NodeShape::Note | crate::ir::NodeShape::Text
+        ) {
             continue;
         }
         let class_name = labels
@@ -2546,6 +2596,7 @@ fn parse_er_diagram(input: &str) -> Result<ParseOutput> {
     graph.kind = DiagramKind::Er;
     graph.direction = Direction::TopDown;
     let (lines, init_config) = preprocess_input(input)?;
+    graph.appearance_config = init_config.clone().unwrap_or_else(|| serde_json::json!({}));
 
     let mut members: HashMap<String, Vec<String>> = HashMap::new();
     let mut current_entity: Option<String> = None;

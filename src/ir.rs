@@ -790,6 +790,8 @@ pub struct Graph {
     pub usecase: UseCaseData,
     /// Agentflow options retained when its graph uses the shared flowchart layout.
     pub agentflow_config: Option<serde_json::Value>,
+    /// Authored appearance options for graph diagrams.
+    pub appearance_config: serde_json::Value,
     /// Metadata attached to nodes, edges, and containers by extended diagrams.
     pub element_metadata: BTreeMap<String, serde_json::Value>,
 }
@@ -1085,6 +1087,7 @@ impl Graph {
             railroad: RailroadData::default(),
             usecase: UseCaseData::default(),
             agentflow_config: None,
+            appearance_config: serde_json::json!({}),
             element_metadata: BTreeMap::new(),
         }
     }

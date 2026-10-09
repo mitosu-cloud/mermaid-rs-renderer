@@ -61,6 +61,7 @@ pub(super) fn compute_treemap_layout(
         diagram: DiagramData::Graph {
             usecase: None,
             agentflow: None,
+            appearance: None,
             state_notes: Vec::new(),
         },
     }

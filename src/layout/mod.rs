@@ -3,6 +3,8 @@ mod block;
 mod brandes_kopf;
 mod c4;
 mod cynefin;
+mod dagre;
+mod elk;
 mod error;
 mod event_modeling;
 mod gantt;
@@ -224,7 +226,15 @@ fn measure_subgraph_label(
         let normalized = normalize_html_label(&sub.label);
         measure_markdown_label(&normalized, theme, config)
     } else {
-        measure_label(&sub.label, theme, config)
+        // Cluster titles are painted at the scoped diagram font size. The
+        // legacy node-label floor reserves a taller title strip at 14px.
+        text::measure_label_with_font_size(
+            &sub.label,
+            theme.font_size,
+            config,
+            true,
+            &theme.font_family,
+        )
     }
 }
 
@@ -259,6 +269,8 @@ pub fn compute_layout_with_metrics(
     theme: &Theme,
     config: &LayoutConfig,
 ) -> (Layout, LayoutStageMetrics) {
+    let scoped_theme = crate::flowchart_shapes::theme_for_graph(graph, theme);
+    let theme = scoped_theme.as_ref().unwrap_or(theme);
     let mut stage_metrics = LayoutStageMetrics::default();
     let mut layout = match graph.kind {
         crate::ir::DiagramKind::Sequence | crate::ir::DiagramKind::ZenUML => {
@@ -325,6 +337,23 @@ pub fn compute_layout_with_metrics(
                 Some(&mut stage_metrics),
             );
             layout.kind = graph.kind;
+            let mut native = layout.clone();
+            let result = if graph
+                .agentflow_config
+                .as_ref()
+                .and_then(|v| v.get("layout"))
+                .and_then(|v| v.as_str())
+                == Some("dagre")
+            {
+                dagre::apply(graph, &mut native)
+            } else {
+                elk::apply(graph, &mut native)
+            };
+            if let Err(error) = result {
+                eprintln!("Agentflow native layout failed: {error}");
+            } else {
+                layout = native;
+            }
             layout
         }
         crate::ir::DiagramKind::UseCase => {
@@ -340,6 +369,33 @@ pub fn compute_layout_with_metrics(
         }
     };
 
+    if graph.kind == crate::ir::DiagramKind::Flowchart || crate::class_lollipop::enabled(graph) {
+        let engine = graph
+            .appearance_config
+            .get("layout")
+            .and_then(|v| v.as_str())
+            .unwrap_or("elk");
+        let mut native = layout.clone();
+        let result = if engine == "dagre" {
+            dagre::apply(graph, &mut native)
+        } else {
+            elk::apply(graph, &mut native)
+        };
+        match result {
+            Ok(()) => {
+                if let DiagramData::Graph {
+                    appearance: Some(options),
+                    ..
+                } = &mut native.diagram
+                {
+                    options["_layoutEngine"] = serde_json::json!(engine);
+                }
+                layout = native;
+            }
+            Err(error) => eprintln!("Native {:?} layout failed: {error}", graph.kind),
+        }
+    }
+
     // Propagate accessibility metadata from the parsed graph.
     layout.acc_title = graph.acc_title.clone();
     layout.acc_descr = graph.acc_descr.clone();
@@ -348,7 +404,10 @@ pub fn compute_layout_with_metrics(
 
     // Final pass: resolve all edge label positions using collision avoidance.
     let label_start = Instant::now();
-    label_placement::resolve_all_label_positions(&mut layout, theme, config);
+    if !matches!(&layout.diagram, DiagramData::Graph { appearance: Some(options), .. } if options.get("_layoutEngine").is_some())
+    {
+        label_placement::resolve_all_label_positions(&mut layout, theme, config);
+    }
     stage_metrics.label_placement_us = stage_metrics
         .label_placement_us
         .saturating_add(label_start.elapsed().as_micros());
@@ -520,7 +579,16 @@ fn compute_flowchart_layout(
                 | crate::ir::DiagramKind::Er
                 | crate::ir::DiagramKind::UseCase
         );
-        let mut label = if node.markdown_label {
+        let mut label = if graph.kind == crate::ir::DiagramKind::Flowchart
+            && (node.markdown_label || has_html_formatting(&node.label))
+        {
+            let normalized = if node.markdown_label {
+                node.label.clone()
+            } else {
+                normalize_html_label(&node.label)
+            };
+            text::measure_flowchart_rich_label(&normalized, theme, &label_config)
+        } else if node.markdown_label {
             measure_markdown_label(&node.label, theme, &label_config)
         } else if graph.kind == crate::ir::DiagramKind::UseCase {
             crate::usecase::text_block(&decode_mermaid_entities(&node.label), theme, &label_config)
@@ -560,6 +628,42 @@ fn compute_flowchart_layout(
                 .unwrap_or(120.0) as f32;
             crate::usecase::wrap_label(&mut label, limit, theme, &label_config);
         }
+        if graph.kind == crate::ir::DiagramKind::Flowchart
+            && matches!(
+                node.shape,
+                crate::ir::NodeShape::Hourglass
+                    | crate::ir::NodeShape::LightningBolt
+                    | crate::ir::NodeShape::SmallCircle
+                    | crate::ir::NodeShape::FilledCircle
+                    | crate::ir::NodeShape::FramedCircle
+                    | crate::ir::NodeShape::CrossedCircle
+            )
+        {
+            label = TextBlock {
+                lines: vec![TextLine::plain(String::new())],
+                width: 0.0,
+                height: 0.0,
+            };
+        }
+        if graph.kind == crate::ir::DiagramKind::Flowchart && graph.agentflow_config.is_none() {
+            let options = graph
+                .appearance_config
+                .get("flowchart")
+                .unwrap_or(&serde_json::Value::Null);
+            let limit = options
+                .get("wrappingWidth")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(120.0) as f32;
+            crate::usecase::wrap_label(&mut label, limit, theme, &label_config);
+            if label.width > 0.0 && node.shape != crate::ir::NodeShape::Text {
+                label.width = label.width.max(
+                    options
+                        .get("minNodeWidth")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(120.0) as f32,
+                );
+            }
+        }
         let label_empty = label.lines.len() == 1 && label.lines[0].text().trim().is_empty();
         if !label_empty
             && node.shape != crate::ir::NodeShape::CollapsedGroup
@@ -576,6 +680,16 @@ fn compute_flowchart_layout(
         }
         let (mut width, mut height) =
             shape_size(node.shape, &label, &effective_config, theme, graph.kind);
+        if graph.kind == crate::ir::DiagramKind::Flowchart {
+            if let Some(size) =
+                crate::flowchart_shapes::size(node.shape, &label, &graph.appearance_config)
+            {
+                (width, height) = size;
+            }
+        }
+        if crate::class_lollipop::enabled(graph) {
+            (width, height) = crate::class_lollipop::size(node, &label, theme);
+        }
         if let Some(options) = graph.agentflow_config.as_ref()
             && let Some(size) = crate::agentflow::node_size(node.shape, &label, options)
         {
@@ -812,6 +926,18 @@ fn compute_flowchart_layout(
                     .map(|line| crate::er::text_width(&line.text(), &label_theme))
                     .fold(0.0_f32, f32::max);
                 return block;
+            }
+            if graph.kind == crate::ir::DiagramKind::Flowchart && graph.agentflow_config.is_none() {
+                return if markdown_label || has_html_formatting(label) {
+                    let normalized = if markdown_label {
+                        label.clone()
+                    } else {
+                        normalize_html_label(label)
+                    };
+                    text::measure_flowchart_rich_label(&normalized, theme, config)
+                } else {
+                    text::measure_flowchart_label(label, theme, config)
+                };
             }
             if markdown_label {
                 return measure_markdown_label(label, theme, config);
@@ -2218,6 +2344,8 @@ fn compute_flowchart_layout(
         diagram: DiagramData::Graph {
             state_notes,
             agentflow: graph.agentflow_config.clone(),
+            appearance: crate::flowchart_shapes::uses_scoped_theme(graph)
+                .then(|| graph.appearance_config.clone()),
             usecase: (graph.kind == crate::ir::DiagramKind::UseCase).then(|| graph.usecase.clone()),
         },
     }
@@ -5714,13 +5842,20 @@ fn resolve_node_style(node_id: &str, graph: &Graph) -> crate::ir::NodeStyle {
         )
     } else if graph.agentflow_config.is_some() {
         crate::agentflow::node_style(graph, node_id)
+    } else if crate::class_lollipop::enabled(graph) {
+        crate::class_lollipop::node_style(graph, node_id)
+    } else if graph.kind == crate::ir::DiagramKind::Er {
+        crate::er::node_style(graph, node_id)
     } else {
-        crate::ir::NodeStyle::default()
+        crate::flowchart_shapes::node_style(graph, node_id)
     };
     if matches!(
         graph.kind,
-        crate::ir::DiagramKind::Er | crate::ir::DiagramKind::UseCase
-    ) || graph.agentflow_config.is_some()
+        crate::ir::DiagramKind::Er
+            | crate::ir::DiagramKind::UseCase
+            | crate::ir::DiagramKind::Flowchart
+    ) || crate::class_lollipop::enabled(graph)
+        || graph.agentflow_config.is_some()
     {
         if let Some(default_style) = graph.class_defs.get("default") {
             merge_node_style(&mut style, default_style);
@@ -5737,9 +5872,10 @@ fn resolve_node_style(node_id: &str, graph: &Graph) -> crate::ir::NodeStyle {
 
     if let Some(node_style) = graph.node_styles.get(node_id) {
         merge_node_style(&mut style, node_style);
-        if graph.kind == crate::ir::DiagramKind::Er {
-            style.er_odd_row_fill = node_style.fill.clone();
-        }
+    }
+    if graph.kind == crate::ir::DiagramKind::Er && style.fill.is_some() {
+        // Authored default/class/inline fills color every cell in Mermaid.
+        style.er_odd_row_fill = style.fill.clone();
     }
 
     style
@@ -5830,6 +5966,21 @@ fn resolve_subgraph_style(sub: &crate::ir::Subgraph, graph: &Graph) -> crate::ir
         )
     } else if graph.agentflow_config.is_some() {
         crate::agentflow::container_style(graph, sub.id.as_deref().unwrap_or(""))
+    } else if graph.kind == crate::ir::DiagramKind::Flowchart
+        && crate::usecase::redux(&graph.appearance_config)
+    {
+        let slot = graph
+            .subgraphs
+            .iter()
+            .position(|s| s.id == sub.id)
+            .unwrap_or(0);
+        crate::ir::NodeStyle {
+            fill: Some(
+                crate::usecase::BACKGROUNDS[slot % crate::usecase::BACKGROUNDS.len()].into(),
+            ),
+            stroke: Some(crate::usecase::BORDERS[slot % crate::usecase::BORDERS.len()].into()),
+            ..Default::default()
+        }
     } else {
         crate::ir::NodeStyle::default()
     };

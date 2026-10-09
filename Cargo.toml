@@ -40,6 +40,8 @@ thiserror = "2.0"
 once_cell = "1.19"
 fontdb = "0.23"
 ttf-parser = "0.25"
+elk-native = { package = "org-eclipse-elk-graph-json", git = "https://github.com/openedges/elk-rs", rev = "2191680292b9565592223c22a28b5ef33c3acbad" }
+dagre-native = { package = "mermaid-dagre", version = "=0.1.5" }
 resvg = { version = "0.46", optional = true }
 usvg = { version = "0.46", optional = true }
 

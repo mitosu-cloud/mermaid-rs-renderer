@@ -97,10 +97,12 @@
 
 mod agentflow;
 mod block_shapes;
+mod class_lollipop;
 #[cfg(feature = "cli")]
 pub mod cli;
 pub mod config;
 mod er;
+mod flowchart_shapes;
 pub mod icons;
 mod image_shape;
 pub mod ir;

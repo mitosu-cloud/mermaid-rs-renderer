@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 mod agentflow;
+mod class_lollipop;
 mod kanban;
 mod packet;
 mod radar;
@@ -61,6 +62,10 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             usecase: Some(data),
             ..
         } => Some(crate::usecase::diagram_theme(data, theme)),
+        DiagramData::Graph {
+            appearance: Some(options),
+            ..
+        } => Some(crate::agentflow::theme(options, theme)),
         _ => None,
     };
     let theme = agent_theme.as_ref().unwrap_or(theme);
@@ -334,6 +339,12 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             format!(" height=\"{height_attr}\"")
         }
     ));
+
+    if theme.font_family.contains("Recursive") {
+        svg.push_str("<style>");
+        svg.push_str(include_str!("fonts/Recursive.css"));
+        svg.push_str("</style>");
+    }
 
     // Emit accessibility <title> and <desc> elements.
     if let Some(title) = &layout.acc_title {
@@ -771,7 +782,11 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 && sub_stroke_width <= 0.0;
             if !invisible {
                 let block_group = layout.kind == crate::ir::DiagramKind::Block;
-                let radius = if block_group || layout.kind == crate::ir::DiagramKind::UseCase {
+                let radius = if block_group
+                    || matches!(
+                        layout.kind,
+                        crate::ir::DiagramKind::UseCase | crate::ir::DiagramKind::Flowchart
+                    ) {
                     0.0
                 } else {
                     10.0
@@ -807,7 +822,16 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             }
             if !label_empty {
                 let label_x = subgraph.x + subgraph.width / 2.0;
-                let label_y = subgraph.y + 12.0 + subgraph.label_block.height / 2.0;
+                let label_y = subgraph.y
+                    + if matches!(
+                        layout.kind,
+                        crate::ir::DiagramKind::Agentflow | crate::ir::DiagramKind::Flowchart
+                    ) {
+                        0.0
+                    } else {
+                        12.0
+                    }
+                    + subgraph.label_block.height / 2.0;
                 let label_color = subgraph
                     .style
                     .text_color
@@ -1300,13 +1324,21 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             ));
         }
     } else {
-        let base_edge_width = match layout.kind {
-            crate::ir::DiagramKind::Class
-            | crate::ir::DiagramKind::State
-            | crate::ir::DiagramKind::Block
-            | crate::ir::DiagramKind::UseCase
-            | crate::ir::DiagramKind::Er => 1.0,
-            _ => 2.0,
+        let base_edge_width = if matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if layout.kind == crate::ir::DiagramKind::Class && options.get("_lollipop").and_then(|v|v.as_bool())==Some(true))
+        {
+            2.0
+        } else {
+            match layout.kind {
+                crate::ir::DiagramKind::Class
+                | crate::ir::DiagramKind::State
+                | crate::ir::DiagramKind::Block
+                | crate::ir::DiagramKind::UseCase
+                | crate::ir::DiagramKind::Er => 1.0,
+                crate::ir::DiagramKind::Agentflow if matches!(&layout.diagram,DiagramData::Graph {agentflow:Some(options),..} if options.get("look").and_then(|v|v.as_str())==Some("classic")) => {
+                    1.0
+                }
+                _ => 2.0,
+            }
         };
         for (edge_idx, edge) in layout.edges.iter().enumerate() {
             if edge.style == crate::ir::EdgeStyle::Invisible {
@@ -1315,7 +1347,29 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             let edge_curve = edge.curve.unwrap_or(config.flowchart.curve);
             let render_points = class_symbol_render_points(edge, layout.kind);
             let d = {
-                let raw = if layout.kind == crate::ir::DiagramKind::Mindmap
+                let raw = if matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if options.get("_layoutEngine").and_then(|v|v.as_str())==Some("elk"))
+                {
+                    if layout.kind == crate::ir::DiagramKind::Flowchart
+                        && matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if crate::agentflow::neo(options))
+                    {
+                        agentflow::rounded_path_with_endpoint_gaps(
+                            &render_points,
+                            if edge.arrow_start { 4.0 } else { 0.0 },
+                            if edge.arrow_end { 4.0 } else { 0.0 },
+                        )
+                    } else {
+                        agentflow::rounded_path(&render_points)
+                    }
+                } else if layout.kind == crate::ir::DiagramKind::Agentflow
+                    && matches!(&layout.diagram, DiagramData::Graph {agentflow: Some(options), ..} if options.get("layout").and_then(|v|v.as_str()) != Some("dagre"))
+                {
+                    agentflow::rounded_path(&render_points)
+                } else if (layout.kind == crate::ir::DiagramKind::Agentflow
+                    || matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if options.get("_layoutEngine").and_then(|v|v.as_str())==Some("dagre")))
+                    && edge_curve == crate::ir::CurveType::Basis
+                {
+                    curve_d3_basis(&render_points)
+                } else if layout.kind == crate::ir::DiagramKind::Mindmap
                     || (layout.kind == crate::ir::DiagramKind::Er
                         && edge_curve == crate::ir::CurveType::Basis)
                 {
@@ -1405,8 +1459,15 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
             if let Some(dash_override) = &edge.override_style.dasharray {
                 dash = format!("stroke-dasharray=\"{}\"", dash_override);
             }
+            let (cap, join) = if layout.kind == crate::ir::DiagramKind::Flowchart
+                && matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if options.get("_layoutEngine").is_some())
+            {
+                ("butt", "miter")
+            } else {
+                ("round", "round")
+            };
             svg.push_str(&format!(
-                "<path id=\"{edge_id}\" class=\"edgePath\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" {} {} {} stroke-linecap=\"round\" stroke-linejoin=\"round\" />",
+                "<path id=\"{edge_id}\" class=\"edgePath\" data-edge-id=\"{edge_id}\" d=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\" {} {} {} stroke-linecap=\"{cap}\" stroke-linejoin=\"{join}\" />",
                 d, stroke, stroke_width, marker_end, marker_start, dash
             ));
 
@@ -1429,27 +1490,25 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 && let Some(decoration) = edge.start_decoration
             {
                 let angle = edge_endpoint_angle(&render_points, true);
-                svg.push_str(&edge_decoration_svg(
-                    point,
-                    angle,
-                    decoration,
-                    &stroke,
-                    stroke_width,
-                    true,
-                ));
+                svg.push_str(&if layout.kind == crate::ir::DiagramKind::Class
+                    && decoration == crate::ir::EdgeDecoration::Circle
+                {
+                    class_lollipop::circle(point, angle, true, &stroke)
+                } else {
+                    edge_decoration_svg(point, angle, decoration, &stroke, stroke_width, true)
+                });
             }
             if let Some(point) = render_points.last().copied()
                 && let Some(decoration) = edge.end_decoration
             {
                 let angle = edge_endpoint_angle(&render_points, false);
-                svg.push_str(&edge_decoration_svg(
-                    point,
-                    angle,
-                    decoration,
-                    &stroke,
-                    stroke_width,
-                    false,
-                ));
+                svg.push_str(&if layout.kind == crate::ir::DiagramKind::Class
+                    && decoration == crate::ir::EdgeDecoration::Circle
+                {
+                    class_lollipop::circle(point, angle, false, &stroke)
+                } else {
+                    edge_decoration_svg(point, angle, decoration, &stroke, stroke_width, false)
+                });
             }
 
             if let Some(label) = edge.label.as_ref()
@@ -1471,6 +1530,40 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                         false,
                         edge.override_style.label_color.as_deref(),
                     ));
+                } else if layout.kind == crate::ir::DiagramKind::Agentflow
+                    || matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if options.get("_layoutEngine").is_some())
+                {
+                    svg.push_str(&format!("<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{}\"/>",x-label.width/2.0,y-label.height/2.0,label.width,label.height,theme.edge_label_background));
+                    if layout.kind == crate::ir::DiagramKind::Flowchart {
+                        let baseline = y - label.height / 2.0
+                            + theme.font_size * config.label_line_height / 2.0
+                            + text_metrics::centered_baseline_offset(
+                                theme.font_size,
+                                &theme.font_family,
+                            )
+                            .unwrap_or(theme.font_size * 0.35);
+                        svg.push_str(&text_block_svg_with_font_size(
+                            x,
+                            baseline,
+                            label,
+                            theme,
+                            config,
+                            theme.font_size,
+                            "middle",
+                            edge.override_style.label_color.as_deref(),
+                            true,
+                        ));
+                    } else {
+                        svg.push_str(&text_block_svg(
+                            x,
+                            y,
+                            label,
+                            theme,
+                            config,
+                            false,
+                            edge.override_style.label_color.as_deref(),
+                        ));
+                    }
                 } else if layout.kind == crate::ir::DiagramKind::Er {
                     let fill = crate::theme::adjust_color(&theme.primary_color, -160.0, 0.0, 0.0);
                     svg.push_str(&format!("<rect data-edge-id=\"{edge_id}\" data-label-kind=\"center\" x=\"{:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{:.2}\" fill=\"{fill}\" fill-opacity=\"0.5\"/>", x - label.width / 2.0, y - label.height / 2.0, label.width, label.height));
@@ -1777,6 +1870,15 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 }
                 continue;
             }
+            if matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if layout.kind == crate::ir::DiagramKind::Class && options.get("_lollipop").and_then(|v|v.as_bool())==Some(true))
+            {
+                svg.push_str(&class_lollipop::node(node, theme, config));
+                if node.link.is_some() {
+                    svg.push_str("</a>");
+                }
+                continue;
+            }
+            let modern_flow = matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if layout.kind == crate::ir::DiagramKind::Flowchart && crate::agentflow::neo(options));
             let agent_shape = match &layout.diagram {
                 DiagramData::Graph {
                     agentflow: Some(options),
@@ -1784,9 +1886,53 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 } => agentflow::shape(node, theme, options),
                 _ => None,
             };
-            svg.push_str(
-                &agent_shape.unwrap_or_else(|| shape_svg(node, theme, config, layout.kind)),
-            );
+            let special_shape = if layout.kind == crate::ir::DiagramKind::Flowchart {
+                match &layout.diagram {
+                    DiagramData::Graph {
+                        appearance: Some(options),
+                        ..
+                    } => crate::flowchart_shapes::svg(node, theme, options, modern_flow),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let node_svg = agent_shape
+                .or(special_shape)
+                .unwrap_or_else(|| shape_svg(node, theme, config, layout.kind));
+            if modern_flow
+                && !matches!(
+                    node.shape,
+                    crate::ir::NodeShape::Flag
+                        | crate::ir::NodeShape::WavyRect
+                        | crate::ir::NodeShape::FilledCircle
+                )
+            {
+                let mut shadow = node.clone();
+                shadow.style.fill = Some("black".into());
+                shadow.style.stroke = Some("black".into());
+                let shadow_svg = match &layout.diagram {
+                    DiagramData::Graph {
+                        appearance: Some(options),
+                        ..
+                    } => crate::flowchart_shapes::svg(&shadow, theme, options, false),
+                    _ => None,
+                }
+                .unwrap_or_else(|| shape_svg(&shadow, theme, config, layout.kind));
+                let offset = if matches!(
+                    node.shape,
+                    crate::ir::NodeShape::SmallCircle | crate::ir::NodeShape::FramedCircle
+                ) && node.width < 25.0
+                {
+                    2
+                } else {
+                    4
+                };
+                svg.push_str(&format!(
+                    "<g transform=\"translate({offset},{offset})\" opacity=\"0.06\">{shadow_svg}</g>"
+                ));
+            }
+            svg.push_str(&node_svg);
             if layout.kind != crate::ir::DiagramKind::Er {
                 let divider_line_height = if layout.kind == crate::ir::DiagramKind::Class {
                     theme.font_size * config.class_label_line_height()
@@ -1811,6 +1957,19 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 center_x -= crate::block_shapes::cylinder_radius(node.height);
             }
             let mut center_y = node.y + node.height / 2.0;
+            if layout.kind == crate::ir::DiagramKind::Flowchart {
+                let options = match &layout.diagram {
+                    DiagramData::Graph {
+                        appearance: Some(options),
+                        ..
+                    } => options,
+                    _ => &serde_json::Value::Null,
+                };
+                if let Some((x, y)) = crate::flowchart_shapes::label_center(node, options) {
+                    center_x = x;
+                    center_y = y;
+                }
+            }
             if node.shape == crate::ir::NodeShape::Image {
                 center_y = if node.img_pos.as_deref() == Some("t") {
                     node.y + node.label.height / 2.0
@@ -1845,7 +2004,9 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
                 .iter()
                 .all(|line| line.text().trim().is_empty())
                 || node.id.starts_with("__start_")
-                || node.id.starts_with("__end_");
+                || node.id.starts_with("__end_")
+                || (layout.kind == crate::ir::DiagramKind::Flowchart
+                    && node.shape == crate::ir::NodeShape::Hourglass);
             if !hide_label {
                 let label_svg = if layout.kind == crate::ir::DiagramKind::Treemap {
                     if node.is_treemap_leaf {
@@ -1999,12 +2160,32 @@ pub fn render_svg(layout: &Layout, theme: &Theme, config: &LayoutConfig) -> Stri
         if overlay_flowchart && !overlay_arrows.is_empty() {
             for (is_start, point, angle, stroke, stroke_width) in overlay_arrows {
                 let final_angle = if is_start { angle + 180.0 } else { angle };
-                svg.push_str(&arrowhead_svg(
-                    point,
-                    final_angle,
-                    stroke.as_str(),
-                    stroke_width,
-                ));
+                if matches!(&layout.diagram, DiagramData::Graph {appearance:Some(options),..} if options.get("_layoutEngine").is_some())
+                {
+                    let angle = final_angle.to_radians();
+                    let (advance, length, half_height) =
+                        if layout.kind == crate::ir::DiagramKind::Flowchart {
+                            if is_start {
+                                (1.0, 11.5, 7.0)
+                            } else {
+                                (0.0, 10.5, 7.0 * 10.5 / 11.5)
+                            }
+                        } else {
+                            (4.0, 10.0, 5.0)
+                        };
+                    let tip = (
+                        point.0 + advance * angle.cos(),
+                        point.1 + advance * angle.sin(),
+                    );
+                    svg.push_str(&format!("<g transform=\"translate({:.3},{:.3}) rotate({final_angle:.3})\"><polygon points=\"0,0 -{length},{half_height} -{length},-{half_height}\" fill=\"{stroke}\"/></g>",tip.0,tip.1));
+                } else {
+                    svg.push_str(&arrowhead_svg(
+                        point,
+                        final_angle,
+                        stroke.as_str(),
+                        stroke_width,
+                    ));
+                }
             }
         }
 
@@ -6783,6 +6964,7 @@ pub fn write_output_png(
     };
 
     opt.fontdb_mut().load_system_fonts();
+    text_metrics::load_bundled_fonts(opt.fontdb_mut());
     #[cfg(target_os = "ios")]
     {
         opt.fontdb_mut().load_fonts_dir("/System/Library/Fonts");
@@ -7125,7 +7307,7 @@ fn render_sequence_actor_shape(
     }
 }
 
-fn escape_xml(input: &str) -> String {
+pub(crate) fn escape_xml(input: &str) -> String {
     input
         .replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -7232,6 +7414,33 @@ fn class_symbol_render_points(
     kind: crate::ir::DiagramKind,
 ) -> Vec<(f32, f32)> {
     let mut points = edge.points.clone();
+    if kind == crate::ir::DiagramKind::Agentflow || kind == crate::ir::DiagramKind::Flowchart {
+        let start = if edge.arrow_start {
+            if kind == crate::ir::DiagramKind::Flowchart {
+                4.0
+            } else {
+                7.0
+            }
+        } else if edge.start_decoration.is_some() {
+            6.0
+        } else {
+            0.0
+        };
+        let end = if edge.arrow_end {
+            if kind == crate::ir::DiagramKind::Flowchart {
+                4.0
+            } else {
+                7.0
+            }
+        } else if edge.end_decoration.is_some() {
+            6.0
+        } else {
+            0.0
+        };
+        trim_polyline_endpoint(&mut points, true, start);
+        trim_polyline_endpoint(&mut points, false, end);
+        return points;
+    }
     if kind == crate::ir::DiagramKind::UseCase && points.len() >= 2 {
         if edge.arrow_start_kind == Some(crate::ir::EdgeArrowhead::OpenTriangle) {
             trim_polyline_endpoint(&mut points, true, CLASS_OPEN_MARKER_EXTENT);
@@ -7245,10 +7454,18 @@ fn class_symbol_render_points(
         return points;
     }
 
-    let start_trim = class_arrow_marker_extent(edge.arrow_start, edge.arrow_start_kind)
-        .max(class_decoration_marker_extent(edge.start_decoration));
-    let end_trim = class_arrow_marker_extent(edge.arrow_end, edge.arrow_end_kind)
-        .max(class_decoration_marker_extent(edge.end_decoration));
+    let start_trim = if edge.start_decoration == Some(crate::ir::EdgeDecoration::Circle) {
+        13.5
+    } else {
+        class_arrow_marker_extent(edge.arrow_start, edge.arrow_start_kind)
+            .max(class_decoration_marker_extent(edge.start_decoration))
+    };
+    let end_trim = if edge.end_decoration == Some(crate::ir::EdgeDecoration::Circle) {
+        13.5
+    } else {
+        class_arrow_marker_extent(edge.arrow_end, edge.arrow_end_kind)
+            .max(class_decoration_marker_extent(edge.end_decoration))
+    };
     trim_polyline_endpoint(&mut points, true, start_trim);
     trim_polyline_endpoint(&mut points, false, end_trim);
     points

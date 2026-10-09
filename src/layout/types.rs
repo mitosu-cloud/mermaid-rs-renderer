@@ -587,6 +587,7 @@ pub enum DiagramData {
         state_notes: Vec<StateNoteLayout>,
         usecase: Option<crate::ir::UseCaseData>,
         agentflow: Option<serde_json::Value>,
+        appearance: Option<serde_json::Value>,
     },
     Swimlane {
         direction: Direction,

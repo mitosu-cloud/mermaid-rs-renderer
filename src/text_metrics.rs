@@ -9,6 +9,17 @@ use ttf_parser::{Face, GlyphId};
 
 static TEXT_MEASURER: Lazy<Mutex<TextMeasurer>> = Lazy::new(|| Mutex::new(TextMeasurer::new()));
 
+/// The Redux themes ship Recursive; use the same face for geometry and PNGs.
+pub(crate) fn load_bundled_fonts(db: &mut Database) {
+    db.load_font_data(include_bytes!("fonts/Recursive-Regular.ttf").to_vec());
+    db.load_font_data(include_bytes!("fonts/Recursive-Bold.ttf").to_vec());
+    // Chromium synthesizes a 0.25 shear for the normal-only Recursive webfont.
+    // resvg needs explicit faces; these preserve the normal advances and GPOS
+    // tables with that measured shear applied to their glyph outlines.
+    db.load_font_data(include_bytes!("fonts/Recursive-Italic.ttf").to_vec());
+    db.load_font_data(include_bytes!("fonts/Recursive-BoldItalic.ttf").to_vec());
+}
+
 pub fn measure_text_width(text: &str, font_size: f32, font_family: &str) -> Option<f32> {
     if text.is_empty() || font_size <= 0.0 {
         return Some(0.0);
@@ -127,6 +138,72 @@ pub(crate) fn measure_styled_text_width(
     let font = measurer.styled_face(font_family, bold, italic)?;
     let width = font.measure_width(text, font_size)?;
     let face = font.face.as_ref()?;
+    // Modern OpenType faces (including Recursive) store kerning in GPOS,
+    // rather than the legacy `kern` table. Browser shaping prefers GPOS.
+    if let Some(table) = face.tables().gpos {
+        use ttf_parser::gpos::{PairAdjustment, PositioningSubtable};
+        let mut indices = Vec::new();
+        for feature in table
+            .features
+            .into_iter()
+            .filter(|feature| feature.tag == ttf_parser::Tag::from_bytes(b"kern"))
+        {
+            for index in feature.lookup_indices {
+                if !indices.contains(&index) {
+                    indices.push(index);
+                }
+            }
+        }
+        if !indices.is_empty() {
+            let glyphs: Vec<_> = text
+                .chars()
+                .map(|ch| {
+                    if ch == '\n' {
+                        None
+                    } else {
+                        face.glyph_index(ch)
+                    }
+                })
+                .collect();
+            let mut adjustment = 0i32;
+            for index in indices {
+                let Some(lookup) = table.lookups.get(index) else {
+                    continue;
+                };
+                for pair in glyphs.windows(2) {
+                    let (Some(left), Some(right)) = (pair[0], pair[1]) else {
+                        continue;
+                    };
+                    for index in 0..lookup.subtables.len() {
+                        let Some(PositioningSubtable::Pair(pair)) = lookup.subtables.get(index)
+                        else {
+                            continue;
+                        };
+                        let values = match pair {
+                            PairAdjustment::Format1 { coverage, sets } => coverage
+                                .get(left)
+                                .and_then(|index| sets.get(index))
+                                .and_then(|set| set.get(right)),
+                            PairAdjustment::Format2 {
+                                coverage,
+                                classes,
+                                matrix,
+                            } => coverage.get(left).and_then(|_| {
+                                matrix.get((classes.0.get(left), classes.1.get(right)))
+                            }),
+                        };
+                        if let Some((left, right)) = values {
+                            adjustment += left.x_advance as i32 + right.x_advance as i32;
+                            break;
+                        }
+                    }
+                }
+            }
+            return Some(
+                (width + adjustment as f32 * font_size / font.units_per_em as f32).max(0.0),
+            );
+        }
+    }
     let Some(table) = face.tables().kern else {
         return Some(width);
     };
@@ -168,7 +245,8 @@ struct TextMeasurer {
 
 impl TextMeasurer {
     fn new() -> Self {
-        let db = Database::new();
+        let mut db = Database::new();
+        load_bundled_fonts(&mut db);
         Self {
             db,
             loaded_system_fonts: false,
@@ -202,7 +280,9 @@ impl TextMeasurer {
 
     fn load_face(&mut self, font_family: &str, bold: bool, italic: bool) -> Option<FontFace> {
         let family_key = styled_family_key(font_family, bold, italic);
-        if let Some(face) = load_cached_face(&family_key) {
+        if !font_family.contains("Recursive")
+            && let Some(face) = load_cached_face(&family_key)
+        {
             return Some(face);
         }
         #[derive(Clone, Copy)]

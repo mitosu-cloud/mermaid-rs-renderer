@@ -7708,3 +7708,631 @@ Final image sizing review: the unconstrained fixture now uses Mermaid 12's 120 p
 - Final cargo check --no-default-features --lib passed (20 compiler warnings); git diff --check passed. No tests were run under the svg-parity workflow.
 - Classic appearance review (agentflow-the-previous-appearance) preserves legacy colors, but visual match is no: native is spread across columns with Publish at upper left, while JS is a centered vertical stack with Publish below Review Agent. That layout gap remains.
 - Overall visual match remains partial, with several fixtures still visibly different in topology, edge routing, container spacing and font glyphs.
+
+## agentflow-basic-example — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 247.00037 462; JS 4 4 250 451.
+- Arrow marker refX=5 lets half its tip extend into filled target shapes. RS headers sit closer to children; JS has 10px marker clearance and neo shadows. Routes M/L in both; match partial.
+### Structural differences and visual defects
+- Arrow marker refX=5 lets half its tip extend into filled target shapes. RS headers sit closer to children; JS has 10px marker clearance and neo shadows. Routes M/L in both; match partial.
+
+## agentflow-connectors — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 187 239; JS 4 4 406 143.
+- The title -> create relationship is missing, and three nodes stack vertically instead of the LR chain plus isolated connector above. Metadata alone does not imply a connector edge in JS. Match no.
+### Structural differences and visual defects
+- The title -> create relationship is missing, and three nodes stack vertically instead of the LR chain plus isolated connector above. Metadata alone does not imply a connector edge in JS. Match no.
+
+## agentflow-edges — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 560.99286 406.5875; JS 4 4 418.5999755859375 486.4880065917969.
+- RS has diagonal yes/no branches, a looping dotted path above the diamond and reversed branch order. JS has orthogonal M/L/Q branches, feedback lane on the right and logs below Fix. Match no.
+### Structural differences and visual defects
+- RS has diagonal yes/no branches, a looping dotted path above the diamond and reversed branch order. JS has orthogonal M/L/Q branches, feedback lane on the right and logs below Fix. Match no.
+
+## agentflow-nodes-and-shapes — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 847 181.9147; JS 4 4 843.2000122070312 185.48800659179688.
+- RS puts Style guide in the input column, although its edge originates at Draft copy. JS places it in the third step below spell_check. RS uses a backward diagonal instead of a forward orthogonal branch. Match no.
+### Structural differences and visual defects
+- RS puts Style guide in the input column, although its edge originates at Draft copy. JS places it in the third step below spell_check. RS uses a backward diagonal instead of a forward orthogonal branch. Match no.
+
+## agentflow-the-global-block — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 450 200.85; JS 4 4 452 256.4880065917969.
+- Shared corpus is offset below Indexer; JS centers it between two containers, with independent downward orthogonal reference paths. Headers crowded in RS. Match partial.
+### Structural differences and visual defects
+- Shared corpus is offset below Indexer; JS centers it between two containers, with independent downward orthogonal reference paths. Headers crowded in RS. Match partial.
+
+## agentflow-the-previous-appearance — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 849.2669 762; JS 0 0 481 826.2452392578125.
+- RS spreads nodes into columns with Publish at the top left. JS classic/dagre has Brief -> Writer -> Reviewer -> Publish vertically. Wrong container ranking dominates the visual result. Match no.
+### Structural differences and visual defects
+- RS spreads nodes into columns with Publish at the top left. JS classic/dagre has Brief -> Writer -> Reviewer -> Publish vertically. Wrong container ranking dominates the visual result. Match no.
+
+## entityRelationshipDiagram-entities-with-typed-attributes — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 546.2031 372; JS 4 4 446.65625 357.
+- All RS entities are purple with alternating white rows; JS declaration palette is fuchsia CAR, teal NAMED-DRIVER, orange PERSON on all cells/grid lines. Native curves/layout also differ from JS orthogonal bends. Match no.
+### Structural differences and visual defects
+- All RS entities are purple with alternating white rows; JS declaration palette is fuchsia CAR, teal NAMED-DRIVER, orange PERSON on all cells/grid lines. Native curves/layout also differ from JS orthogonal bends. Match no.
+
+## flowchart-cloud-shape — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 80.268745 68.8; JS 7.374992370605469 5.98779296875 184.75 116.8882064819336.
+- RS draws five arcs occupying only part of its box and puts A at the lower-right border. JS uses ten arcs with the label centered and a 120px minimum label width. Match no.
+### Structural differences and visual defects
+- RS draws five arcs occupying only part of its box and puts A at the lower-right border. JS uses ten arcs with the label centered and a 120px minimum label width. Match no.
+
+## flowchart-collate-hourglass — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 65.4375 65.4375; JS 4 4 46 46.
+- RS displays the implicit node id A and sizes to that label. Upstream explicitly clears hourglass labels and uses a minimum 30px symbol. Match no.
+### Structural differences and visual defects
+- RS displays the implicit node id A and sizes to that label. Upstream explicitly clears hourglass labels and uses a minimum 30px symbol. Match no.
+
+## flowchart-comment-braces-both-sides — Pass 1 findings (reported categories) — 2026-10-08T06:26:46+00:00
+
+### Visual appearance
+- ViewBox RS 0 0 65.4375 60; JS 4 4 184.5 71.
+- braces is mapped to a folded comment polygon, partly outside its native viewBox. JS shows two unfilled curly braces around a 120px label box. Left/right brace aliases also draw rectangles in RS. Match no.
+### Structural differences and visual defects
+- braces is mapped to a folded comment polygon, partly outside its native viewBox. JS shows two unfilled curly braces around a 120px label box. Left/right brace aliases also draw rectangles in RS. Match no.
+
+## agentflow-arrow-clearance — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Shorten painted marker-bearing routes by 7px and cross/circle routes by 6px after shape intersection; retain the full ELK route for layout. This leaves the complete marker in front of the filled target shape.
+
+## agentflow-connectors — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Try edge grammar before recognizing the title directive, retaining the authored title --> create edge. Connector metadata does not invent a GitHub edge.
+
+## agentflow-edges — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Integrate the pinned native Rust ELK port, preserve semantic directions, use Mermaid presets and explicit derived spacing, intersect actual shapes, and locally round orthogonal bends. Preserve center labels on their ELK routes.
+
+## agentflow-nodes-and-shapes — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Include reference edges in layered ranking. Use Mermaid node and container declaration order, matching dimensions for tools, inputs and reference documents, and the bundled Recursive font.
+
+## agentflow-the-global-block — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Preserve global references outside containers; use compound ELK routing and reversed container declaration order. Correct the reference-document wave and title placement.
+
+## agentflow-the-previous-appearance — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Honor explicit layout: dagre using the native Dagre port. Extract isolated clusters recursively with Mermaid direction changes, preserve externally connected compound groups, and render D3 basis curves.
+
+## entityRelationshipDiagram-entities-with-typed-attributes — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Apply declaration-order Redux colors to entity frames, grid lines and every table cell. Retain appearance options and authored class/default/inline precedence; class fills now apply to all rows.
+
+## flowchart-cloud-shape — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Share exact ten-arc cloud geometry between measurement and drawing, including rotated ellipse extrema. Center labels in the same body used by JS.
+
+## flowchart-collate-hourglass — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Clear implicit hourglass labels during measurement and painting and use the 30px unlabeled symbol.
+
+## flowchart-comment-braces-both-sides — Changes applied — 2026-10-08T06:56:54+00:00
+
+- Replace folded-comment polygons with unfilled curly braces; measure the label minimum and brace protrusions together. Apply the same correction to left and right brace aliases.
+
+## Requested diagram categories — native layout and font dependencies
+
+- User selected “port ELK to rust”; integrate the existing native `elk-rs` port pinned at `2191680292b9565592223c22a28b5ef33c3acbad` (ELK 0.11.0, EPL-2.0). Mermaid 12.1.0 uses elkjs 0.9.3, so matching the algorithm does not imply identical coordinates across versions.
+- Native `mermaid-dagre` 0.1.5 supports the explicit classic Dagre example. No JavaScript runtime is required by Rust rendering.
+- Cargo dependency edits are required by the user-selected native port. Bundled Recursive static faces support measurement/PNG; embedded original WOFF2 supports standalone SVG. The font license is retained in `src/fonts/OFL-Recursive.txt`.
+
+## agentflow-arrow-clearance — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- All 12 Agentflow fixtures were inspected. Marker-bearing paths stop short of intersected target boundaries; the reported hidden arrows are visible. Directional arrow/cross/circle markers remain intact.
+- Visual match: yes.
+### Structural differences and visible defects
+- Remaining differences are described above. No missing relationships, label overflow or viewport clipping observed in this fixture.
+
+## agentflow-connectors — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- The authored Issue title -> create_issue relationship is present. GitHub remains the isolated connector shown by JS. Both canvases are 406 x 143.
+- Visual match: yes.
+- ViewBox: RS `0 0 406 143`; JS `4 4 406 143`.
+### Structural differences and visible defects
+- Remaining differences are described above. No missing relationships, label overflow or viewport clipping observed in this fixture.
+
+## agentflow-edges — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- The diamond, yes/no branches, negative feedback lane and document reference now use the same gross spatial pattern and orthogonal routing as JS. Both canvases are 418.6px wide; RS is 489.492px tall versus JS 486.488px. Marker size, shadows and fine curve details differ; the long diagonal detours are absent.
+- Visual match: partial.
+- ViewBox: RS `0 0 418.59998 489.492`; JS `4 4 418.5999755859375 486.4880065917969`.
+### Structural differences and visible defects
+- Remaining differences are described above; matching dimensions or element counts are not treated as proof of visual identity.
+
+## agentflow-nodes-and-shapes — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- Style guide shares the later tool step instead of the initial input step, under spell_check. Node order and branching match visually. RS 843.2 x 185.492 versus JS 843.200 x 185.488; remaining decoration differences do not change the diagram topology.
+- Visual match: yes.
+- ViewBox: RS `0 0 843.2 185.492`; JS `4 4 843.2000122070312 185.48800659179688`.
+### Structural differences and visible defects
+- Remaining differences are described above. No missing relationships, label overflow or viewport clipping observed in this fixture.
+
+## agentflow-the-global-block — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- Indexer is on the left, Summariser on the right, and Shared corpus is centered below both. Independent downward reference routes match the JS pattern. RS 452 x 259.492 versus JS 452 x 256.488; slightly taller frames and missing neo shadows remain.
+- Visual match: partial.
+- ViewBox: RS `0 0 452 259.492`; JS `4 4 452 256.4880065917969`.
+### Structural differences and visible defects
+- Remaining differences are described above; matching dimensions or element counts are not treated as proof of visual identity.
+
+## agentflow-the-previous-appearance — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- Explicit native Dagre now gives Brief -> Writer -> Reviewer -> Publish vertically, with the isolated writer cluster laid out horizontally. Basis curves, frame colors and title placement match visually. Both canvases are 481 x 826.245; small text/marker offsets remain.
+- Visual match: yes.
+- ViewBox: RS `0 0 481 826.24524`; JS `0 0 481 826.2452392578125`.
+### Structural differences and visible defects
+- Remaining differences are described above. No missing relationships, label overflow or viewport clipping observed in this fixture.
+
+## entityRelationshipDiagram-entities-with-typed-attributes — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- CAR, NAMED-DRIVER and PERSON now have the JS fuchsia/teal/orange declaration colors across frames, grid lines and all cells. All 16 ER examples were reviewed; class/default/inline overrides were retained and class fills were extended to odd rows. Existing ER routing, entity spacing, title and markdown gaps remain outside this color correction.
+- Visual match: partial.
+- ViewBox: RS `0 0 549.3281 357`; JS `4 4 446.65625 357`.
+### Structural differences and visible defects
+- Remaining differences are described above; matching dimensions or element counts are not treated as proof of visual identity.
+
+## flowchart-cloud-shape — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- The ten-arc outline and centered A match visually. Both canvases are 184.75 x 116.888. Actual arc bounds stay inside the viewport; the old five-arc outline and misplaced label are absent.
+- Visual match: yes.
+- ViewBox: RS `0 0 184.75 116.8882`; JS `7.374992370605469 5.98779296875 184.75 116.8882064819336`.
+### Structural differences and visible defects
+- Remaining differences are described above. No missing relationships, label overflow or viewport clipping observed in this fixture.
+
+## flowchart-collate-hourglass — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- The unwanted A is absent, both canvases are 46 x 46 and the sharp 30px hourglass outline matches. The JS neo shadow remains absent in RS.
+- Visual match: partial.
+- ViewBox: RS `0 0 46 46`; JS `4 4 46 46`.
+### Structural differences and visible defects
+- Remaining differences are described above; matching dimensions or element counts are not treated as proof of visual identity.
+
+## flowchart-comment-braces-both-sides — Pass 2 findings — 2026-10-08T07:07:00+00:00
+
+### Visual appearance
+- Both curly braces and label placement match the JS picture; both canvases are 184.5 x 71. Left and right aliases were also reviewed. The left alias uses its distinct 18/12px padding and virtual 10% protrusion; the right alias retains 36/24px padding. Fine quadratic-vs-sampled arc texture differs.
+- Visual match: yes.
+- ViewBox: RS `0 0 184.5 71`; JS `4 4 184.5 71`.
+### Structural differences and visible defects
+- Remaining differences are described above. No missing relationships, label overflow or viewport clipping observed in this fixture.
+
+## Requested diagram categories — final verification — 2026-10-08T07:07:00+00:00
+
+- Release build and `cargo check --no-default-features --lib` succeeded; existing compiler warnings remain.
+- Full comparison script succeeded: 458/458 sources rendered to SVG and PNG by each engine (1,832 images), zero render failures. Mermaid 12.1.0 / CLI 12.0.0. The existing upstream Gantt week-tick NaN line warning remains in the JS output.
+- Final category refinements were refreshed in SVG and PNG for all 12 Agentflow and five related flowchart examples; no native layout diagnostics or render errors. Gallery regenerated.
+- Category review: all 12 Agentflow, all 16 ER, all five affected flowchart examples. Also inspected the distinct mindmap-cloud renderer and four UseCase examples affected by the bundled font.
+- XML/viewport and PNG-signature audit passed for all 1,832 artifacts. Connector has its one authored relationship; hourglass emits no text label. All Agentflow canvas dimensions are within 3.68% of JS and the reported ordering/routing patterns match visually.
+- Native SVG baseline changes are limited to 12 Agentflow, 16 ER, five flowchart and 23 UseCase fixtures; UseCase changes follow the shared bundled Recursive font.
+- Overall visual match: partial. Neo shadows, some fine geometry/marker details and existing ER layout/markdown/title differences remain.
+
+## classDiagram-lollipop-interface-complex — Pass 1 findings — 2026-10-08T07:17:39+00:00
+
+### Visual appearance
+- JS 249.70×357 versus RS 228.65×402. JS has two classes in separate columns and three independent circular interfaces; RS adds two class boxes named `foo ()` and `() bar`, merges both bar relationships, and bends Class02 around Class01.
+- JS has three straight connector stems (M/L); RS includes an unrelated long curved connector. Class colors and compartment proportions differ.
+- These look like different diagrams. Interface labels are wrongly inside extra class containers.
+### Structural differences and defects
+- Missing all three lollipop circles and independent interface identities; extra class boxes and literal parentheses.
+- Class01 and Class02 lose their declaration-order colors.
+
+## flowchart-communication-link-bolt — Pass 1 findings — 2026-10-08T07:17:39+00:00
+
+### Visual appearance
+- JS 51×86 versus RS 65.44×104. JS has a narrow closed six-point bolt; RS has a crossing polygon, purple fill, and a large unwanted A.
+- The pictures differ in silhouette, proportions, color, and label.
+### Structural differences and defects
+- Incorrect polygon vertices and sizing; extra label A overlaps the symbol. Missing neo shadow.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 1 findings — 2026-10-08T07:17:39+00:00
+
+### Visual appearance
+- JS 380×746 versus RS 245.71×852.65: RS aspect ratio is 43% narrower. JS places three above one above two with lateral offsets; RS puts one above three and routes through titles and frame boundaries.
+- JS uses orthogonal M/L/Q routes; RS uses broad curves and diagonal cluster links, including nearly overlapping arrowheads at two.
+- JS nodes are wide 152×45 rectangles, while RS nodes are much narrower and taller relative to their frames. Cluster colors and square corners differ. These do not look like the same layout.
+### Structural differences and defects
+- Cluster dependency order, routing, node dimensions, and colors differ. External edges cross cluster labels and frames.
+
+## flowchart-k3s-cluster-wireguard — Pass 1 findings — 2026-10-08T07:17:39+00:00
+
+### Visual appearance
+- JS 482.05×520 versus RS 594.02×490.38. JS staggers B left and C right; RS stacks all three on one axis.
+- JS uses separate orthogonal M/L/Q tracks with labels embedded in their routes; RS uses diagonal links and broad return curves.
+- JS wraps Node A to four lines in a 152×108 box; RS puts it in a much wider three-line box.
+- These look like different layouts despite equivalent relationships.
+### Structural differences and defects
+- Bidirectional and return routing, label placement/background, font, and node dimensions differ.
+
+## classDiagram-lollipop-interface-complex — Changes applied — 2026-10-08T07:24:05+00:00
+
+- `src/parser.rs` — recognize lollipop syntax and create a distinct synthetic interface for each occurrence; preserve its label without creating class compartments.
+- `src/class_lollipop.rs`, `src/render/class_lollipop.rs` — measure and paint the actual class compartments, declaration-order colors, open-circle markers, and label-only interfaces.
+- `src/layout/mod.rs`, `src/layout/elk.rs` — apply native ELK with classes before synthetic interfaces, retaining semantic edge directions.
+
+## flowchart-communication-link-bolt — Changes applied — 2026-10-08T07:24:05+00:00
+
+- `src/flowchart_shapes.rs` — use Mermaid lightningBolt.ts geometry: fixed 35×70 six-point outline, modern stroke/fill, and no label.
+- `src/layout/routing.rs` — intersect edges with the same bolt outline used for painting.
+- `src/layout/mod.rs`, `src/render.rs` — suppress labels before measurement and include neo shadows.
+
+## flowchart-flowchart-with-multiple-subgraphs — Changes applied — 2026-10-08T07:24:05+00:00
+
+- `src/parser.rs` — preserve compound parent identities and Mermaid container insertion order.
+- `src/layout/elk.rs`, `src/layout/mod.rs` — connect flowcharts to native Rust ELK, with compound hierarchy, feedback-edge orientation, and native label positions; honor explicit Dagre.
+- `src/flowchart_shapes.rs`, `src/render.rs` — modern flowchart fonts, node measurement/wrapping, square cluster frames, palette, and rounded orthogonal ELK routes. The shared flowchart category is updated rather than special-casing fixture names.
+
+## flowchart-k3s-cluster-wireguard — Changes applied — 2026-10-08T07:24:05+00:00
+
+- `src/layout/mod.rs`, `src/layout/elk.rs` — use native ELK and retain separate routes for the bidirectional and returning edges.
+- `src/flowchart_shapes.rs`, `src/render.rs` — match 120px label wrapping/minimum width with 32×24 padding, Recursive fonts, and inline edge-label backgrounds/anchors.
+
+## classDiagram-lollipop-interface-complex — Validation refinements — 2026-10-08T07:28:24+00:00
+
+- Visual verification refinement: match JS 2px relation strokes for class lollipop diagrams.
+
+## flowchart-k3s-cluster-wireguard — Validation refinements — 2026-10-08T07:28:24+00:00
+
+- Validation caught a left-clipped inline label. The native ELK viewport now includes routed edge and label bounds; edge-label measurement uses the actual 14px font rather than the legacy 16px floor.
+- Native flowchart arrows now use Mermaid-sized sharp triangles and 4px line-end offsets.
+
+## flowchart-flowchart-with-multiple-subgraphs — Validation refinements — 2026-10-08T07:28:24+00:00
+
+- Related category validation exposed ignored nested directions. Independent directional subgraphs now use ELK SEPARATE_CHILDREN, matching Mermaid’s directional group branch.
+- Plain rectangle outlines and native arrow geometry now retain JS square corners and marker proportions.
+
+## classDiagram-lollipop-interface-complex — Pass 2 findings — 2026-10-08T07:31:45+00:00
+
+### Visual appearance
+- RS 249.52×357 versus JS 249.70×357, with Class02 on the left, Class01 on the right, and the three independently named circular interfaces in the same positions. All three stems are straight M/L paths.
+- Class dimensions, colors, compartment divisions, interface labels, and shadows are recognizably the same picture. Minor text metrics/baseline differences remain, especially in the simple fixture (RS 69.24×182 versus JS 70.97×182).
+### Structural differences
+- No extra class boxes or literal parentheses remain. Both bar interfaces have separate identities and all three open circles are visible.
+### Visual defects
+- No clipping, overlapping labels, or unintended relationship crossings in either lollipop fixture.
+- Visual match: yes — essentially the same picture, with minor typography differences.
+
+## flowchart-communication-link-bolt — Pass 2 findings — 2026-10-08T07:31:45+00:00
+
+### Visual appearance
+- Both viewports are 51×86. The six-point bolt silhouette, 35×70 shape bounds, dark outline, white center, and offset shadow now look the same.
+### Structural differences
+- No unwanted A label or self-crossing polygon remains.
+### Visual defects
+- No clipping or overlapping text. Visual match: yes.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 2 findings — 2026-10-08T07:31:45+00:00
+
+### Visual appearance
+- RS 481.87×775 versus JS 380×746. The cluster order is now three, one, two, with the correct square frames, colors, Recursive font, and 152×45 nodes.
+- RS uses the same orthogonal M/L/Q route style, but c1→a2 takes a much longer left detour; a2 sits left of a1 while JS places it right. The two long cluster routes occupy different channels, and the overall picture remains 27% wider.
+- Native ELK improves the diagram substantially but does not yet produce the same compound layout as JS. The Rust port is ELK 0.11.0; the installed JS engine is elkjs 0.9.3. Version difference is a possible contributor, not proof of the remaining cause.
+### Structural differences
+- Relationships and cluster dependency order are retained. Horizontal placement and route channels remain different.
+### Visual defects
+- Cluster-title crossings and stacked arrowheads from Pass 1 are absent. Label/container fits are adequate.
+- Visual match: partial — compound node placement and some routing remain visibly different.
+
+## flowchart-k3s-cluster-wireguard — Pass 2 findings — 2026-10-08T07:31:45+00:00
+
+### Visual appearance
+- RS 465.83×520 versus JS 482.05×520. A is above, B is left, C is lower-right, and all five relationships occupy separate orthogonal M/L/Q tracks with the same route topology as JS.
+- Node A wraps to four lines and all boxes have the same 152px width and 108/87px heights. Arrow proportions, square borders, shadows, and inline gray edge-label backgrounds now resemble JS.
+- Horizontal positions differ modestly with text measurements; the diagram is 3.4% narrower. These look like the same diagram at the same size class.
+### Structural differences
+- No missing relationships. Remaining differences are font widths and horizontal coordinates.
+### Visual defects
+- The left WireGuard label is entirely visible; all reported labels fit inside the viewport, and arrows reach their boundaries without being covered.
+- Visual match: yes — essentially the same layout with modest horizontal spacing differences.
+
+## reported-flowchart-and-lollipop-gaps — Category validation — 2026-10-08T07:31:45+00:00
+
+- Release build, formatting, and diff whitespace checks passed. No unit tests run under the svg-parity workflow.
+- All 458 Rust SVGs and PNGs were regenerated; zero render errors or native-layout fallback warnings. All 458 JS SVG/PNG references remain unchanged. Gallery refreshed; all 1,832 artifacts are present and SVG XML/PNG signatures are valid.
+- Category coverage: all 117 flowchart and 30 class fixtures rendered. Visual review included both lollipops, the bolt, the two reported layouts, basic/explicit-ID subgraphs, nested subgraph directions, and three related Agentflow examples.
+- The nested-directions fixture now retains TOP/TB, B1/RL, and B2/BT; its topology resembles JS with a small height difference. Basic and explicit-ID subgraphs have the correct topology with minor dimensions/title typography differences.
+- Content-bounds audit of all 147 class/flowchart SVGs found two remaining overflows: flowchart-lined-document (8.5px beyond right viewport), flowchart-stored-data-bow-tie-rectangle (1.125px beyond bottom). These separate shape geometry issues are recorded for a subsequent pass.
+- Other category changes from shared rectangle sizing/parser hierarchy include 10 Agentflow fixtures, two example flowcharts, and block-test-arch. Sampled Agentflow global-block, nodes-and-shapes, and previous-appearance remain recognizable relative to JS; some shadows/spacing remain different.
+- Overall visual match: partial. Multiple-subgraph horizontal placement and routing still need further work.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 1 findings — 2026-10-08T18:16:24+00:00
+
+### Visual appearance
+- RS viewport 481.87×775 versus JS 380×746: RS is 27% wider and its width/height ratio differs by 22%. The overall size class is similar but the picture visibly differs.
+- Both use three → one → two cluster order, yet a2 is left of a1 in RS and right of a1 in JS. RS routes c1→a2 around the left side of one instead of down the shared middle corridor.
+- Both use orthogonal M/L/Q edge paths. Three cluster-level routes occupy different horizontal channels and RS frames retain uneven extra room.
+- Nodes are 152×45 in both engines; some RS container widths are larger relative to node width. Labels fit inside their boxes and frames.
+- These are recognizable as the same relationships but not the same compound layout.
+### Structural differences
+- Seven relationships and all six ordinary nodes/three clusters are present. Remaining differences are geometry and routing.
+### Visual defects
+- No text clipping or overlap in this fixture. Horizontal placement and c1→a2 detour remain the principal defects.
+
+## flowchart-flowchart-with-multiple-subgraphs — Changes applied — 2026-10-08T18:26:44+00:00
+
+- `src/layout/elk.rs` — Match Mermaid container options: keep root model-order/layering flags at the root; apply container direction only when declared; reserve flowchart title width plus 8px.
+- `src/layout/elk.rs` — Port Mermaid’s `evenGroupFrames`: tighten frames around children and internal routes, retain group attachment points and original ELK section origins.
+- `src/layout/elk.rs` — Port terminal-jog straightening: retain both ports, move the whole short channel run, reject new edge crossings, and carry labels with the moved run. Respect `elk.straightenEdges: false`.
+- `src/layout/mod.rs` — Measure cluster titles at their painted font size instead of applying the legacy 16px node-label floor.
+- Diagnosis: identical golden input still gives different native port/child ordering; native ELK and elkjs currently differ in crossing minimization. No fixture-specific coordinates or seed tuning were added.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 2 findings — 2026-10-08T18:34:21+00:00
+
+### Visual appearance
+- RS is now 387.5×766 versus JS 380×746 (2.0% wider, 2.7% taller; aspect ratio differs by 0.7%). The previous 27% width excess has been reduced.
+- Cluster widths now approximately match: RS one/three 244.5/244 versus JS 244/244.5; two is 200 in both. Cluster/node width ratios are ~1.61 and 1.32. Titles fit with ample margins.
+- Horizontal layout is still mirrored: RS three/two occupy the left side and one the right; JS has three/two on the right and one on the left. RS a2/c2 remain left of their preceding nodes; JS places them to the right.
+- c1→a2 now uses the middle corridor instead of detouring across nearly the whole canvas. Both engines paint rounded M/L/Q orthogonal routes, but the outer group channels and port ordering still differ.
+- RS leaves 80px between three and one versus JS 60px; both leave 40px between one and two. Node dimensions and internal rank spacing are similar.
+- Short connector steps are reduced without moving terminal ports. Arrow tips remain closer to node borders than JS and cluster shadows are still absent.
+- Visual match: partial. The size and routing complexity are improved, but the mirrored compound placement and crossing below three still prevent the same picture.
+### Structural differences
+- No relationships, nodes, or clusters are missing. Remaining discrepancies are placement, port order, route channels, arrow clearance, and cluster shadows.
+### Visual defects in RS
+- three→two (edge-5) crosses two→c2 (edge-6) near (108,280); JS has no corresponding crossing. Matching Mermaid’s container option scoping changed native crossing minimization and introduced this crossing compared with the prior routes. This remains an engine gap.
+- No target text overflow, overlap, or viewBox clipping was observed.
+### Verification and related examples
+- Release build succeeded with the existing 20 warnings. All 458 Rust SVG/PNG pairs regenerated; zero failures or layout diagnostics. All 458 JS SVGs were unchanged by hash. Gallery contains 1,832 image artifacts.
+- Visually reviewed basic-subgraph, explicit-id, nested subgraph directions, WireGuard, and four Agentflow examples. Basic and explicit-id now share the JS 216×202 viewport; nested directions share 824×415 and the same layout. WireGuard’s prior routing pattern remains, with minor spacing differences. Agentflow node order and container membership remain intact; glyph, shadow, and spacing gaps remain.
+- Reviewed three UseCase examples affected by shared title measurement. Their substantial existing layout/routing gaps are still visible and are not claimed as matches.
+- A content-bounds audit of 147 flowchart/class fixtures found no new overflow: the two previously recorded unrelated shape-bound defects (lined document and bow-tie stored data) remain.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 1 findings — 2026-10-08T20:59:56+00:00
+
+### Visual appearance
+- RS 387.5×766 versus JS 380×746; size class and aspect ratio are close, but the horizontal layout is mirrored. RS three/two are left and one right, and a2/c2 are left of their preceding nodes; JS reverses these placements.
+- Both engines use rounded orthogonal M/L/Q paths. Group port ordering and outer channels differ, including a crossing absent in JS.
+- First cluster gap is 80px in RS versus 60px in JS (1.78 versus 1.33 node heights); second gap is 40px in both. Cluster/node width ratios are approximately 1.61 and 1.32. Labels fit without visible overflow.
+- These remain different pictures despite similar dimensions and relationships.
+### Structural differences
+- All six nodes, three clusters, and seven relationships are present. Geometry, port order, arrow clearance, and cluster shadows differ.
+### Visual defects
+- three→two (edge-5) crosses two→c2 (edge-6) near (108,280). No corresponding JS crossing.
+- No label clipping or text overlap observed in the target.
+
+## flowchart-flowchart-with-multiple-subgraphs — Changes applied — 2026-10-08T21:10:53+00:00
+
+- `src/layout/elk/ports.rs` — Added a Rust greedy exchange phase for free container ports after hierarchical routes are joined. It retains ELK node positions and existing port slots, moves the full terminal channel to preserve orthogonal paths, and accepts only a strict crossing reduction with no increase in coincident channels, self-conflicts, or newly intersected node/container boxes. Route labels move only when attached to the displaced channel.
+- `src/layout/elk.rs` — Runs the shared compound port phase after Mermaid terminal straightening. Leaf shape anchors and semantic relationship directions are retained.
+- Investigated ELK 0.9.3 JS versus native 0.11.0 with identical graph inputs. Direction-congruency changes alone do not reproduce the reference and produce malformed joined segments in the alternate orientation; this pass leaves that orientation choice intact. No dependency, test, or JS reference changes.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 2 findings — 2026-10-08T21:14:48+00:00
+
+### Visual appearance
+- Visual match: partial. RS remains 387.5×766 versus JS 380×746; the horizontal arrangement is still mirrored, with three/two left and one right, and a2/c2 left of preceding nodes. The vertical three→one→two order is retained.
+- The crossing between three→two and two→c2 is removed. The free ports on two are exchanged, and the complete terminal channels remain orthogonal with rounded M/L/Q turns. A sampled SVG path inspection reports one crossing pair before, zero after, and zero in JS.
+- First cluster gap remains 80px versus JS 60px (1.78 versus 1.33 node heights); second gap remains 40px. Region/node width ratios remain approximately 1.61 and 1.32. Labels fit with no visible overflow.
+- The connector routes are easier to follow, but the two renderings still do not look like the same picture because of the mirrored placement and different channels.
+
+### Structural differences
+- Arrow tips remain closer to node borders in RS, corner radii differ, and RS cluster frames lack the JS shadows. No relationships or labels were removed by this pass.
+
+### Visual defects
+- No connector crossings, text overlap, or viewport clipping observed in the updated target. Mirrored positioning, the larger first cluster gap, and the appearance differences above remain.
+
+### Verification and related diagrams
+- Release build passed (20 existing warnings); rustfmt and git diff whitespace checks passed.
+- Regenerated all 458 Rust SVG/PNG pairs with no renderer diagnostics or failures. All expected 1,832 RS/JS files exist, SVG XML parses, and PNG signatures validate. JS reference hashes are unchanged.
+- Only flowchart-flowchart-with-multiple-subgraphs-rs.svg changed. All other 457 Rust SVG outputs are identical to the pre-pass snapshot, including the remaining 116 flowcharts, all 12 Agentflows, 24 UseCases, and 30 class diagrams.
+- Visually inspected the target plus basic subgraph, nested subgraph directions, explicit subgraph ID, K3s/WireGuard, Agentflow global block/containers/previous appearance, and UseCase system boundaries/colors. Existing category gaps remain, notably UseCase colors' different layout; this phase introduces no visual changes to those fixtures.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 1 findings — 2026-10-08T21:32:16+00:00
+
+### Visual appearance
+- RS remains 387.5×766 versus JS 380×746, with mirrored horizontal placement: three/two left and one right, versus JS three/two right and one left. The children a2/c2 are also left of preceding nodes rather than right.
+- Both renderers use rounded orthogonal M/L/Q routes, but channels and port order differ. First cluster gap is 80px versus 60px (1.78 versus 1.33 node heights), with the second gap 40px in both. Region/node width ratios are approximately 1.61 and 1.32. Labels fit with no overflow.
+- These remain visibly different pictures despite similar overall dimensions.
+### Structural differences
+- RS arrow tips have less border clearance; corner radii differ and cluster shadows are absent.
+### Visual defects
+- No connector crossing, text overlap, or viewport clipping observed after the previous port-order pass. Mirrored placement and the larger first cluster gap remain.
+
+## flowchart-flowchart-with-multiple-subgraphs — Changes applied — 2026-10-08T21:38:21+00:00
+
+- `src/layout/elk/ports.rs` — Materializes implicit free ports for leaf nodes participating in edges between hierarchy levels, following original edge declaration order. It includes both internal and external relationships incident to those leaves, preventing the native recursive importer from creating internal ports first and changing barycenter ranks. Existing explicit ports are preserved and generated IDs avoid collisions. ELK still chooses port sides, positions, and final order.
+- `src/layout/elk.rs` — Applies declaration-order port conversion before invoking native ELK. This retains the full compound graph and semantic feedback-edge conversion; no diagram-specific mirroring or coordinate adjustment is used.
+- Diagnosis: native and JS phase traces use identical random call sequences, but diverge in compound crossing-minimization ordering. Precreating the affected leaf ports changes the native target to the JS gross arrangement and first cluster gap. Running the same conversion through elkjs leaves all target node and section geometry unchanged. No dependency, tests, or JS reference changes.
+
+## flowchart-flowchart-with-multiple-subgraphs — Changes applied — importer ordering detail — 2026-10-08T21:40:12+00:00
+
+- The installed elkjs importer walks container-owned edges breadth first, retaining declaration order within each container; native ELK imports child edges before ancestor edges. The port conversion follows elkjs ownership order, using the nearest common parent to rank containers. This handles internal relationships declared before external relationships as well as the target fixture. The JS comparison source was read from the sibling Git checkout because its working tree omits flowchart source.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 2 findings — 2026-10-08T21:43:44+00:00
+
+### Visual appearance
+- Visual match: partial. The horizontal arrangement now agrees with JS: three/two are on the right, one on the left, and a2/c2 lie right of their preceding nodes. The first cluster gap is now 60px, matching JS; the second remains 40px in both.
+- RS is 384.37×746 versus JS 380×746 (1.15% wider; equal height). Cluster and node dimensions remain similar; region/node width ratios are approximately 1.61 and 1.32. Labels fit without visible clipping or overlap.
+- Both renderers paint rounded orthogonal M/L/Q connectors with no sampled edge crossings. Their long channels and free container port order still differ: RS three→two enters the center of two and two→c2 leaves the right; JS uses the opposite slots. The RS outer channel is closer to the right frame of one.
+- This now shares the JS overall composition, but the long routing channels and ports still prevent a complete visual match.
+
+### Structural differences
+- Arrow tips remain closer to borders in RS, rounded turn geometry differs, and RS container frames lack JS shadows. No nodes, relationships, or labels are missing.
+
+### Visual defects
+- No text overlap, viewBox clipping, or connector crossing observed in the updated target. A sampled inspection of all seven painted edge paths found zero crossing pairs in both RS and JS. The remaining channel/port differences above are visible.
+
+### Verification and related diagrams
+- Release build passed with the existing 20 warnings; rustfmt and git diff whitespace checks passed.
+- Regenerated all 458 Rust SVG/PNG pairs without errors or layout diagnostics. All 1,832 expected comparison SVG/PNG files were validated; all JS reference SVG hashes are unchanged.
+- Only this target Rust SVG changed. All other 457 Rust SVG hashes match the pre-pass snapshot, including the remaining 116 flowcharts, all 12 Agentflows, 24 UseCases, and 30 class diagrams.
+- Visually reviewed the target plus basic subgraph, nested subgraph directions, explicit subgraph ID, K3s/WireGuard, Agentflow global block/containers/previous appearance, and UseCase system boundaries/colors. The related examples retain their prior geometry; existing UseCase colors layout and category shadow/arrow-clearance gaps remain. Equal-width review images were used for scale-sensitive comparisons because contact sheets preserve different intrinsic SVG sizing.
+- With identical target inputs, native/JS traces use the same random sequence. Precreating affected leaf ports in JS importer order corrects native child order; the same explicit-port conversion leaves elkjs target node and section geometry unchanged. This pass changes shared input ordering without fixture coordinates or dependency changes.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 1 findings — 2026-10-08T22:32:57+00:00
+
+### Pass 1 — visual appearance
+
+- RS is 384.37×746 versus JS 380×746. Cluster placement and the 60px/40px gaps now agree.
+- Both use rounded orthogonal routes (`M/L/Q`); b1→b2 is straight (`M/L`). RS’s long channels sit differently, and three→two and two→c2 use opposite ports on `two` compared with JS.
+- Cluster/node width ratios are about 1.61 and 1.32. Labels fit, but the different channels remain visible side by side.
+
+### Structural differences
+
+- RS arrows have less border clearance, turns have different radii, and cluster shadows are missing.
+
+### Visual defects
+
+- No crossing or clipping is visible in the current target. The three→two channel is only about 4px from `one`’s right frame, compared with about 32px in JS.
+
+## flowchart-flowchart-with-multiple-subgraphs — Changes applied — 2026-10-08T22:44:04+00:00
+
+- `src/layout/elk/compound.rs` — Recover ordinary top-level layered-container source ports before parent routing. The native hierarchical transfer mistakes a single external dummy without an internal edge for a self-loop source, subtracting its valid position. Native external-port traces show the subtraction on one→two and three→two; the preceding BK positions match elkjs.
+- `src/layout/elk/compound.rs` — Lay out each eligible child as a root with boundary proxy ports in compound import order. Recover the ordinary port only if all child geometry, dimensions, and connected boundary ports match the initial layout. Actual self-loops and nested affected containers retain the native path. Port and generated edge IDs avoid collisions.
+- `src/layout/elk/compound.rs` — Reroute the parent with ELK using the measured child boxes and retained port positions; rejoin the saved internal route prefixes/suffixes. Semantic relationships, nested contents, and internal routes are preserved. Changed dimensions or unjoinable seams reject recovery.
+- `src/layout/elk.rs` — Applies the guarded recovery after native hierarchical layout and before the existing frame/anchor/terminal rendering stages. The prototype reproduces every target node coordinate and edge section in elkjs, with no diagram-specific coordinates or JavaScript runtime.
+- Read Mermaid’s saved rendering source and installed elkjs worker. The sibling checkout lists its current ELK source, but fetching its missing promisor object failed under the network sandbox; local authoritative sources were sufficient. No dependencies, tests, or JS reference changes.
+
+## flowchart-flowchart-with-multiple-subgraphs — Pass 2 findings — 2026-10-08T22:47:03+00:00
+
+### Pass 2 — visual appearance
+
+- All node and cluster boxes now match JS after accounting for the viewport origin. Both renderings are 380×746.
+- The long channels and ports on `two` now follow JS, with no connector crossings. Labels still fit comfortably.
+- **Visual match: partial.** The layout now agrees; RS still has larger rounded turns, arrow tips that touch borders, and missing cluster shadows.
+
+### Related diagrams
+
+Nested subgraph directions, WireGuard, and three Agentflow examples retain their previous rendering. All other 457 Rust SVGs and every JS reference are unchanged.
+
+### Structural differences and remaining visual defects
+
+- RS rounded orthogonal paths use 10px turns where JS normally uses about 7.07px; both use M/L/Q commands, with harmless additional Q segments at collinear RS hierarchy seams. The b1→b2 edge is M/L in both. The same channels and container slots are retained, including three→two entering the right slot and two→c2 leaving the center slot of two.
+- RS arrow tips touch the node/container borders while JS retains clearance; cluster shadows remain absent. Minor text baseline differences remain. No relationships or visible labels are missing.
+- Cluster/node width ratios remain approximately 1.61 and 1.32; vertical gaps remain 60px and 40px. Cluster-title widths use less than 20% of their frames, and node labels have ample margins. No text overlap, viewport clipping, or edge crossing was observed in the updated target.
+
+### Verification and scope
+
+- Release build passed with the existing 20 warnings; rustfmt and git diff whitespace checks passed.
+- All 458 Rust SVG/PNG pairs regenerated without failures or renderer diagnostics. Validated all 1,832 expected RS/JS SVG/PNG files (SVG XML and PNG signatures). Only the target Rust SVG changed; all 458 JS hashes are unchanged.
+- Compared all nine painted node/container rectangles against JS with viewport-origin normalization: each coordinate and dimension agrees within 0.01px. Sampled all seven edge paths: zero crossing pairs before, after, and in JS.
+- Reviewed equal-width browser captures for the target, nested subgraph directions, K3s/WireGuard, Agentflow global block, containers, and previous appearance. Existing category-specific arrow/shadow/spacing gaps remain; this recovery changes none of those fixtures.
+- The recovery applies to qualifying top-level layered containers, retains actual self-loop handling, and rejects changed child geometry or unjoinable boundary seams. It uses additional native ELK child/parent layouts for eligible graphs; nested affected containers retain the existing path.
+
+## Reported flowchart shapes, Markdown, links, and WireGuard — Pass 1 findings — 2026-10-09T04:20:13+00:00
+
+### Mandatory visual-appearance checks
+
+- `lined-document`: Rust 216×276 is portrait; JS 183.20×83.49 is landscape. Rust draws three horizontal rules and an overflowing quadratic wave; JS has one vertical left rule and a shallow sampled sine wave. Label is centered in the wrong body.
+- `multi-document-stacked`: Rust 216×276 draws curved trapezoids; JS 188×114.36 draws three offset rectangular pages with a wavy lower edge. Page topology and label placement differ.
+- `tagged-document`: Rust 216×276 draws a tall curved trapezoid with a top tag; JS 181×79.75 draws a landscape document with a lower-right tag.
+- `paper-tape-flag`: Rust 176×57 is a notched pennant; JS 168×77.48 has parallel waved top and bottom edges. Entire outline differs.
+- `start-small-circle`, `stop-framed-circle`: both Rust canvases are 30×30, as in JS, but Rust adds “A” to these unlabeled symbols. Framed inner radius is 4.9 instead of 2.5; shadow offset is 4 instead of 2.
+- `stop-double-circle`: Rust 166×166 versus JS 193.82×193.82. Outer radius 75 versus 88.91; ring spacing 5 versus 12, inner stroke 1 versus 2. Label appears oversized relative to its containing circle.
+- `summary-crossed-circle`: Rust 30×30 versus JS 76.06×76.00, adds “A”, and uses radius 7 versus 30. Cross is obscured by the extra label.
+- `markdown-strings`: Rust 744×61 has four horizontal boxes versus JS 552×82 with three; the multiline label becomes two nodes and leaks source syntax. Bold/italic runs exist but the multiline node topology is wrong.
+- `link-with-arrow-and-text-alternative`: both 168×207, same vertical topology and straight M-L edge. Rust label background width 24.05 versus JS 30.53, corners are rounded, and the arrow touches B rather than retaining the JS gap.
+- `k3s-cluster-wireguard`: Rust 465.83×520 versus JS 482.05×520. A/B/C boxes match 152×108/87/87, and the five relationships follow corresponding orthogonal channels. Rust edge-label widths 69.68/127.32 versus JS 73.09/137.91 compress and shift those channels; bend radius differs and collinear dummy points receive unnecessary quadratic segments. Arrow tips touch nodes. JS route commands use M-L-Q; Rust uses M-L-Q with extra redundant Q commands.
+- The before images are visibly different for the document, tape, and crossed-circle categories. Markdown has incorrect topology. WireGuard and the alternative link are recognizable but still visibly differ in geometry and marker clearance.
+
+### Structural diffs and visual defects
+
+- Extra ID labels in three label-free symbol variants; missing correct page outlines, vertical document rule, and lower-right document tag.
+- Lined-document extends 8.5 px past its viewport on the right. Document family sizing drives disproportionate whitespace and malformed wave geometry.
+- Rust rich/edge text uses approximate measurement despite using the Recursive face for painting; edge label backgrounds can be narrower than the visible text.
+- Native Rust ELK and JS ELK share the layered algorithm family, but currently use different versions (Rust 0.11.0 port, JS elkjs 0.9.3). Equal node geometry alone cannot prove matching layout.
+
+## Reported flowchart shapes, Markdown, links, and WireGuard — Changes applied — 2026-10-09T04:26:23+00:00
+
+- `src/flowchart_shapes/documents.rs` — ported the sampled sine-wave geometry, page stacking, margin rule, and lower-right tag from installed Mermaid 12.1 source maps. Bounds, label origins, SVG painting, and connector outlines use the same geometry. Applies to document, lined document, stacked documents, tagged document, flag, and wavy rectangle aliases.
+- `src/flowchart_shapes.rs` — sized double circles from the label diagonal with 16px padding and 12px neo ring gap; made ring strokes equal. Added label-free circle geometry with radius-30 crossed circle and radius-2.5 filled framed-circle center; restored shape-specific 1.3px strokes. Rectangle corners now use a square outline.
+- `src/parser.rs` — reused the quoted multiline-label preprocessing for flowcharts, preserving literal Markdown newlines as part of one node.
+- `src/layout/text.rs`, `src/layout/mod.rs` — measure Flowchart Markdown/HTML runs and edge labels using the installed Recursive font at the diagram font size, including kerning and bold/italic runs; suppress labels for start, framed stop, summary, and filled junction symbols. Related junction inspection found an extra invisible “A” over its same-color fill; removed it along with the explicit-label cases.
+- `src/render/agentflow.rs` — ported Mermaid’s actual 5px-radius rounded-path formula and retained straight sections through collinear dummy points.
+- `src/render.rs` — retained 4px edge clearance for Flowchart arrow tips, using JS marker proportions and start offsets; corrected Flowchart edge text baselines and small start/stop shadow offsets (2px).
+- `src/layout/elk.rs`, `src/layout/routing.rs` — attach document-family ports to the measured painted outline; circle-family ports use the circle boundary. Native ELK remains the layout engine; no JavaScript runtime was added.
+
+### Build — 2026-10-09T04:27:03+00:00
+
+`cargo build --release` succeeded; 20 existing warnings.
+
+### Computed-style and geometry verification — 2026-10-09T04:33:31+00:00
+
+- Browser-computed JS styles override the raw roughjs path attributes: Redux node paths use 2px strokes, and the framed stop’s inner circle is white with a dark outline. Applied those effective styles and skipped shadows on paper tape / filled junction shapes whose JS paths have no shadow filter.
+- Found Recursive’s actual pair kerning in the OpenType GPOS `kern` feature, absent from the legacy `kern` table. Added both pair formats and used GPOS before the legacy fallback; this accounts for the 0.42px WireGuard and 0.70px join-label advance differences without fixture constants.
+- Flowchart ELK viewport bounds now add padding once around painted labels, eliminating the extra 8px from the generic bounds helper. Flowchart edge caps / joins now use JS’s butt / miter settings, removing the line protrusion at an arrow tip.
+
+Final release build succeeded (2026-10-09T04:33:57+00:00); 20 existing warnings.
+
+### Final raster and marker verification — 2026-10-09T04:42:41+00:00
+
+- The PNG pass exposed resvg’s lack of synthesized italics for Recursive. Added regular/bold italic faces under `src/fonts/` with Chromium’s 12-degree synthetic slant and unchanged advances / kerning. Native SVG and PNG now use the same styled label geometry. The existing Recursive OFL applies to these faces.
+- Applied butt caps / miter joins to the graph-edge rendering branch (the earlier edit reached the sequence branch). This removes the 1px rounded line spur at native Flowchart arrow tips while preserving sequence caps.
+- Added the double-circle inner ring’s independent 4px shadow between outer and inner painting, matching JS’s separate ring filters.
+- Final release build passed with 20 existing warnings.
+
+### Endpoint masks and italic calibration — 2026-10-09T04:49:59+00:00
+
+- The JS neo path includes a 4px masked stroke segment underneath each arrow tip. Rounded Flowchart ELK painting now trims just the endpoint stroke while retaining original bend coordinates and arrow placement; this eliminates the flat line stub. Other diagram kinds retain their path behavior.
+- Direct canvas measurement of Recursive at 1000px showed regular I right bound 424.15625 and italic right bound 597.65625 at 700px ascent. Corrected the earlier approximate 12-degree font slant to Chromium’s measured 0.25 shear (about 14 degrees), preserving advances and GPOS. Native PNG italics now use this calibrated face.
+
+## Reported flowchart shapes, Markdown, links, and WireGuard — Pass 2 findings — 2026-10-09T04:54:29+00:00
+
+### Mandatory visual-appearance checks
+
+- `lined-document`: now 183.20×83.49 in both, with the same landscape body, sampled lower sine wave, left margin rule, 2px stroke, and label location. The former right-side overflow is absent.
+- `multi-document-stacked`: now 188×114.36 in both; three pages use 10px offsets with the same visible page corners, bottom wave, and front-page label placement.
+- `tagged-document`: now 181×79.75 in both, with the landscape wave and lower-right tag. A small miter / roughjs closure difference remains where the tag meets the wave.
+- `paper-tape-flag`: now 168×77.48 in both; parallel top/bottom sine waves and straight sides match. No pennant notch or unwanted shadow remains.
+- `start-small-circle`: 30×30 in both, radius 7, 2px stroke, 2px shadow, and no ID text. `stop-framed-circle`: 30×30 RS versus 30.0133×30 JS, same outer radius / stroke and radius-2.5 white inner circle with dark outline, with no ID text.
+- `stop-double-circle`: 193.82364 square in both; outer radius 88.91182, inner radius 76.91182, equal 2px strokes, and independent inner-ring shadow. Label and ring gap agree.
+- `summary-crossed-circle`: 76 square RS versus 76.05697×76 JS; radius 30, diagonal cross, 2px stroke, no ID text. Rust uses an exact circle; JS’s roughjs outline produces the fractional width difference.
+- `markdown-strings`: 552×82 in both, three nodes in the same row, with matching 45px / 66px node heights, bold/italic spans, and a preserved two-line label. Both SVG and native PNG retain italics. Related `markdown-formatting-in-node` retains bold runs and wrapping.
+- `link-with-arrow-and-text-alternative`: 168×207 in both. The M-L connector, 30.53125px label background, square node corners, baseline, and arrow clearance agree. The stroke is masked beneath the arrow tip as in JS, eliminating the small line stub.
+- `k3s-cluster-wireguard`: 482.04688×520 RS versus 482.046875×520 JS. All three node rectangles and five routing channels agree after viewport-origin normalization. Both use M-L-Q routes with the same actual turns / 5px-radius rounding; harmless collinear points remain as L commands. Arrow margins and label backgrounds now follow JS. No connector crossings or lost relationships were observed.
+- WireGuard node A→B clear vertical gap is 121px (1.39×B height); B→C gap is 101px (1.16×C height), matching JS. Node labels occupy no more than about 79% of node width; requested diagram labels fit their containers without overlap or clipping. The label-free circle variants have no invisible or superimposed text.
+- **Visual match: partial.** The requested SVGs now show essentially the same shapes, labels, topology, and routing as JS. Small roughjs corner / circle-outline differences, shadow compositing, and visible native-PNG text rasterization / weight differences remain; this is not pixel-identical output.
+
+### Structural differences
+
+- JS uses roughjs-generated paths, HTML foreignObject labels, SVG filters, and marker definitions; Rust uses shared sampled outlines, SVG text runs, painted shadows, and arrow polygons. These different element structures now paint corresponding diagram geometry.
+- Framed and crossed-circle exact Rust circles differ from JS’s roughjs measured widths by 0.0133px and 0.0570px. Tagged-document retains a small closed-path corner artifact at the wave junction.
+- Native PNG and Chromium PNG text rasterization remain visibly different, particularly white text on WireGuard’s colored nodes. SVG browser comparisons agree more closely.
+
+### Visual defects in RS
+
+- No missing relationships, unexpected ID labels, malformed document / tape outlines, multiline-node splitting, or viewport overflow was observed in the 11 requested examples.
+- Three minor difference groups remain: roughjs outline / tag-corner details, shadow compositing, and native-PNG text rasterization / weight. The one implementation pass ends with these recorded for a subsequent svg-parity iteration.
+
+### Related diagrams and category verification
+
+- Regenerated every existing fixture, covering the whole comparison corpus. Reviewed 23 SVG pairs: all 11 requested examples plus plain document, legacy double circle, filled junction, formatted Markdown, new-shape syntax, ordinary arrow/text link, left-to-right flowchart, multiple subgraphs, Agentflow edges, typed ER attributes, complex class lollipop, and styled usecases. Also reviewed native PNG pairs for Markdown, WireGuard, and double circle.
+- A temporary connected document-family example covers document → lined document → stacked documents → tagged document → paper tape with longer, wrapped labels. Its five nodes and four connectors visibly agree with JS; connectors meet the sampled outlines, and arrow tips stay outside the shapes. Temporary artifacts are under `/tmp/flowchart-document-family-connected-*`; no fixture source was added or changed.
+- Plain document, legacy double-circle, filled junction, formatted Markdown, and arrow/text aliases reflect the shared changes. Multiple-subgraph node/container placement is retained; rounded bends and arrow clearance also benefit.
+- Existing differences remain outside this requested set: circle/diamond proportions in `new-shapes-syntax`, cluster-title colors/shadows in multiple subgraphs, Agentflow marker/shadow details, and ER/usecase layout. Category-wide visual identity is not claimed.
+- Audited all 147 flowchart/class Rust SVG viewports. The only outlier remains the pre-existing unrelated stored-data bow-tie rectangle, whose painted bottom is 1.125px outside its canvas. None of the requested examples is outside its viewport.
+
+### Verification and scope
+
+- Final release build passed with the existing 20 warnings. Rust formatting and git diff whitespace checks passed.
+- All 458 Rust SVG/PNG pairs regenerated with zero failures or renderer diagnostics. Validated all 1,832 expected RS/JS SVG/PNG artifacts (SVG XML and PNG signatures); refreshed the gallery.
+- 97 Rust SVGs changed through shared font metrics, symbol geometry, endpoint painting, and bounds calculation. Every JS SVG reference hash remains unchanged.
+- Changed 10 source files: `src/flowchart_shapes/documents.rs`, `src/flowchart_shapes.rs`, `src/parser.rs`, `src/layout/text.rs`, `src/layout/mod.rs`, `src/layout/elk.rs`, `src/layout/routing.rs`, `src/render.rs`, `src/render/agentflow.rs`, and `src/text_metrics.rs`. Added two calibrated italic font assets under `src/fonts/` using the existing Recursive OFL.
+- WireGuard uses the native Rust ELK layered port (workspace 0.11.0, commit 2191680292b9565592223c22a28b5ef33c3acbad). JS uses elkjs 0.9.3 with Mermaid 12.1.0 / CLI 12.0.0. Both use the ELK layered algorithm; implementations and versions differ. No JavaScript runtime was introduced.
+- Prior worktree changes were retained. No dependencies, fixture sources, tests, or JS golden files were edited in this iteration; no commit or push was performed.

@@ -461,6 +461,46 @@ fn max_label_width_px(
 
 const BOLD_WIDTH_MULTIPLIER: f32 = 1.07;
 
+/// Browser HTML labels use the diagram font at its configured size. Measure
+/// styled runs with that face instead of Markdown's generic width estimate.
+pub(super) fn measure_flowchart_rich_label(
+    text: &str,
+    theme: &Theme,
+    config: &LayoutConfig,
+) -> TextBlock {
+    let lines: Vec<TextLine> = text
+        .split('\n')
+        .map(|line| TextLine {
+            spans: parse_markdown_spans(line.trim()),
+        })
+        .collect();
+    let width = lines
+        .iter()
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|span| {
+                    crate::text_metrics::measure_styled_text_width(
+                        &span.text,
+                        theme.font_size,
+                        &theme.font_family,
+                        span.style.bold,
+                        span.style.italic,
+                    )
+                    .unwrap_or_else(|| {
+                        text_width(&span.text, theme.font_size, &theme.font_family, false)
+                    })
+                })
+                .sum::<f32>()
+        })
+        .fold(0.0_f32, f32::max);
+    TextBlock {
+        width: (width * 64.0).ceil() / 64.0,
+        height: lines.len() as f32 * theme.font_size * config.label_line_height,
+        lines,
+    }
+}
+
 /// Measure a markdown-formatted label. Splits on literal `\n` only (no `<br/>` processing),
 /// parses each line via `parse_markdown_spans()`, measures span widths with a 1.07x
 /// multiplier for bold text, and returns a `TextBlock` with formatted `TextLine`s.
